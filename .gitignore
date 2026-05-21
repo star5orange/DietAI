@@ -1,0 +1,245 @@
+# ==========================================
+# Python / Backend
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.conda/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# ==========================================
+# Flutter / Mobile App
+# ==========================================
+# Dart & Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+flutter_*.png
+linked_*.ds
+unlinked.ds
+unlinked_spec.ds
+
+# iOS
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserstate
+project.xcworkspace/
+xcuserdata/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+ios/.generated/
+ios/Flutter/Generated.xcconfig
+ios/Runner/GeneratedPluginRegistrant.*
+
+# Android
+*.jks
+*.keystore
+key.properties
+android/.gradle/
+android/captures/
+android/gradlew
+android/gradlew.bat
+android/local.properties
+android/**/GeneratedPluginRegistrant.java
+android/key.properties
+*.aab
+
+# Web
+web/icons/Icon-192.png
+web/icons/Icon-512.png
+web/icons/Icon-maskable-192.png
+web/icons/Icon-maskable-512.png
+web/favicon.png
+web/manifest.json
+
+# Node.js (for web development)
+frontend/web/node_modules/
+frontend/mobile/node_modules/
+frontend/shared/*/node_modules/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ==========================================
+# Environment & Configuration
+# ==========================================
+.env
+.env.dev
+.env.local
+.env.development
+.env.test
+.env.production
+env.example
+.envrc
+
+# ==========================================
+# Database & Storage
+# ==========================================
+postgres_data/
+redis_data/
+minio_data/
+*.db
+*.sqlite
+*.sqlite3
+
+# ==========================================
+# Docker
+# ==========================================
+docker-compose.override.yml
+.dockerignore
+*.log
+*.pid
+
+# ==========================================
+# AI & LangGraph
+# ==========================================
+.langgraph_api/
+.langchain/
+langgraph_cache/
+
+# ChromaDB vector store (rebuildable from source docs, large binary files)
+agents/VectorStore/
+
+# ==========================================
+# IDE & Editors
+# ==========================================
+.idea/
+.vscode/
+.cursor/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.tmp
+*.temp
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# ==========================================
+# Documentation & Personal Files
+# ==========================================
+docs/
+CLAUDE.local.md
+*.draft.md
+notes/
+
+# ==========================================
+# Logs & Runtime
+# ==========================================
+logs/
+*.log
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# ==========================================
+# Backup & Temporary Files
+# ==========================================
+*.bak
+*.backup
+*.tmp
+*.temp
+.backup/
+.cache/
+
+# ==========================================
+# Testing & Coverage
+# ==========================================
+.coverage
+.nyc_output
+coverage/
+*.lcov
+
+# ==========================================
+# Miscellaneous
+# ==========================================
+.DS_Store
+*.tar.gz
+*.zip
+*.7z
+nul
+.claude/
+.mcp.json
+GEMINI.md
+*.skill
+prc/
+README_BETA.md
+README-local.md
+pack_beta.ps1
+test_connection.dart
+test_redis_fix.py
