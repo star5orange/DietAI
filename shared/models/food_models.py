@@ -20,7 +20,9 @@ class FoodRecord(Base):
     analysis_status = Column(Integer, default=1)  # 1:待分析 2:分析中 3:已完成 4:分析失败
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    
+
+    from_source = Column(String(20), default="camera")  # camera/manual/voice/barcode/saved_meal/suggestion
+
     # 关系
     user = relationship("User", back_populates="food_records")
     nutrition_detail = relationship("NutritionDetail", back_populates="food_record", uselist=False)

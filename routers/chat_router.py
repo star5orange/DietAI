@@ -160,19 +160,76 @@ async def send_chat_message_stream(
             db.commit()
             db.refresh(user_message)
 
-            yield f"data: {json.dumps({'type': 'status', 'message': '正在生成回复...'}, ensure_ascii=False)}\n\n"
+            # 3. 获取用户上下文数据
+            user_context = await get_user_context(current_user.id, db)
+            recent_meals = await get_recent_meals(current_user.id, db)
+            health_goals = await get_health_goals(current_user.id, db)
+            conversation_history = await get_conversation_history(session.id, db)
 
-            full_response, metadata, suggestions = await _run_chat_agent(
-                message=message,
-                session_id=session.id,
-                session_type=session_type,
-                current_user=current_user,
-                db=db,
+            # 4. 调用 LangGraph Agent
+            client = get_client(url="http://127.0.0.1:2024")
+
+            # 创建或获取 LangGraph thread
+            if not session.langgraph_thread_id:
+                thread = await client.threads.create()
+                session.langgraph_thread_id = thread['thread_id']
+                db.commit()
+
+            # 创建助手（如果需要）
+            assistant = await client.assistants.create(
+                graph_id="chat_agent",
+                config={
+                    "configurable": {
+                        "analysis_model_provider": "deepseek",
+                        "analysis_model": "deepseek-v4-flash"
+                    }
+                }
             )
 
-            if full_response:
-                yield f"data: {json.dumps({'type': 'content', 'content': full_response}, ensure_ascii=False)}\n\n"
+            # 5. 流式运行聊天 Agent
+            yield f"data: {json.dumps({'type': 'status', 'message': '正在生成回复...'})}\n\n"
 
+            full_response = ""
+            last_response_len = 0
+            metadata = {}
+            suggestions = []
+
+            async for chunk in client.runs.stream(
+                assistant_id=assistant["assistant_id"],
+                thread_id=session.langgraph_thread_id,
+                input={
+                    "user_message": message,
+                    "session_id": str(session.id),
+                    "session_type": session_type,
+                    "user_id": current_user.id,
+                    "user_context": user_context,
+                    "recent_meals": recent_meals,
+                    "health_goals": health_goals,
+                    "conversation_history": conversation_history
+                },
+                stream_mode="values"
+            ):
+                if chunk.event != "values":
+                    continue
+
+                state_data = chunk.data
+                if not isinstance(state_data, dict):
+                    continue
+
+                response_content = state_data.get("response_content", "")
+                error_msg = state_data.get("error_message")
+
+                if error_msg:
+                    yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
+                    return
+
+                if response_content and len(response_content) > last_response_len:
+                    new_content = response_content[last_response_len:]
+                    full_response = response_content
+                    last_response_len = len(response_content)
+                    yield f"data: {json.dumps({'type': 'content', 'content': new_content})}\n\n"
+
+            # 6. 创建AI回复消息记录
             ai_message = conversation_models.ConversationMessage(
                 session_id=session.id,
                 message_type=2,
@@ -269,14 +326,64 @@ async def send_chat_message(
         db.commit()
         db.refresh(user_message)
 
-        full_response, metadata, suggestions = await _run_chat_agent(
-            message=message,
-            session_id=session.id,
-            session_type=session_type,
-            current_user=current_user,
-            db=db,
+        # 3. 获取用户上下文数据
+        user_context = await get_user_context(current_user.id, db)
+        recent_meals = await get_recent_meals(current_user.id, db)
+        health_goals = await get_health_goals(current_user.id, db)
+        conversation_history = await get_conversation_history(session.id, db)
+
+        # 4. 调用 LangGraph Agent
+        client = get_client(url="http://127.0.0.1:2024")
+
+        # 创建或获取 LangGraph thread
+        if not session.langgraph_thread_id:
+            thread = await client.threads.create()
+            session.langgraph_thread_id = thread['thread_id']
+            db.commit()
+
+        # 创建助手（如果需要）
+        assistant = await client.assistants.create(
+            graph_id="chat_agent",
+            config={
+                "configurable": {
+                    "analysis_model_provider": "deepseek",
+                    "analysis_model": "deepseek-v4-flash"
+                }
+            }
         )
 
+        # 运行聊天 Agent (非流式版本，兼容现有API)
+        full_response = ""
+        metadata = {}
+        suggestions = []
+
+        async for chunk in client.runs.stream(
+            assistant_id=assistant["assistant_id"],
+            thread_id=session.langgraph_thread_id,
+            input={
+                "user_message": message,
+                "session_id": str(session.id),
+                "session_type": session_type,
+                "user_id": current_user.id,
+                "user_context": user_context,
+                "recent_meals": recent_meals,
+                "health_goals": health_goals,
+                "conversation_history": conversation_history
+            },
+            stream_mode="values"
+        ):
+            if chunk.event != "values":
+                continue
+
+            state_data = chunk.data
+            if not isinstance(state_data, dict):
+                continue
+
+            response_content = state_data.get("response_content", "")
+            if response_content:
+                full_response = response_content
+
+        # 5. 获取AI回复
         ai_response = full_response if full_response else '抱歉，我现在无法回复您的消息。'
         ai_message = conversation_models.ConversationMessage(
             session_id=session.id,

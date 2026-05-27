@@ -90,6 +90,7 @@ def format_profile_data(profile: UserProfile) -> dict:
         "health_status": 1,  # 默认健康状态
         "onboarding_completed": False,  # 默认未完成引导
         "onboarding_step": 0,  # 默认引导步骤
+        "constitution_type": profile.constitution_type,
     }
 
 

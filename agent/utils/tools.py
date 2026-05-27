@@ -2,11 +2,11 @@ import asyncio
 import json
 
 from typing import List, Annotated
-from agents.common_utils.rag_utils import rag_loader
+from agent.common_utils.rag_utils import rag_loader
 from langchain_core.documents import Document
-from agents.nutrition_agent.utils.sturcts import Macronutrients, VitaminsMinerals, AdviceDependencies
-from agents.nutrition_agent.utils.states import AgentState
-from agents.common_utils.redis_util import get_redis_client
+from agent.utils.sturcts import Macronutrients, VitaminsMinerals, AdviceDependencies
+from agent.utils.states import AgentState
+from agent.common_utils.redis_util import get_redis_client
 from langgraph.prebuilt import InjectedState
 from langchain_core.tools import tool, InjectedToolCallId
 

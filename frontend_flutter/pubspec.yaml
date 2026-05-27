@@ -25,6 +25,10 @@ dependencies:
   pretty_dio_logger: ^1.3.1
   http_parser: ^4.0.2
   
+  # 本地通知
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
+  
   # 本地存储
   shared_preferences: ^2.2.2
   flutter_secure_storage: ^9.0.0
@@ -76,6 +80,7 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/lottie/
+    - assets/pet/
   
   # 字体使用 Google Fonts，无需本地字体文件
   # fonts:
