@@ -1,0 +1,6 @@
+# User Memory Storage Directory
+# Each user will have a subdirectory with their ID containing:
+# - shared/user_memory.md (shared workspace)
+# - goal_tracking/user_goals.md (Goal Agent workspace)
+# - nutrition/user_nutrition.md (Nutrition Agent workspace)
+# - chat/user_chat.md (Chat Agent workspace)
