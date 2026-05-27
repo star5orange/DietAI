@@ -13,10 +13,10 @@ class DietDeepConfig:
     """DietDeepAgent 配置"""
 
     # 主 LLM 模型（Deep Agent 使用）
-    # 使用 DashScope (通义千问) 兼容 OpenAI 接口
-    primary_model: str = "openai:qwen3.5-plus"
-    primary_model_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    primary_model_api_key_env: str = "DASHSCOPE_API_KEY"
+    # 使用 DeepSeek 兼容 OpenAI 接口
+    primary_model: str = "openai:deepseek-chat"
+    primary_model_base_url: str = "https://api.deepseek.com"
+    primary_model_api_key_env: str = "DEEPSEEK_API_KEY"
 
     # 子代理可独立指定模型，None 表示继承 primary_model
     subagent_model: Optional[str] = None
@@ -40,10 +40,10 @@ class DietDeepConfig:
     food_diversity_threshold: float = 0.6  # 饮食多样性阈值（top-3 占比 > 60%）
 
     # vision 模型配置（传递给子代理）
-    vision_model_provider: str = "openai"
-    vision_model: str = "gpt-4.1-nano-2025-04-14"
-    analysis_model_provider: str = "openai"
-    analysis_model: str = "o3-mini-2025-01-31"
+    vision_model_provider: str = "deepseek"
+    vision_model: str = "deepseek-chat-vl"
+    analysis_model_provider: str = "deepseek"
+    analysis_model: str = "deepseek-chat"
 
     @property
     def agent_config(self) -> dict:

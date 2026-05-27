@@ -90,8 +90,8 @@ async def send_chat_message_stream(
                 graph_id="chat_agent",
                 config={
                     "configurable": {
-                        "analysis_model_provider": "qwen",
-                        "analysis_model": "qwen3-32b"
+                        "analysis_model_provider": "deepseek",
+                        "analysis_model": "deepseek-chat"
                     }
                 }
             )
@@ -247,8 +247,8 @@ async def send_chat_message(
             graph_id="chat_agent",
             config={
                 "configurable": {
-                    "analysis_model_provider": "qwen",
-                    "analysis_model": "qwen3-32b"
+                    "analysis_model_provider": "deepseek",
+                    "analysis_model": "deepseek-chat"
                 }
             }
         )

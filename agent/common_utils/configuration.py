@@ -9,19 +9,21 @@ from langchain_core.runnables import RunnableConfig
 class VisionModel(Enum):
     QWEN = "qwen"
     OPENAI = "openai"
+    DEEPSEEK = "deepseek"
 
 
 class AnalysisModel(Enum):
     QWEN = "qwen"
     OPENAI = "openai"
+    DEEPSEEK = "deepseek"
 
 
 @dataclass(kw_only=True)
 class Configuration:
-    vision_model_provider: VisionModel = VisionModel.QWEN
-    vision_model: str = "qwen-vl-max"
-    analysis_model_provider: AnalysisModel = AnalysisModel.QWEN
-    analysis_model: str = "qwen3-32b"
+    vision_model_provider: VisionModel = VisionModel.DEEPSEEK
+    vision_model: str = "deepseek-chat-vl"
+    analysis_model_provider: AnalysisModel = AnalysisModel.DEEPSEEK
+    analysis_model: str = "deepseek-chat"
 
     @classmethod
     def from_runnable_config(

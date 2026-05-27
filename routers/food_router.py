@@ -397,10 +397,10 @@ async def analyze_food_image_with_agent(image_url: str, current_user: User, db: 
             graph_id="nutrition_agent",
             config={
                 "configurable": {
-                    "vision_model_provider": "qwen",
-                    "vision_model": "qwen-vl-max",
-                    "analysis_model_provider": "qwen",
-                    "analysis_model": "qwen3-32b"
+                    "vision_model_provider": "deepseek",
+                    "vision_model": "deepseek-chat-vl",
+                    "analysis_model_provider": "deepseek",
+                    "analysis_model": "deepseek-chat"
                 }
             }
         )
