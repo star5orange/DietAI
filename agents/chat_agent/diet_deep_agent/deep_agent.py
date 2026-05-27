@@ -8,6 +8,7 @@ DietDeepAgent 主入口
 import logging
 import os
 
+from dotenv import load_dotenv
 from deepagents import create_deep_agent
 from langchain.chat_models import init_chat_model
 
@@ -47,12 +48,33 @@ def create_diet_deep_agent(config: DietDeepConfig | None = None, use_custom_pers
         编译好的 Deep Agent 图（CompiledStateGraph）
     """
     config = config or DietDeepConfig()
+    load_dotenv(".env", override=True)
+    load_dotenv(".env.dev", override=True)
 
     # 构建 LLM 实例（DashScope 使用 OpenAI 兼容接口）
-    api_key = os.environ.get(config.primary_model_api_key_env, "")
+    api_key = (
+        os.environ.get(config.primary_model_api_key_env)
+        or os.environ.get(f"DIETAI_{config.primary_model_api_key_env}")
+        or ""
+    )
+    base_url = (
+        os.environ.get("DEEPSEEK_API_BASE")
+        or os.environ.get("DIETAI_DEEPSEEK_API_BASE")
+        or config.primary_model_base_url
+    )
+    primary_model = (
+        os.environ.get("DEEPSEEK_MODEL")
+        or os.environ.get("DIETAI_DEEPSEEK_MODEL")
+        or os.environ.get("ANALYSIS_MODEL")
+        or os.environ.get("DIETAI_ANALYSIS_MODEL")
+        or config.primary_model
+    )
+    if ":" not in primary_model:
+        primary_model = f"openai:{primary_model}"
+
     model = init_chat_model(
-        config.primary_model,
-        base_url=config.primary_model_base_url,
+        primary_model,
+        base_url=base_url,
         api_key=api_key,
     )
 

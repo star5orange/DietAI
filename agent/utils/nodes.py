@@ -210,7 +210,9 @@ async def retrieve_nutrition_knowledge(state: AgentState) -> AgentState:
         print(state["current_step"])
 
     except Exception as e:
-        state["error_message"] = f"营养知识检索失败: {str(e)}"
+        print(f"营养知识检索失败，已跳过 RAG 检索: {str(e)}")
+        state["retrieved_documents"] = []
+        state["current_step"] = "retrieve_nutrition_knowledge"
 
     return state
 

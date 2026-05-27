@@ -10,6 +10,7 @@ from typing import Any
 from langchain_core.tools import tool
 from langgraph_sdk import get_client
 
+from agents.common_utils.configuration import get_agent_model_config
 from shared.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -41,14 +42,7 @@ async def analyze_food_image(image_data: str, user_id: int) -> dict[str, Any]:
         # 使用 nutrition_agent 分析
         assistant = await client.assistants.create(
             graph_id="nutrition_agent",
-            config={
-                "configurable": {
-                    "vision_model_provider": "openai",
-                    "vision_model": "gpt-4.1-nano-2025-04-14",
-                    "analysis_model_provider": "openai",
-                    "analysis_model": "o3-mini-2025-01-31",
-                }
-            },
+            config={"configurable": get_agent_model_config()},
         )
 
         thread = await client.threads.create()

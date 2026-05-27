@@ -1,57 +1,57 @@
-
-
 import os
+from enum import Enum
 from functools import lru_cache
 
 from dotenv import load_dotenv
-from langchain.chat_models import init_chat_model
 from langchain_anthropic import ChatAnthropic
-from langchain_community.chat_models import ChatTongyi
-
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_qwq import ChatQwQ, ChatQwen
-
-from agents.common_utils.configuration import *
 
 
-@lru_cache(maxsize=4)
-def get_model(model_provider: Enum, model_name: str):
-    load_dotenv(f".env", override=True)
-    print(f"环境变量加载+++++++++++++++++++{os.getenv("OPENAI_API_KEY")}")
-    match model_provider:
-        # case "groq":
-        #     return ChatGroq(model_name=model_name)
+def _provider_value(model_provider: Enum | str) -> str:
+    return model_provider.value if isinstance(model_provider, Enum) else str(model_provider)
+
+
+def _env(name: str, default: str | None = None) -> str | None:
+    return os.environ.get(name) or os.environ.get(f"DIETAI_{name}") or default
+
+
+def _required_env(*names: str) -> str:
+    for name in names:
+        value = _env(name)
+        if value:
+            return value
+    raise RuntimeError(f"Missing required environment variable: {' or '.join(names)}")
+
+
+@lru_cache(maxsize=8)
+def get_model(model_provider: Enum | str, model_name: str):
+    load_dotenv(".env", override=True)
+    load_dotenv(".env.dev", override=True)
+
+    provider = _provider_value(model_provider).lower()
+
+    match provider:
         case "anthropic":
             return ChatAnthropic(model_name=model_name)
         case "openai":
-            return ChatOpenAI(model_name=model_name,streaming=False)
+            kwargs = {"model": model_name, "streaming": False}
+            base_url = _env("OPENAI_API_BASE") or _env("OPENAI_BASE_URL")
+            if base_url:
+                kwargs["base_url"] = base_url
+            return ChatOpenAI(**kwargs)
         case "deepseek":
-            # 注意这里的deepseek是硅基流动的
-            return init_chat_model(model_name)
+            return ChatOpenAI(
+                model=model_name,
+                api_key=_required_env("DEEPSEEK_API_KEY"),
+                base_url=_env("DEEPSEEK_API_BASE", "https://api.deepseek.com"),
+                streaming=False,
+            )
         case "qwen":
-            return ChatQwen(
-                model="qwen3-32b",
-                model_kwargs={
-                    "enable_thinking": True,
-                    },
-                streaming=True
-                )
-
-        # case "yuanjing":
-        #     if "qwen" in model_name:
-        #         print("ChatQWQ")
-        #         return ChatQwQ(
-        #             model=model_name,
-        #             streaming=False,
-        #             api_key=access_token,
-        #             api_base="https://maas-api.ai-yuanjing.com/openapi/compatible-mode/v1"
-        #         )
-        #     else:
-        #         print("ChatOpenAI")
-        #         return ChatOpenAI(
-        #         api_key=access_token,
-        #         base_url="https://maas-api.ai-yuanjing.com/openapi/compatible-mode/v1",
-        #         model=model_name
-        #     )
+            return ChatOpenAI(
+                model=model_name,
+                api_key=_required_env("DASHSCOPE_API_KEY"),
+                base_url=_env("DASHSCOPE_API_BASE", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                streaming=False,
+            )
         case _:
             raise ValueError(f"Unsupported model type: {model_provider}")

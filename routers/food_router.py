@@ -23,6 +23,7 @@ from shared.config.minio_config import minio_client
 from shared.config.settings import get_settings
 from fastapi.responses import StreamingResponse
 
+from agents.common_utils.configuration import get_agent_model_config
 from shared.utils.model import decimal_to_float
 
 settings = get_settings()
@@ -281,14 +282,7 @@ async def analyze_food_image_with_agent(image_url: str, current_user: User, db: 
         # 创建营养师Agent
         assistant = await client.assistants.create(
             graph_id="nutrition_agent",
-            config={
-                "configurable": {
-                    "vision_model_provider": "openai",
-                    "vision_model": "gpt-4.1-nano-2025-04-14",
-                    "analysis_model_provider": "openai",
-                    "analysis_model": "o3-mini-2025-01-31"
-                }
-            }
+            config={"configurable": get_agent_model_config()}
         )
 
         # 创建线程
