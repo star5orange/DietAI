@@ -14,8 +14,8 @@ from shared.models.database import get_db
 from shared.models import schemas, user_models, conversation_models
 from shared.utils.auth import get_current_user
 from shared.config.redis_config import cache_service
-from agents.chat_agent.chat_agent import chat_graph
-from agents.common_utils.configuration import get_agent_model_config
+from agent.chat_agent import chat_graph
+from agent.common_utils.configuration import get_agent_model_config
 
 router = APIRouter(prefix="/chat", tags=["AI对话"])
 

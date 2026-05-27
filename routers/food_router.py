@@ -22,7 +22,7 @@ from shared.config.minio_config import minio_client
 from shared.config.settings import get_settings
 from fastapi.responses import StreamingResponse
 
-from agents.common_utils.configuration import get_agent_model_config
+from agent.common_utils.configuration import get_agent_model_config
 from shared.utils.model import decimal_to_float
 
 settings = get_settings()

@@ -21,7 +21,7 @@ from datetime import datetime, date
 from langgraph_sdk import get_client
 from sqlalchemy.orm import Session
 
-from agents.common_utils.configuration import get_agent_model_config
+from agent.common_utils.configuration import get_agent_model_config
 from agent.memory.memory_manager import MemoryManager
 from agent.memory.sync_service import SyncService
 from shared.config.settings import get_settings

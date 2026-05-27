@@ -10,7 +10,7 @@ from typing import Any
 from langchain_core.tools import tool
 from langgraph_sdk import get_client
 
-from agents.common_utils.configuration import get_agent_model_config
+from agent.common_utils.configuration import get_agent_model_config
 from shared.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
