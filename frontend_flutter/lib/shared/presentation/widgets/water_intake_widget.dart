@@ -1,0 +1,466 @@
+import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
+
+import '../../../core/themes/app_colors.dart';
+import '../../../core/themes/app_text_styles.dart';
+import '../../../shared/domain/models/water_intake_model.dart';
+import '../../../shared/presentation/widgets/animated_progress_circle.dart';
+import '../../../services/water_service.dart';
+
+class WaterIntakeWidget extends StatefulWidget {
+  final VoidCallback? onTapDetails;
+
+  const WaterIntakeWidget({super.key, this.onTapDetails});
+
+  @override
+  State<WaterIntakeWidget> createState() => _WaterIntakeWidgetState();
+}
+
+class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
+    with TickerProviderStateMixin {
+  final WaterService _waterService = WaterService();
+  DailyWaterSummary? _summary;
+  List<WaterIntakeRecord> _todayRecords = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    try {
+      final todayStr = DateTime.now().toIso8601String().substring(0, 10);
+      final summaryResult = await _waterService.getDailySummary(todayStr);
+      final recordsResult = await _waterService.getWaterRecords();
+      final todayRecords = (recordsResult.data ?? [])
+          .where((r) => r.recordedAt.startsWith(todayStr))
+          .toList();
+
+      if (mounted) {
+        setState(() {
+          _summary = summaryResult.data;
+          _todayRecords = todayRecords;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _quickAdd({int amountMl = 250}) async {
+    await _waterService.addWaterIntake(amountMl: amountMl);
+    _loadData();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已添加 ${amountMl}ml 饮水'),
+          backgroundColor: AppColors.info,
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
+  void _showCustomAmountDialog() {
+    final controller = TextEditingController(text: '250');
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('自定义饮水量', style: AppTextStyles.h4),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: '饮水量 (ml)',
+                hintText: '请输入饮水量',
+                suffixText: 'ml',
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                filled: true,
+                fillColor: AppColors.backgroundSecondary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              children: [100, 200, 250, 500, 750].map((v) {
+                return ActionChip(
+                  label: Text('${v}ml'),
+                  onPressed: () => controller.text = v.toString(),
+                  backgroundColor: AppColors.infoLight,
+                  labelStyle: const TextStyle(color: AppColors.info),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          ElevatedButton(
+            onPressed: () {
+              final amount = int.tryParse(controller.text);
+              if (amount != null && amount > 0) {
+                Navigator.pop(context);
+                _quickAdd(amountMl: amount);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.info,
+                foregroundColor: AppColors.textInverse),
+            child: const Text('添加'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showGoalSettingDialog() {
+    final currentGoal = _summary?.goalMl ?? 2000;
+    final controller =
+        TextEditingController(text: (currentGoal ~/ 1000).toString());
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('设置每日饮水目标', style: AppTextStyles.h4),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: '目标 (升)',
+                hintText: '例如：2',
+                suffixText: '升',
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                filled: true,
+                fillColor: AppColors.backgroundSecondary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              children: [1, 1.5, 2, 2.5, 3].map((v) {
+                return ActionChip(
+                  label: Text('${v}L'),
+                  onPressed: () => controller.text = v.toString(),
+                  backgroundColor: AppColors.infoLight,
+                  labelStyle: const TextStyle(color: AppColors.info),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          ElevatedButton(
+            onPressed: () async {
+              final liters = double.tryParse(controller.text);
+              if (liters != null && liters > 0) {
+                Navigator.pop(context);
+                await _waterService.setGoal((liters * 1000).round());
+                _loadData();
+              }
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.info,
+                foregroundColor: AppColors.textInverse),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showTodayRecordsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        constraints:
+            BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+        decoration: const BoxDecoration(
+          color: AppColors.backgroundCard,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.droplets,
+                      color: AppColors.info, size: 20),
+                  const SizedBox(width: 8),
+                  Text('今日饮水记录',
+                      style: AppTextStyles.h6
+                          .copyWith(fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  Text(
+                    _summary?.formattedTotal ?? '0 ml',
+                    style: AppTextStyles.bodyMedium.copyWith(
+                        color: AppColors.info, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_todayRecords.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(40),
+                child: Column(
+                  children: [
+                    Icon(LucideIcons.droplets,
+                        size: 48, color: AppColors.textTertiary),
+                    SizedBox(height: 12),
+                    Text('暂无饮水记录',
+                        style: TextStyle(color: AppColors.textTertiary)),
+                  ],
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  itemCount: _todayRecords.length,
+                  itemBuilder: (context, index) {
+                    final record = _todayRecords[index];
+                    return Dismissible(
+                      key: Key(record.id),
+                      direction: DismissDirection.endToStart,
+                      onDismissed: (_) async {
+                        await _waterService.deleteWaterRecord(record.id);
+                        _loadData();
+                      },
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        color: AppColors.error,
+                        child: const Icon(LucideIcons.trash2,
+                            color: AppColors.textInverse),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                  color: AppColors.infoLight,
+                                  borderRadius: BorderRadius.circular(8)),
+                              child: const Icon(LucideIcons.droplet,
+                                  color: AppColors.info, size: 18),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                                child: Text(record.formattedAmount,
+                                    style: AppTextStyles.bodyMedium.copyWith(
+                                        fontWeight: FontWeight.w500))),
+                            Text(record.formattedTime,
+                                style: AppTextStyles.bodySmall),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = _summary;
+    final progress = summary?.progress ?? 0.0;
+    final totalMl = summary?.totalMl ?? 0;
+    final goalMl = summary?.goalMl ?? 2000;
+    final isGoalReached = summary?.isGoalReached ?? false;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: isGoalReached
+            ? AppColors.successGradient
+            : LinearGradient(
+                colors: [AppColors.info, AppColors.infoLight],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: (isGoalReached ? AppColors.success : AppColors.info)
+                .withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const Icon(LucideIcons.droplets,
+                  color: AppColors.textInverse, size: 22),
+              const SizedBox(width: 10),
+              Text('今日饮水',
+                  style: AppTextStyles.bodyLarge.copyWith(
+                      color: AppColors.textInverse,
+                      fontWeight: FontWeight.w600)),
+              const Spacer(),
+              GestureDetector(
+                onTap: _showGoalSettingDialog,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.whiteWithOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(LucideIcons.target,
+                          color: AppColors.textInverse, size: 14),
+                      const SizedBox(width: 4),
+                      Text('${(goalMl / 1000).toStringAsFixed(1)}L',
+                          style: AppTextStyles.labelSmall.copyWith(
+                              color: AppColors.textInverse,
+                              fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _isLoading
+              ? SizedBox(
+                  width: 140,
+                  height: 140,
+                  child: Center(
+                      child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                              AppColors.textInverse))),
+                )
+              : GestureDetector(
+                  onTap: _showTodayRecordsSheet,
+                  child: AnimatedProgressCircle(
+                    progress: progress,
+                    size: 140,
+                    strokeWidth: 10,
+                    progressColor: AppColors.textInverse,
+                    backgroundColor: AppColors.whiteWithOpacity(0.25),
+                    showPulse: !isGoalReached,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('${(totalMl / 1000).toStringAsFixed(1)}',
+                            style: AppTextStyles.numberLarge
+                                .copyWith(color: AppColors.textInverse)),
+                        Text('升',
+                            style: AppTextStyles.bodySmall.copyWith(
+                                color: AppColors.whiteWithOpacity(0.7))),
+                        const SizedBox(height: 4),
+                        Text(
+                          isGoalReached
+                              ? '✅ 已达标'
+                              : '还差 ${(summary?.remainingMl ?? 0) >= 1000 ? '${((summary?.remainingMl ?? 0) / 1000).toStringAsFixed(1)}L' : '${summary?.remainingMl ?? 0}ml'}',
+                          style: AppTextStyles.labelSmall
+                              .copyWith(color: AppColors.whiteWithOpacity(0.7)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildQuickAddButton('250ml', 250),
+              _buildQuickAddButton('500ml', 500),
+              _buildCustomAddButton(),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickAddButton(String label, int amountMl) {
+    return GestureDetector(
+      onTap: () => _quickAdd(amountMl: amountMl),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.whiteWithOpacity(0.2),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.whiteWithOpacity(0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(LucideIcons.plus,
+                color: AppColors.textInverse, size: 16),
+            const SizedBox(width: 4),
+            Text(label,
+                style: AppTextStyles.labelMedium.copyWith(
+                    color: AppColors.textInverse, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomAddButton() {
+    return GestureDetector(
+      onTap: _showCustomAmountDialog,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.whiteWithOpacity(0.15),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.whiteWithOpacity(0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(LucideIcons.slidersHorizontal,
+                color: AppColors.textInverse, size: 16),
+            const SizedBox(width: 4),
+            Text('自定义',
+                style: AppTextStyles.labelMedium.copyWith(
+                    color: AppColors.textInverse, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+}

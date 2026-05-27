@@ -12,6 +12,7 @@ from langchain_qwq import ChatQwQ, ChatQwen
 from agent.utils.configuration import *
 
 DASHSCOPE_API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+DEEPSEEK_API_BASE = "https://api.deepseek.com"
 
 
 def _get_provider_value(model_provider) -> str:
@@ -24,6 +25,7 @@ def _get_provider_value(model_provider) -> str:
 def get_model(model_provider: Enum, model_name: str):
     load_dotenv(".env", override=True)
     dashscope_api_key = os.getenv("DASHSCOPE_API_KEY", "")
+    deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "") or os.getenv("DEEPSEEK_API_BASE", "")
     provider_val = _get_provider_value(model_provider)
 
     match provider_val:
@@ -50,6 +52,11 @@ def get_model(model_provider: Enum, model_name: str):
                 streaming=True,
             )
         case "deepseek":
-            return init_chat_model(model_name)
+            return ChatOpenAI(
+                model=model_name,
+                base_url=DEEPSEEK_API_BASE,
+                api_key=deepseek_api_key,
+                streaming=False,
+            )
         case _:
             raise ValueError(f"Unsupported model type: {model_provider}")
