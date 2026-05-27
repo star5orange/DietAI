@@ -28,7 +28,7 @@ router = APIRouter(prefix="/deep", tags=["DietDeepAgent"])
 
 def _get_agent():
     """延迟加载 DietDeepAgent"""
-    from agents.chat_agent.diet_deep_agent.deep_agent import create_diet_deep_agent
+    from agent.diet_deep_agent.deep_agent import create_diet_deep_agent
     return create_diet_deep_agent()
 
 
@@ -179,7 +179,7 @@ async def deep_daily_status(
     获取今日营养状态（直接调用工具，不经过 LLM）。
     """
     try:
-        from agents.chat_agent.diet_deep_agent.tools.goal_tracking import get_daily_status
+        from agent.diet_deep_agent.tools.goal_tracking import get_daily_status
 
         result = get_daily_status.invoke({"user_id": current_user.id})
         return {"success": True, **result}
@@ -204,8 +204,8 @@ async def get_user_memory(
         raise HTTPException(status_code=403, detail="只能查看自己的记忆")
 
     try:
-        from agents.chat_agent.memory.memory_manager import MemoryManager
-        from agents.chat_agent.diet_deep_agent.memory.md_store import MarkdownStore
+        from agent.memory.memory_manager import MemoryManager
+        from agent.diet_deep_agent.memory.md_store import MarkdownStore
 
         manager = MemoryManager(user_id)
         store = MarkdownStore()

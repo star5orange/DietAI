@@ -171,7 +171,7 @@ async def recalculate_targets(
     同时会更新用户的 goal_tracking/user_goals.md 文件
     """
     try:
-        from agents.chat_agent.memory.sync_service import SyncService
+        from agent.memory.sync_service import SyncService
 
         # Sync goal tracking workspace
         sync_service = SyncService(db)
@@ -225,7 +225,7 @@ async def sync_user_memory(
     - chat/user_chat.md
     """
     try:
-        from agents.chat_agent.memory.sync_service import SyncService
+        from agent.memory.sync_service import SyncService
 
         sync_service = SyncService(db)
         success = await sync_service.full_sync(current_user.id)

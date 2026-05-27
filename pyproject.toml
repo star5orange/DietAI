@@ -17,6 +17,7 @@ dependencies = [
     "alembic>=1.13.0",
     # 认证和安全
     "passlib[bcrypt]>=1.7.4",
+    "bcrypt>=4.0.0,<5.0.0",
     "python-jose[cryptography]>=3.3.0",
     "email-validator>=2.1.0",
     # 缓存和存储
@@ -64,11 +65,9 @@ dependencies = [
     "yfinance>=0.2.54",
     "jupyter>=1.1.1",
     "croniter>=1.4.1",
+    "apscheduler>=3.10.4",
     "celery>=5.3.0",
     "flower>=2.0.1",
     "deepagents>=0.4.11",
     "langchain-chroma>=1.1.0",
-    "langchain>=1.2.12",
-    "apscheduler>=3.11.2",
-    "bcrypt==4.0.1",
 ]

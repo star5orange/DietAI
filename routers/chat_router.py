@@ -90,8 +90,8 @@ async def send_chat_message_stream(
                 graph_id="chat_agent",
                 config={
                     "configurable": {
-                        "analysis_model_provider": "openai",
-                        "analysis_model": "gpt-4o-mini"
+                        "analysis_model_provider": "qwen",
+                        "analysis_model": "qwen3-32b"
                     }
                 }
             )
@@ -100,6 +100,7 @@ async def send_chat_message_stream(
             yield f"data: {json.dumps({'type': 'status', 'message': '正在生成回复...'})}\n\n"
             
             full_response = ""
+            last_response_len = 0
             
             async for chunk in client.runs.stream(
                 assistant_id=assistant["assistant_id"],
@@ -114,20 +115,27 @@ async def send_chat_message_stream(
                     "health_goals": health_goals,
                     "conversation_history": conversation_history
                 },
-                stream_mode="messages-tuple"
+                stream_mode="values"
             ):
-                if chunk.event != "messages":
+                if chunk.event != "values":
                     continue
                 
-                message_chunk, metadata = chunk.data
-                print(message_chunk)
-                # 检查是否有内容
-                if message_chunk.get("content") and message_chunk.get("type")=="AIMessageChunk":
-                    content = message_chunk["content"]
-                    full_response += content
-                    
-                    # 流式输出内容
-                    yield f"data: {json.dumps({'type': 'content', 'content': content})}\n\n"
+                state_data = chunk.data
+                if not isinstance(state_data, dict):
+                    continue
+                
+                response_content = state_data.get("response_content", "")
+                error_msg = state_data.get("error_message")
+                
+                if error_msg:
+                    yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
+                    return
+                
+                if response_content and len(response_content) > last_response_len:
+                    new_content = response_content[last_response_len:]
+                    full_response = response_content
+                    last_response_len = len(response_content)
+                    yield f"data: {json.dumps({'type': 'content', 'content': new_content})}\n\n"
             
             # 6. 创建AI回复消息记录
             ai_message = conversation_models.ConversationMessage(
@@ -239,8 +247,8 @@ async def send_chat_message(
             graph_id="chat_agent",
             config={
                 "configurable": {
-                    "analysis_model_provider": "openai",
-                    "analysis_model": "gpt-4o-mini"
+                    "analysis_model_provider": "qwen",
+                    "analysis_model": "qwen3-32b"
                 }
             }
         )
@@ -263,20 +271,18 @@ async def send_chat_message(
                 "health_goals": health_goals,
                 "conversation_history": conversation_history
             },
-            stream_mode="messages-tuple"
+            stream_mode="values"
         ):
-            if chunk.event != "messages":
+            if chunk.event != "values":
                 continue
             
-            message_chunk, chunk_metadata = chunk.data
+            state_data = chunk.data
+            if not isinstance(state_data, dict):
+                continue
             
-            # 累积完整响应
-            if message_chunk.get("content"):
-                full_response += message_chunk["content"]
-                
-            # 保存元数据
-            if chunk_metadata:
-                metadata.update(chunk_metadata)
+            response_content = state_data.get("response_content", "")
+            if response_content:
+                full_response = response_content
         
         # 5. 获取AI回复
         ai_response = full_response if full_response else '抱歉，我现在无法回复您的消息。'

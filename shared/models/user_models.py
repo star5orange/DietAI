@@ -53,7 +53,11 @@ class UserProfile(Base):
     
     # 关系
     user = relationship("User", back_populates="profile")
-    
+
+    crowd_tag = Column(String(50))  # 减脂/健身/普通日常
+    constitution_type = Column(String(50))  # 九种体质之一
+    daily_water_goal = Column(Integer, default=2000)
+
     # 以下字段在当前数据库中不存在，如果需要需要通过数据库迁移添加：
     # - dietary_preferences (Text, JSON格式存储饮食偏好)
     # - food_dislikes (Text, JSON格式存储不喜欢的食物)  

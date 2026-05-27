@@ -1,12 +1,12 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "nutrition_agent": "./agents/nutrition_agent/agent.py:graph",
-    "enhanced_nutrition_agent": "./agents/chat_agent/enhanced_nutrition/enhanced_agent.py:enhanced_graph",
-    "chat_agent": "./agents/chat_agent/chat_agent.py:chat_graph",
-    "goal_tracking_agent": "./agents/chat_agent/goal_tracking/goal_agent.py:goal_graph",
-    "diet_deep_agent": "./agents/chat_agent/diet_deep_agent/deep_agent.py:agent",
-    "test_agent": "./agents/chat_agent/test_agent.py:test_graph"
+    "nutrition_agent": "./agent/nutrition_agent/agent.py:graph",
+    "enhanced_nutrition_agent": "./agent/enhanced_nutrition/enhanced_agent.py:enhanced_graph",
+    "chat_agent": "./agent/chat_agent.py:chat_graph",
+    "goal_tracking_agent": "./agent/goal_tracking/goal_agent.py:goal_graph",
+    "diet_deep_agent": "./agent/diet_deep_agent/deep_agent.py:agent",
+    "test_agent": "./agent/test_agent.py:test_graph"
   },
   "env": ".env"
 }

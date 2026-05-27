@@ -1,4 +1,4 @@
-"""
+﻿"""
 APScheduler Configuration for Background Tasks
 
 Provides periodic tasks for memory synchronization:
@@ -37,7 +37,7 @@ async def regenerate_shared_memories():
     """
     from shared.models.database import SessionLocal
     from shared.models.user_models import User
-    from agents.chat_agent.memory.sync_service import SyncService
+    from agent.memory.sync_service import SyncService
 
     logger.info("Starting daily shared memory regeneration task")
 
@@ -83,7 +83,7 @@ async def update_goal_workspaces():
     """
     from shared.models.database import SessionLocal
     from shared.models.user_models import HealthGoal
-    from agents.chat_agent.memory.sync_service import SyncService
+    from agent.memory.sync_service import SyncService
 
     logger.info("Starting daily goal workspace update task")
 
@@ -131,7 +131,7 @@ async def generate_weekly_nutrition_summary():
     from shared.models.database import SessionLocal
     from shared.models.user_models import User
     from shared.models.food_models import FoodRecord
-    from agents.chat_agent.memory.sync_service import SyncService
+    from agent.memory.sync_service import SyncService
 
     logger.info("Starting weekly nutrition summary generation task")
 
@@ -179,7 +179,7 @@ async def generate_chat_summary():
     """
     from shared.models.database import SessionLocal
     from shared.models.conversation_models import ConversationSession
-    from agents.chat_agent.memory.sync_service import SyncService
+    from agent.memory.sync_service import SyncService
 
     logger.info("Starting weekly chat summary generation task")
 

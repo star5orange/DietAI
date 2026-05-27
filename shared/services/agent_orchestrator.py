@@ -21,8 +21,8 @@ from datetime import datetime, date
 from langgraph_sdk import get_client
 from sqlalchemy.orm import Session
 
-from agents.chat_agent.memory.memory_manager import MemoryManager
-from agents.chat_agent.memory.sync_service import SyncService
+from agent.memory.memory_manager import MemoryManager
+from agent.memory.sync_service import SyncService
 from shared.config.settings import get_settings
 from shared.utils.nutrition_calc import calculate_meal_impact
 
