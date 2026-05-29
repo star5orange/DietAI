@@ -33,15 +33,25 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
 
     try {
       final dateString = '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+      print('📋 历史页面加载记录: date=$dateString');
       final result = await _foodService.getFoodRecordsByDay(dateString);
 
+      print('📋 加载结果: success=${result.success}, message=${result.message}, dataNull=${result.data == null}');
       if (result.success && result.data != null) {
+        print('📋 记录数量: ${result.data!.length}');
+        for (int i = 0; i < result.data!.length; i++) {
+          final r = result.data![i];
+          print('📋 记录[$i]: id=${r.id}, foodName=${r.foodName}, nutritionDetail=${r.nutritionDetail != null}');
+        }
         setState(() {
           _records = result.data!;
         });
+      } else {
+        print('📋 加载失败: ${result.message}');
       }
-    } catch (e) {
-      print('加载食物记录失败: $e');
+    } catch (e, stackTrace) {
+      print('📋 加载食物记录异常: $e');
+      print('📋 堆栈: $stackTrace');
     } finally {
       setState(() {
         _isLoading = false;
@@ -291,7 +301,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     }
     
     return _buildFoodItem(
-      record.foodName,
+      record.foodName ?? '未命名食物',
       record.description ?? '',
       '${calories.round()} kcal',
       time,
@@ -667,7 +677,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
 
                   // 基本信息
                   _buildDetailSection('基本信息', [
-                    _buildDetailRow('食物名称', record.foodName),
+                    _buildDetailRow('食物名称', record.foodName ?? '未命名食物'),
                     if (record.description != null && record.description!.isNotEmpty)
                       _buildDetailRow('描述', record.description!),
                     _buildDetailRow('餐次', record.mealTypeName),
@@ -911,7 +921,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       ]);
 
       // 分析方法和置信度
-      nutritionRows.add(_buildDetailRow('分析方法', nutritionDetail.analysisMethod));
+      if (nutritionDetail.analysisMethod != null) {
+        nutritionRows.add(_buildDetailRow('分析方法', nutritionDetail.analysisMethod!));
+      }
       if (nutritionDetail.confidenceScore != null) {
         nutritionRows.add(_buildDetailRow('置信度', '${(nutritionDetail.confidenceScore! * 100).round()}%'));
       }
@@ -927,10 +939,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         _showFoodDetailModal(record);
         break;
       case 'edit':
-        // TODO: 跳转到编辑页面
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('编辑功能开发中...')),
-        );
+        _showEditFoodDialog(record);
         break;
       case 'save_as_meal':
         _showSaveAsMealDialog(record);
@@ -953,7 +962,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除食物记录'),
-        content: Text('确定要删除"${record.foodName}"吗？此操作不可撤销。'),
+        content: Text('确定要删除"${record.foodName ?? '未命名食物'}"吗？此操作不可撤销。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -975,7 +984,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   /// 显示保存为菜品对话框
   void _showSaveAsMealDialog(FoodRecord record) {
     final TextEditingController nameController = TextEditingController(
-      text: record.foodName,
+      text: record.foodName ?? '',
     );
     final TextEditingController descController = TextEditingController(
       text: record.description ?? '',
@@ -1253,14 +1262,117 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       );
     }
   }
-  /// 删除食物记录
-  void _deleteFoodRecord(FoodRecord record) {
-    // TODO: 调用API删除记录
-    setState(() {
-      _records.removeWhere((r) => r.id == record.id);
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('食物记录已删除')),
+  void _showEditFoodDialog(FoodRecord record) {
+    final nameController = TextEditingController(text: record.foodName ?? '');
+    final descController = TextEditingController(text: record.description ?? '');
+    int selectedMealType = record.mealType;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('编辑食物记录'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: '食物名称',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<int>(
+                  value: selectedMealType,
+                  decoration: const InputDecoration(
+                    labelText: '用餐类型',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 1, child: Text('早餐')),
+                    DropdownMenuItem(value: 2, child: Text('午餐')),
+                    DropdownMenuItem(value: 3, child: Text('晚餐')),
+                    DropdownMenuItem(value: 4, child: Text('加餐')),
+                  ],
+                  onChanged: (value) {
+                    setDialogState(() => selectedMealType = value ?? 1);
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: descController,
+                  decoration: const InputDecoration(
+                    labelText: '描述',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 3,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final foodData = FoodRecordCreate(
+                  recordDate: record.recordDate,
+                  mealType: selectedMealType,
+                  foodName: nameController.text.trim(),
+                  description: descController.text.trim().isEmpty ? null : descController.text.trim(),
+                  imageUrl: record.imageUrl,
+                  recordingMethod: record.recordingMethod,
+                );
+
+                final result = await _foodService.updateFoodRecord(record.id, foodData);
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  if (result.success) {
+                    _loadRecords();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('食物记录已更新')),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('更新失败: ${result.message}')),
+                    );
+                  }
+                }
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
     );
+  }
+
+  /// 删除食物记录
+  void _deleteFoodRecord(FoodRecord record) async {
+    try {
+      final result = await _foodService.deleteFoodRecord(record.id);
+      if (result.success || result.notFound) {
+        final dateString = '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+        await _foodService.invalidateRecordsCache(dateString);
+        setState(() {
+          _records.removeWhere((r) => r.id == record.id);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result.notFound ? '记录已不存在，已从列表移除' : '食物记录已删除')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('删除失败: ${result.message}')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('删除失败: $e')),
+      );
+    }
   }
 } 

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../profile/domain/services/user_service.dart';
-import '../../../health/services/health_analysis_service.dart';
+import '../../../../services/health_analysis_service.dart';
 import '../../../../shared/domain/models/api_response.dart';
 import '../../../../shared/domain/models/user_model.dart';
 

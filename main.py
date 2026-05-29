@@ -25,11 +25,11 @@ from routers.goal_router import router as goal_router
 from routers.deep_router import router as deep_router
 from routers.saved_meals_router import router as saved_meals_router
 
-from api.exercise import router as exercise_router
-from api.water import router as water_router
-from api.reminder import router as reminder_router
-from api.notification import router as notification_router
-from api.wellness import router as wellness_router
+from routers.exercise_router import router as exercise_router
+from routers.water_router import router as water_router
+from routers.reminder_router import router as reminder_router
+from routers.notification_router import router as notification_router
+from routers.wellness_router import router as wellness_router
 
 settings = get_settings()
 

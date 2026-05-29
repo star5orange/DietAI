@@ -170,7 +170,7 @@ class _FoodHistoryTestPageState extends ConsumerState<FoodHistoryTestPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        record.foodName.isNotEmpty ? record.foodName : '未命名食物',
+                        record.foodName?.isNotEmpty == true ? record.foodName! : '未命名食物',
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
@@ -193,7 +193,7 @@ class _FoodHistoryTestPageState extends ConsumerState<FoodHistoryTestPage> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: _getStatusColor(record.analysisStatus),
+                    color: _getStatusColor(record.analysisStatus ?? 0),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(

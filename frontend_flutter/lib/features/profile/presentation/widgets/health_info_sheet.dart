@@ -392,6 +392,38 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
                   ),
                 ),
               ),
+              PopupMenuButton<String>(
+                icon: const Icon(LucideIcons.moreVertical,
+                    size: 18, color: AppColors.textTertiary),
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                      value: 'edit',
+                      child: Row(children: [
+                        Icon(LucideIcons.pencil,
+                            size: 16, color: AppColors.textSecondary),
+                        const SizedBox(width: 8),
+                        const Text('编辑')
+                      ])),
+                  PopupMenuItem(
+                      value: 'delete',
+                      child: Row(children: [
+                        Icon(LucideIcons.trash2,
+                            size: 16, color: AppColors.error),
+                        const SizedBox(width: 8),
+                        Text('删除', style: TextStyle(color: AppColors.error))
+                      ])),
+                ],
+                onSelected: (value) {
+                  if (value == 'edit') {
+                    _showEditDiseaseDialog(disease);
+                  } else if (value == 'delete') {
+                    _showDeleteDiseaseConfirmation(disease);
+                  }
+                },
+              ),
             ],
           ),
           if (disease.diagnosedDate != null) ...[
@@ -473,6 +505,38 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
                   ],
                 ),
               ),
+              PopupMenuButton<String>(
+                icon: const Icon(LucideIcons.moreVertical,
+                    size: 18, color: AppColors.textTertiary),
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                      value: 'edit',
+                      child: Row(children: [
+                        Icon(LucideIcons.pencil,
+                            size: 16, color: AppColors.textSecondary),
+                        const SizedBox(width: 8),
+                        const Text('编辑')
+                      ])),
+                  PopupMenuItem(
+                      value: 'delete',
+                      child: Row(children: [
+                        Icon(LucideIcons.trash2,
+                            size: 16, color: AppColors.error),
+                        const SizedBox(width: 8),
+                        Text('删除', style: TextStyle(color: AppColors.error))
+                      ])),
+                ],
+                onSelected: (value) {
+                  if (value == 'edit') {
+                    _showEditAllergyDialog(allergy);
+                  } else if (value == 'delete') {
+                    _showDeleteAllergyConfirmation(allergy);
+                  }
+                },
+              ),
             ],
           ),
           if (allergy.reactionDescription != null) ...[
@@ -495,6 +559,300 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
 
   Widget _buildAddAllergyForm() {
     return const _AddAllergyForm();
+  }
+
+  void _showEditDiseaseDialog(Disease disease) {
+    final nameController = TextEditingController(text: disease.diseaseName);
+    final codeController = TextEditingController(text: disease.diseaseCode ?? '');
+    final notesController = TextEditingController(text: disease.notes ?? '');
+    int severityLevel = disease.severityLevel ?? 1;
+    bool isCurrent = disease.isCurrent;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('编辑疾病信息'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: '疾病名称 *',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: codeController,
+                  decoration: const InputDecoration(
+                    labelText: '疾病编码',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  value: severityLevel,
+                  decoration: const InputDecoration(
+                    labelText: '严重程度',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 1, child: Text('轻度')),
+                    DropdownMenuItem(value: 2, child: Text('中度')),
+                    DropdownMenuItem(value: 3, child: Text('重度')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => severityLevel = value);
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  title: const Text('当前患病'),
+                  value: isCurrent,
+                  onChanged: (value) {
+                    setDialogState(() => isCurrent = value);
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: notesController,
+                  decoration: const InputDecoration(
+                    labelText: '备注',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 2,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (nameController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('请输入疾病名称')),
+                  );
+                  return;
+                }
+                Navigator.pop(context);
+                final success = await ref.read(diseasesProvider.notifier).updateDisease(
+                  disease.id,
+                  DiseaseCreateRequest(
+                    diseaseName: nameController.text.trim(),
+                    diseaseCode: codeController.text.trim().isEmpty
+                        ? null
+                        : codeController.text.trim(),
+                    severityLevel: severityLevel,
+                    notes: notesController.text.trim().isEmpty
+                        ? null
+                        : notesController.text.trim(),
+                  ),
+                );
+                if (success) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('疾病信息更新成功')),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('更新失败')),
+                  );
+                }
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDeleteDiseaseConfirmation(Disease disease) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认删除'),
+        content: Text('确定要删除「${disease.diseaseName}」吗？此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () async {
+              Navigator.pop(context);
+              final success = await ref.read(diseasesProvider.notifier).deleteDisease(disease.id);
+              if (success) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('疾病信息已删除')),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('删除失败')),
+                );
+              }
+            },
+            child: const Text('删除', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditAllergyDialog(Allergy allergy) {
+    final nameController = TextEditingController(text: allergy.allergenName);
+    final reactionController = TextEditingController(text: allergy.reactionDescription ?? '');
+    int allergenType = allergy.allergenType;
+    int severityLevel = allergy.severityLevel ?? 1;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('编辑过敏信息'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<int>(
+                  value: allergenType,
+                  decoration: const InputDecoration(
+                    labelText: '过敏原类型',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 1, child: Text('食物')),
+                    DropdownMenuItem(value: 2, child: Text('药物')),
+                    DropdownMenuItem(value: 3, child: Text('环境')),
+                    DropdownMenuItem(value: 4, child: Text('其他')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => allergenType = value);
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: '过敏原名称 *',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  value: severityLevel,
+                  decoration: const InputDecoration(
+                    labelText: '严重程度',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 1, child: Text('轻度')),
+                    DropdownMenuItem(value: 2, child: Text('中度')),
+                    DropdownMenuItem(value: 3, child: Text('重度')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => severityLevel = value);
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: reactionController,
+                  decoration: const InputDecoration(
+                    labelText: '过敏反应描述',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 2,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (nameController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('请输入过敏原名称')),
+                  );
+                  return;
+                }
+                Navigator.pop(context);
+                final success = await ref.read(allergiesProvider.notifier).updateAllergy(
+                  allergy.id,
+                  AllergyCreateRequest(
+                    allergenType: allergenType,
+                    allergenName: nameController.text.trim(),
+                    severityLevel: severityLevel,
+                    reactionDescription: reactionController.text.trim().isEmpty
+                        ? null
+                        : reactionController.text.trim(),
+                  ),
+                );
+                if (success) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('过敏信息更新成功')),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('更新失败')),
+                  );
+                }
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDeleteAllergyConfirmation(Allergy allergy) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认删除'),
+        content: Text('确定要删除「${allergy.allergenName}」吗？此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () async {
+              Navigator.pop(context);
+              final success = await ref.read(allergiesProvider.notifier).deleteAllergy(allergy.id);
+              if (success) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('过敏信息已删除')),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('删除失败')),
+                );
+              }
+            },
+            child: const Text('删除', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 }
 

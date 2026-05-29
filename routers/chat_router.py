@@ -14,6 +14,7 @@ from shared.models.database import get_db
 from shared.models import schemas, user_models, conversation_models
 from shared.utils.auth import get_current_user
 from shared.config.redis_config import cache_service
+from langgraph_sdk import get_client
 from agent.chat_agent import chat_graph
 from agent.common_utils.configuration import get_agent_model_config
 
@@ -144,8 +145,6 @@ async def send_chat_message_stream(
                 db.add(session)
                 db.commit()
                 db.refresh(session)
-                session.langgraph_thread_id = f"local-{session.id}"
-                db.commit()
             
             # 发送会话信息
             yield f"data: {json.dumps({'type': 'session', 'data': {'session_id': session.id}})}\n\n"
@@ -170,7 +169,7 @@ async def send_chat_message_stream(
             client = get_client(url="http://127.0.0.1:2024")
 
             # 创建或获取 LangGraph thread
-            if not session.langgraph_thread_id:
+            if not session.langgraph_thread_id or session.langgraph_thread_id.startswith("local-"):
                 thread = await client.threads.create()
                 session.langgraph_thread_id = thread['thread_id']
                 db.commit()
@@ -313,8 +312,6 @@ async def send_chat_message(
             db.add(session)
             db.commit()
             db.refresh(session)
-            session.langgraph_thread_id = f"local-{session.id}"
-            db.commit()
         
         # 2. 创建用户消息记录
         user_message = conversation_models.ConversationMessage(
@@ -336,7 +333,7 @@ async def send_chat_message(
         client = get_client(url="http://127.0.0.1:2024")
 
         # 创建或获取 LangGraph thread
-        if not session.langgraph_thread_id:
+        if not session.langgraph_thread_id or session.langgraph_thread_id.startswith("local-"):
             thread = await client.threads.create()
             session.langgraph_thread_id = thread['thread_id']
             db.commit()
@@ -460,10 +457,6 @@ async def start_chat_session(
         db.add(session)
         db.commit()
         db.refresh(session)
-        
-        # Chat invokes the local graph directly; keep this ID for old UI fields.
-        session.langgraph_thread_id = f"local-{session.id}"
-        db.commit()
         
         return schemas.BaseResponse(
             success=True,

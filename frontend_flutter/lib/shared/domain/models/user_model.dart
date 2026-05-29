@@ -533,6 +533,35 @@ class DiseaseCreateRequest {
   Map<String, dynamic> toJson() => _$DiseaseCreateRequestToJson(this);
 }
 
+/// 疾病信息更新请求模型
+@JsonSerializable()
+class DiseaseUpdateRequest {
+  @JsonKey(name: 'disease_code')
+  final String? diseaseCode;
+  @JsonKey(name: 'disease_name')
+  final String? diseaseName;
+  @JsonKey(name: 'severity_level')
+  final int? severityLevel;
+  @JsonKey(name: 'diagnosed_date')
+  final String? diagnosedDate;
+  @JsonKey(name: 'is_current')
+  final bool? isCurrent;
+  final String? notes;
+
+  const DiseaseUpdateRequest({
+    this.diseaseCode,
+    this.diseaseName,
+    this.severityLevel,
+    this.diagnosedDate,
+    this.isCurrent,
+    this.notes,
+  });
+
+  factory DiseaseUpdateRequest.fromJson(Map<String, dynamic> json) =>
+      _$DiseaseUpdateRequestFromJson(json);
+  Map<String, dynamic> toJson() => _$DiseaseUpdateRequestToJson(this);
+}
+
 /// 过敏信息模型
 @JsonSerializable()
 class Allergy {
@@ -617,6 +646,30 @@ class AllergyCreateRequest {
   factory AllergyCreateRequest.fromJson(Map<String, dynamic> json) =>
       _$AllergyCreateRequestFromJson(json);
   Map<String, dynamic> toJson() => _$AllergyCreateRequestToJson(this);
+}
+
+/// 过敏信息更新请求模型
+@JsonSerializable()
+class AllergyUpdateRequest {
+  @JsonKey(name: 'allergen_type')
+  final int? allergenType;
+  @JsonKey(name: 'allergen_name')
+  final String? allergenName;
+  @JsonKey(name: 'severity_level')
+  final int? severityLevel;
+  @JsonKey(name: 'reaction_description')
+  final String? reactionDescription;
+
+  const AllergyUpdateRequest({
+    this.allergenType,
+    this.allergenName,
+    this.severityLevel,
+    this.reactionDescription,
+  });
+
+  factory AllergyUpdateRequest.fromJson(Map<String, dynamic> json) =>
+      _$AllergyUpdateRequestFromJson(json);
+  Map<String, dynamic> toJson() => _$AllergyUpdateRequestToJson(this);
 }
 
 /// 体重记录模型

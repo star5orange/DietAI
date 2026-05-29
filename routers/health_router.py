@@ -185,10 +185,9 @@ async def get_weight_trend(
 ):
     """体重趋势分析"""
     try:
-        end_date = date.today()
-        start_date = end_date - timedelta(days=days)
+        end_date = datetime.combine(date.today(), datetime.max.time())
+        start_date = datetime.combine(date.today() - timedelta(days=days), datetime.min.time())
         
-        # 获取体重记录
         weight_records = db.query(WeightRecord).filter(
             WeightRecord.user_id == current_user.id,
             WeightRecord.measured_at >= start_date,
@@ -200,62 +199,44 @@ async def get_weight_trend(
                 success=True,
                 message="暂无体重数据",
                 data={
-                    "trend": "stable",
+                    "current_weight": 0,
+                    "previous_weight": None,
                     "weight_change": 0,
-                    "weight_change_percentage": 0,
-                    "records": [],
-                    "analysis": "暂无足够的体重数据进行趋势分析"
+                    "change_percentage": 0,
+                    "trend_direction": "stable",
+                    "days_tracked": 0,
+                    "average_weekly_change": 0
                 }
             )
         
-        # 计算趋势
-        first_weight = weight_records[0].weight
-        last_weight = weight_records[-1].weight
-        weight_change = float(last_weight - first_weight)
-        weight_change_percentage = (weight_change / float(first_weight)) * 100
+        first_weight = float(weight_records[0].weight)
+        last_weight = float(weight_records[-1].weight)
+        previous_weight = float(weight_records[-2].weight) if len(weight_records) > 1 else None
+        weight_change = last_weight - first_weight
+        change_percentage = (weight_change / first_weight) * 100 if first_weight != 0 else 0
         
-        # 趋势判断
-        if abs(weight_change_percentage) < 2:
-            trend = "stable"
-            trend_description = "体重保持稳定"
-        elif weight_change_percentage > 0:
-            trend = "increasing"
-            trend_description = "体重呈上升趋势"
+        if abs(change_percentage) < 2:
+            trend_direction = "stable"
+        elif change_percentage > 0:
+            trend_direction = "up"
         else:
-            trend = "decreasing"
-            trend_description = "体重呈下降趋势"
+            trend_direction = "down"
         
-        # 格式化记录数据
-        records_data = []
-        for record in weight_records:
-            records_data.append({
-                "date": record.measured_at.date().isoformat(),
-                "weight": float(record.weight),
-                "bmi": float(record.bmi) if record.bmi else None,
-                "body_fat_percentage": float(record.body_fat_percentage) if record.body_fat_percentage else None
-            })
-        
-        # 生成分析建议
-        analysis = trend_description
-        if trend == "increasing" and weight_change_percentage > 5:
-            analysis += "，建议关注饮食控制和增加运动"
-        elif trend == "decreasing" and weight_change_percentage < -10:
-            analysis += "，注意营养均衡，避免过度减重"
+        days_tracked = (weight_records[-1].measured_at.date() - weight_records[0].measured_at.date()).days
+        weeks = max(days_tracked / 7, 1)
+        average_weekly_change = weight_change / weeks
         
         return BaseResponse(
             success=True,
             message="体重趋势分析完成",
             data={
-                "trend": trend,
+                "current_weight": round(last_weight, 2),
+                "previous_weight": round(previous_weight, 2) if previous_weight is not None else None,
                 "weight_change": round(weight_change, 2),
-                "weight_change_percentage": round(weight_change_percentage, 2),
-                "records": records_data,
-                "analysis": analysis,
-                "period": {
-                    "start_date": start_date.isoformat(),
-                    "end_date": end_date.isoformat(),
-                    "days": days
-                }
+                "change_percentage": round(change_percentage, 2),
+                "trend_direction": trend_direction,
+                "days_tracked": days_tracked,
+                "average_weekly_change": round(average_weekly_change, 2)
             }
         )
     except Exception as e:

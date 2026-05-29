@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import func
 from typing import List, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import json
 import logging
 import traceback
@@ -15,6 +16,7 @@ from shared.models.schemas import (
     AllergyCreate, AllergyResponse, WeightRecordCreate, WeightRecordResponse,
     OnboardingStepUpdate, OnboardingDataRequest
 )
+from shared.models.schemas.user import DiseaseUpdate, AllergyUpdate
 from shared.utils.auth import get_current_user
 from shared.models.user_models import User, UserProfile, HealthGoal, Disease, Allergy, WeightRecord
 from shared.config.redis_config import cache_service
@@ -92,6 +94,51 @@ def format_profile_data(profile: UserProfile) -> dict:
         "onboarding_step": 0,  # 默认引导步骤
         "constitution_type": profile.constitution_type,
     }
+
+
+@router.get("/stats", response_model=BaseResponse)
+async def get_user_stats(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """获取用户统计数据：连续打卡天数、总记录次数、平均卡路里"""
+    try:
+        from shared.models.food_models import FoodRecord, DailyNutritionSummary
+
+        total_records = db.query(func.count(FoodRecord.id)).filter(
+            FoodRecord.user_id == current_user.id
+        ).scalar() or 0
+
+        avg_calories_result = db.query(func.avg(DailyNutritionSummary.total_calories)).filter(
+            DailyNutritionSummary.user_id == current_user.id,
+            DailyNutritionSummary.total_calories > 0
+        ).scalar()
+        avg_calories = round(float(avg_calories_result), 0) if avg_calories_result else 0
+
+        streak = 0
+        check_date = date.today()
+        for i in range(365):
+            has_record = db.query(FoodRecord).filter(
+                FoodRecord.user_id == current_user.id,
+                FoodRecord.record_date == check_date
+            ).first()
+            if has_record:
+                streak += 1
+                check_date -= timedelta(days=1)
+            else:
+                break
+
+        return BaseResponse(
+            success=True,
+            message="获取用户统计成功",
+            data={
+                "streak_days": streak,
+                "total_records": total_records,
+                "avg_calories": int(avg_calories),
+            }
+        )
+    except Exception as e:
+        raise handle_database_error(e, "获取用户统计")
 
 
 @router.get("/profile", response_model=BaseResponse)
@@ -397,6 +444,82 @@ async def get_diseases(
         raise handle_database_error(e, "获取疾病信息列表")
 
 
+@router.put("/diseases/{disease_id}", response_model=BaseResponse)
+async def update_disease(
+    disease_id: int,
+    disease_data: DiseaseUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """更新疾病信息"""
+    try:
+        disease = db.query(Disease).filter(
+            Disease.id == disease_id,
+            Disease.user_id == current_user.id
+        ).first()
+        
+        if not disease:
+            raise HTTPException(status_code=404, detail="疾病记录不存在")
+        
+        update_data = disease_data.dict(exclude_unset=True)
+        for field, value in update_data.items():
+            setattr(disease, field, value)
+        
+        db.commit()
+        db.refresh(disease)
+        
+        return BaseResponse(
+            success=True,
+            message="疾病信息更新成功",
+            data={
+                "id": disease.id,
+                "user_id": disease.user_id,
+                "disease_code": disease.disease_code,
+                "disease_name": disease.disease_name,
+                "severity_level": disease.severity_level,
+                "diagnosed_date": disease.diagnosed_date.isoformat() if disease.diagnosed_date else None,
+                "is_current": disease.is_current,
+                "notes": disease.notes,
+                "created_at": disease.created_at.isoformat()
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise handle_database_error(e, "更新疾病信息")
+
+
+@router.delete("/diseases/{disease_id}", response_model=BaseResponse)
+async def delete_disease(
+    disease_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """删除疾病信息"""
+    try:
+        disease = db.query(Disease).filter(
+            Disease.id == disease_id,
+            Disease.user_id == current_user.id
+        ).first()
+        
+        if not disease:
+            raise HTTPException(status_code=404, detail="疾病记录不存在")
+        
+        db.delete(disease)
+        db.commit()
+        
+        return BaseResponse(
+            success=True,
+            message="疾病信息删除成功"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise handle_database_error(e, "删除疾病信息")
+
+
 @router.post("/allergies", response_model=BaseResponse)
 async def add_allergy(
     allergy_data: AllergyCreate,
@@ -469,6 +592,80 @@ async def get_allergies(
         )
     except Exception as e:
         raise handle_database_error(e, "获取过敏信息列表")
+
+
+@router.put("/allergies/{allergy_id}", response_model=BaseResponse)
+async def update_allergy(
+    allergy_id: int,
+    allergy_data: AllergyUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """更新过敏信息"""
+    try:
+        allergy = db.query(Allergy).filter(
+            Allergy.id == allergy_id,
+            Allergy.user_id == current_user.id
+        ).first()
+        
+        if not allergy:
+            raise HTTPException(status_code=404, detail="过敏记录不存在")
+        
+        update_data = allergy_data.dict(exclude_unset=True)
+        for field, value in update_data.items():
+            setattr(allergy, field, value)
+        
+        db.commit()
+        db.refresh(allergy)
+        
+        return BaseResponse(
+            success=True,
+            message="过敏信息更新成功",
+            data={
+                "id": allergy.id,
+                "user_id": allergy.user_id,
+                "allergen_type": allergy.allergen_type,
+                "allergen_name": allergy.allergen_name,
+                "severity_level": allergy.severity_level,
+                "reaction_description": allergy.reaction_description,
+                "created_at": allergy.created_at.isoformat()
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise handle_database_error(e, "更新过敏信息")
+
+
+@router.delete("/allergies/{allergy_id}", response_model=BaseResponse)
+async def delete_allergy(
+    allergy_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """删除过敏信息"""
+    try:
+        allergy = db.query(Allergy).filter(
+            Allergy.id == allergy_id,
+            Allergy.user_id == current_user.id
+        ).first()
+        
+        if not allergy:
+            raise HTTPException(status_code=404, detail="过敏记录不存在")
+        
+        db.delete(allergy)
+        db.commit()
+        
+        return BaseResponse(
+            success=True,
+            message="过敏信息删除成功"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise handle_database_error(e, "删除过敏信息")
 
 
 @router.post("/weight-records", response_model=BaseResponse)

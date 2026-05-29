@@ -281,6 +281,28 @@ Map<String, dynamic> _$DiseaseCreateRequestToJson(
       'notes': instance.notes,
     };
 
+DiseaseUpdateRequest _$DiseaseUpdateRequestFromJson(
+        Map<String, dynamic> json) =>
+    DiseaseUpdateRequest(
+      diseaseCode: json['disease_code'] as String?,
+      diseaseName: json['disease_name'] as String?,
+      severityLevel: (json['severity_level'] as num?)?.toInt(),
+      diagnosedDate: json['diagnosed_date'] as String?,
+      isCurrent: json['is_current'] as bool?,
+      notes: json['notes'] as String?,
+    );
+
+Map<String, dynamic> _$DiseaseUpdateRequestToJson(
+        DiseaseUpdateRequest instance) =>
+    <String, dynamic>{
+      'disease_code': instance.diseaseCode,
+      'disease_name': instance.diseaseName,
+      'severity_level': instance.severityLevel,
+      'diagnosed_date': instance.diagnosedDate,
+      'is_current': instance.isCurrent,
+      'notes': instance.notes,
+    };
+
 Allergy _$AllergyFromJson(Map<String, dynamic> json) => Allergy(
       id: (json['id'] as num).toInt(),
       userId: (json['user_id'] as num).toInt(),
@@ -312,6 +334,24 @@ AllergyCreateRequest _$AllergyCreateRequestFromJson(
 
 Map<String, dynamic> _$AllergyCreateRequestToJson(
         AllergyCreateRequest instance) =>
+    <String, dynamic>{
+      'allergen_type': instance.allergenType,
+      'allergen_name': instance.allergenName,
+      'severity_level': instance.severityLevel,
+      'reaction_description': instance.reactionDescription,
+    };
+
+AllergyUpdateRequest _$AllergyUpdateRequestFromJson(
+        Map<String, dynamic> json) =>
+    AllergyUpdateRequest(
+      allergenType: (json['allergen_type'] as num?)?.toInt(),
+      allergenName: json['allergen_name'] as String?,
+      severityLevel: (json['severity_level'] as num?)?.toInt(),
+      reactionDescription: json['reaction_description'] as String?,
+    );
+
+Map<String, dynamic> _$AllergyUpdateRequestToJson(
+        AllergyUpdateRequest instance) =>
     <String, dynamic>{
       'allergen_type': instance.allergenType,
       'allergen_name': instance.allergenName,

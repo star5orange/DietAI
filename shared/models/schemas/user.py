@@ -137,6 +137,15 @@ class DiseaseCreate(BaseModel):
     notes: Optional[str] = Field(None, description="备注")
 
 
+class DiseaseUpdate(BaseModel):
+    disease_code: Optional[str] = Field(None, max_length=20, description="疾病编码")
+    disease_name: Optional[str] = Field(None, max_length=200, description="疾病名称")
+    severity_level: Optional[int] = Field(None, ge=1, le=3, description="严重程度1-3")
+    diagnosed_date: Optional[date] = Field(None, description="诊断日期")
+    is_current: Optional[bool] = Field(None, description="是否当前患病")
+    notes: Optional[str] = Field(None, description="备注")
+
+
 class DiseaseResponse(BaseModel):
     id: int
     user_id: int
@@ -155,6 +164,13 @@ class DiseaseResponse(BaseModel):
 class AllergyCreate(BaseModel):
     allergen_type: int = Field(..., ge=1, le=4, description="过敏原类型：1食物2药物3环境4其他")
     allergen_name: str = Field(..., max_length=100, description="过敏原名称")
+    severity_level: Optional[int] = Field(None, ge=1, le=3, description="严重程度1-3")
+    reaction_description: Optional[str] = Field(None, description="反应描述")
+
+
+class AllergyUpdate(BaseModel):
+    allergen_type: Optional[int] = Field(None, ge=1, le=4, description="过敏原类型：1食物2药物3环境4其他")
+    allergen_name: Optional[str] = Field(None, max_length=100, description="过敏原名称")
     severity_level: Optional[int] = Field(None, ge=1, le=3, description="严重程度1-3")
     reaction_description: Optional[str] = Field(None, description="反应描述")
 

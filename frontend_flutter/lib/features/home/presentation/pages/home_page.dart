@@ -51,9 +51,16 @@ class _HomePageState extends ConsumerState<HomePage> {
         startDate: dateStr,
         endDate: dateStr,
       );
+      DailyNutritionSummary? summary;
+      try {
+        final summaryResult = await _foodService.getDailyNutritionSummary(dateStr);
+        summary = summaryResult.data;
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
           _todayRecords = result.data?.records ?? [];
+          _dailySummary = summary;
           _isLoading = false;
         });
         _updatePetState();
@@ -771,7 +778,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(record.foodName,
+                Text(record.foodName ?? '未命名食物',
                     style: AppTextStyles.bodyMedium
                         .copyWith(fontWeight: FontWeight.w500),
                     maxLines: 2,
@@ -805,7 +812,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   Future<void> _editFoodRecordName(FoodRecord record) async {
     final result = await showDialog<String>(
       context: context,
-      builder: (context) => _FoodNameDialog(initialValue: record.foodName),
+      builder: (context) => _FoodNameDialog(initialValue: record.foodName ?? ''),
     );
     if (result != null && result != record.foodName) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -820,7 +827,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('删除食物记录', style: AppTextStyles.h4),
-        content: Text('确定要删除"${record.foodName}"吗？此操作不可撤销。',
+        content: Text('确定要删除"${record.foodName ?? '未命名食物'}"吗？此操作不可撤销。',
             style: AppTextStyles.bodyMedium),
         actions: [
           TextButton(
@@ -835,9 +842,20 @@ class _HomePageState extends ConsumerState<HomePage> {
       ),
     );
     if (confirmed == true) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('食物记录已删除'), backgroundColor: AppColors.success));
-      _refreshData();
+      final result = await _foodService.deleteFoodRecord(record.id);
+      if (result.success || result.notFound) {
+        final today = DateTime.now();
+        final dateString = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+        await _foodService.invalidateRecordsCache(dateString);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(result.notFound ? '记录已不存在，已从列表移除' : '食物记录已删除'),
+            backgroundColor: AppColors.success));
+        _refreshData();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('删除失败: ${result.message}'),
+            backgroundColor: AppColors.error));
+      }
     }
   }
 

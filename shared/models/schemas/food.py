@@ -35,7 +35,7 @@ class FoodRecordResponse(BaseModel):
 
 
 class NutritionDetailCreate(BaseModel):
-    food_record_id: int = Field(..., description="食物记录ID")
+    food_record_id: Optional[int] = Field(None, description="食物记录ID")
     calories: Optional[float] = Field(0, ge=0, description="热量(kcal)")
     protein: Optional[float] = Field(0, ge=0, description="蛋白质(g)")
     fat: Optional[float] = Field(0, ge=0, description="脂肪(g)")

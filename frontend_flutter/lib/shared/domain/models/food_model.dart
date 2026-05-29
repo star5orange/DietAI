@@ -151,7 +151,7 @@ class NutritionDetail {
   @JsonKey(name: 'confidence_score')
   final double? confidenceScore;
   @JsonKey(name: 'analysis_method')
-  final String analysisMethod;
+  final String? analysisMethod;
 
   const NutritionDetail({
     required this.id,
@@ -171,7 +171,7 @@ class NutritionDetail {
     required this.iron,
     required this.potassium,
     this.confidenceScore,
-    required this.analysisMethod,
+    this.analysisMethod,
   });
 
   factory NutritionDetail.fromJson(Map<String, dynamic> json) =>
@@ -190,14 +190,14 @@ class FoodRecord {
   @JsonKey(name: 'meal_type')
   final int mealType;
   @JsonKey(name: 'food_name')
-  final String foodName;
+  final String? foodName;
   final String? description;
   @JsonKey(name: 'image_url')
   final String? imageUrl;
   @JsonKey(name: 'recording_method')
-  final int recordingMethod;
+  final int? recordingMethod;
   @JsonKey(name: 'analysis_status')
-  final int analysisStatus;
+  final int? analysisStatus;
   @JsonKey(name: 'created_at')
   final String createdAt;
   @JsonKey(name: 'updated_at')
@@ -214,11 +214,11 @@ class FoodRecord {
     required this.userId,
     required this.recordDate,
     required this.mealType,
-    required this.foodName,
+    this.foodName,
     this.description,
     this.imageUrl,
-    required this.recordingMethod,
-    required this.analysisStatus,
+    this.recordingMethod,
+    this.analysisStatus,
     required this.createdAt,
     this.updatedAt,
     this.nutritionDetail,
@@ -255,6 +255,8 @@ class FoodRecord {
         return '分析中';
       case 3:
         return '已完成';
+      case null:
+        return '未知';
       default:
         return '未知';
     }

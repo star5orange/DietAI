@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
+import '../../../../services/food_service.dart';
+import '../../../../services/water_service.dart';
+import '../../../../shared/domain/models/food_model.dart';
+import '../../../../shared/domain/models/api_response.dart';
 import '../../../health/presentation/pages/health_goals_page.dart';
 import '../../../health/presentation/pages/weight_tracking_page.dart';
 import '../../../health/presentation/pages/data_visualization_page.dart';
@@ -12,8 +17,46 @@ import '../../../health/presentation/pages/reminder_settings_page.dart';
 import '../../../health/presentation/pages/constitution_quiz_page.dart';
 import '../../../../shared/presentation/widgets/water_intake_widget.dart';
 
-class HealthPage extends StatelessWidget {
+class HealthPage extends StatefulWidget {
   const HealthPage({super.key});
+
+  @override
+  State<HealthPage> createState() => _HealthPageState();
+}
+
+class _HealthPageState extends State<HealthPage> {
+  final FoodService _foodService = FoodService();
+  final WaterService _waterService = WaterService();
+  DailyNutritionSummary? _dailySummary;
+  double _waterIntake = 0.0;
+  double _waterGoal = 2000.0;
+  double _targetCalories = 2000.0;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTodayData();
+  }
+
+  Future<void> _loadTodayData() async {
+    setState(() => _isLoading = true);
+    try {
+      final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final summaryResult = await _foodService.getDailyNutritionSummary(dateStr);
+      final waterResult = await _waterService.getBackendWaterIntake(dateStr);
+
+      if (mounted) {
+        setState(() {
+          _dailySummary = summaryResult.data;
+          _waterIntake = waterResult.data ?? 0.0;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,33 +68,35 @@ class HealthPage extends StatelessWidget {
         backgroundColor: Colors.white,
         foregroundColor: AppColors.textPrimary,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 快速健康指标卡片
-            _buildHealthSummaryCard(),
-
-            const SizedBox(height: 24),
-
-            const WaterIntakeWidget(),
-
-            const SizedBox(height: 24),
-
-            _buildFeatureGrid(context),
-
-            const SizedBox(height: 24),
-
-            // 健康建议卡片
-            _buildHealthTipsCard(),
-          ],
+      body: RefreshIndicator(
+        onRefresh: _loadTodayData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHealthSummaryCard(),
+              const SizedBox(height: 24),
+              const WaterIntakeWidget(),
+              const SizedBox(height: 24),
+              _buildFeatureGrid(context),
+              const SizedBox(height: 24),
+              _buildHealthTipsCard(),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildHealthSummaryCard() {
+    final calories = _dailySummary?.totalCalories ?? 0.0;
+    final waterLiters = _waterIntake / 1000;
+    final waterGoalLiters = _waterGoal / 1000;
+    final caloriesProgress = _targetCalories > 0 ? (calories / _targetCalories).clamp(0.0, 1.0) : 0.0;
+    final waterProgress = _waterGoal > 0 ? (_waterIntake / _waterGoal).clamp(0.0, 1.0) : 0.0;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -96,18 +141,18 @@ class HealthPage extends StatelessWidget {
               Expanded(
                 child: _buildSummaryItem(
                   '卡路里',
-                  '1,245 / 2,000',
+                  '${_formatNumber(calories)} / ${_formatNumber(_targetCalories)}',
                   'kcal',
-                  0.62,
+                  caloriesProgress,
                 ),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: _buildSummaryItem(
-                  '步数',
-                  '6,842',
-                  '步',
-                  0.68,
+                  '水分',
+                  '${waterLiters.toStringAsFixed(1)} / ${waterGoalLiters.toStringAsFixed(1)}',
+                  'L',
+                  waterProgress,
                 ),
               ),
             ],
@@ -117,19 +162,19 @@ class HealthPage extends StatelessWidget {
             children: [
               Expanded(
                 child: _buildSummaryItem(
-                  '水分',
-                  '1.2 / 2.0',
-                  'L',
-                  0.6,
+                  '蛋白质',
+                  '${_formatNumber(_dailySummary?.totalProtein ?? 0)}',
+                  'g',
+                  0,
                 ),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: _buildSummaryItem(
-                  '睡眠',
-                  '7.5',
-                  '小时',
-                  0.94,
+                  '用餐次数',
+                  '${_dailySummary?.mealCount ?? 0}',
+                  '次',
+                  0,
                 ),
               ),
             ],
@@ -137,6 +182,13 @@ class HealthPage extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _formatNumber(double value) {
+    if (value >= 1000) {
+      return '${(value / 1000).toStringAsFixed(1)}k';
+    }
+    return value.toInt().toString();
   }
 
   Widget _buildSummaryItem(
@@ -322,6 +374,10 @@ class HealthPage extends StatelessWidget {
   }
 
   Widget _buildHealthTipsCard() {
+    final calories = _dailySummary?.totalCalories ?? 0.0;
+    final remaining = _targetCalories - calories;
+    final waterRemaining = _waterGoal - _waterIntake;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -355,19 +411,36 @@ class HealthPage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          _buildHealthTip(
-            '💧 记得多喝水',
-            '今天的饮水量还差800ml，保持充足的水分有助于新陈代谢。',
-          ),
+          if (waterRemaining > 0)
+            _buildHealthTip(
+              '💧 记得多喝水',
+              '今天的饮水量还差${(waterRemaining / 1000).toStringAsFixed(1)}L，保持充足的水分有助于新陈代谢。',
+            )
+          else
+            _buildHealthTip(
+              '💧 饮水达标',
+              '今天的饮水量已达标，继续保持！',
+            ),
           const SizedBox(height: 12),
-          _buildHealthTip(
-            '🚶‍♀️ 增加运动量',
-            '距离今日目标还差3,158步，不如饭后散个步吧！',
-          ),
+          if (remaining > 0)
+            _buildHealthTip(
+              '🍽️ 热量预算',
+              '今日还可摄入约${remaining.toInt()}kcal，注意营养均衡。',
+            )
+          else if (remaining < 0)
+            _buildHealthTip(
+              '⚠️ 热量超标',
+              '今日热量已超出目标${(-remaining).toInt()}kcal，建议适当增加运动。',
+            )
+          else
+            _buildHealthTip(
+              '🍽️ 热量达标',
+              '今日热量摄入已达到目标，注意保持营养均衡。',
+            ),
           const SizedBox(height: 12),
           _buildHealthTip(
             '🥗 营养均衡',
-            '今天的蔬菜摄入量不足，建议晚餐增加绿叶蔬菜。',
+            '建议每餐搭配蛋白质、碳水和蔬菜，保持营养均衡。',
           ),
         ],
       ),

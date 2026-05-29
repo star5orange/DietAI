@@ -13,7 +13,7 @@ from agent.common_utils.image_utils import encode_image_to_base64
 from agent.common_utils.redis_util import get_redis_client
 from agent.utils.configuration import Configuration
 from agent.utils.states import AgentState, InputState, OutputState
-from agent.utils.sturcts import NutritionAnalysis, NutritionAdvice, AdviceDependencies
+from agent.utils.structs import NutritionAnalysis, NutritionAdvice, AdviceDependencies
 from agent.common_utils.model_utils import get_model
 from agent.utils.prompts import create_nutrition_prompt
 

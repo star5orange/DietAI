@@ -157,7 +157,40 @@ class DiseasesNotifier extends StateNotifier<AsyncValue<List<Disease>>> {
     try {
       final response = await _userService.addDisease(request);
       if (response.isSuccess) {
-        // 重新加载列表
+        await loadDiseases();
+        return true;
+      } else {
+        state = AsyncValue.error(response.message, StackTrace.current);
+        return false;
+      }
+    } catch (error, stackTrace) {
+      state = AsyncValue.error(error, stackTrace);
+      return false;
+    }
+  }
+
+  /// 更新疾病信息
+  Future<bool> updateDisease(int diseaseId, DiseaseCreateRequest request) async {
+    try {
+      final response = await _userService.updateDisease(diseaseId, request);
+      if (response.isSuccess) {
+        await loadDiseases();
+        return true;
+      } else {
+        state = AsyncValue.error(response.message, StackTrace.current);
+        return false;
+      }
+    } catch (error, stackTrace) {
+      state = AsyncValue.error(error, stackTrace);
+      return false;
+    }
+  }
+
+  /// 删除疾病信息
+  Future<bool> deleteDisease(int diseaseId) async {
+    try {
+      final response = await _userService.deleteDisease(diseaseId);
+      if (response.isSuccess) {
         await loadDiseases();
         return true;
       } else {
@@ -213,7 +246,40 @@ class AllergiesNotifier extends StateNotifier<AsyncValue<List<Allergy>>> {
     try {
       final response = await _userService.addAllergy(request);
       if (response.isSuccess) {
-        // 重新加载列表
+        await loadAllergies();
+        return true;
+      } else {
+        state = AsyncValue.error(response.message, StackTrace.current);
+        return false;
+      }
+    } catch (error, stackTrace) {
+      state = AsyncValue.error(error, stackTrace);
+      return false;
+    }
+  }
+
+  /// 更新过敏信息
+  Future<bool> updateAllergy(int allergyId, AllergyCreateRequest request) async {
+    try {
+      final response = await _userService.updateAllergy(allergyId, request);
+      if (response.isSuccess) {
+        await loadAllergies();
+        return true;
+      } else {
+        state = AsyncValue.error(response.message, StackTrace.current);
+        return false;
+      }
+    } catch (error, stackTrace) {
+      state = AsyncValue.error(error, stackTrace);
+      return false;
+    }
+  }
+
+  /// 删除过敏信息
+  Future<bool> deleteAllergy(int allergyId) async {
+    try {
+      final response = await _userService.deleteAllergy(allergyId);
+      if (response.isSuccess) {
         await loadAllergies();
         return true;
       } else {

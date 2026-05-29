@@ -154,10 +154,18 @@ class WeightRecordsService {
   /// 获取最新的体重记录
   Future<ApiResponse<WeightRecord>> getLatestWeightRecord() async {
     try {
-      final response = await _apiService.get('/users/weight-records?limit=1');
+      final response = await _apiService.get('/users/weight-records', queryParameters: {'limit': 1});
       
       if (response.success && response.data != null) {
-        final record = WeightRecord.fromJson(response.data);
+        final List<dynamic> dataList = response.data is List 
+          ? response.data 
+          : (response.data['items'] ?? []);
+        if (dataList.isEmpty) {
+          return ApiResponse<WeightRecord>.failure(
+            message: '暂无体重记录',
+          );
+        }
+        final record = WeightRecord.fromJson(dataList[0] as Map<String, dynamic>);
         
         return ApiResponse<WeightRecord>.success(
           message: response.message.isNotEmpty ? response.message : '获取最新体重记录成功',

@@ -25,9 +25,15 @@ class _TextDescribePageState extends State<TextDescribePage> {
   final TextEditingController _foodNameController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _portionController = TextEditingController(text: '1');
+  final TextEditingController _caloriesController = TextEditingController();
+  final TextEditingController _proteinController = TextEditingController();
+  final TextEditingController _fatController = TextEditingController();
+  final TextEditingController _carbsController = TextEditingController();
 
   String _selectedPortionUnit = '份';
   bool _isSubmitting = false;
+  bool _showNutritionInput = true;
+  bool _isAutoEstimate = true;
 
   final List<String> _portionUnits = ['份', '碗', '盘', '个', '片', '杯', '克'];
 
@@ -51,6 +57,10 @@ class _TextDescribePageState extends State<TextDescribePage> {
     _foodNameController.dispose();
     _descriptionController.dispose();
     _portionController.dispose();
+    _caloriesController.dispose();
+    _proteinController.dispose();
+    _fatController.dispose();
+    _carbsController.dispose();
     super.dispose();
   }
 
@@ -80,15 +90,52 @@ class _TextDescribePageState extends State<TextDescribePage> {
         recordingMethod: 2,
       );
 
-      await for (final event in _foodService.createFoodRecordStream(record)) {
-        if (event['type'] == 'complete' || event['type'] == 'final') {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('$foodName 已记录到${widget.mealName}'), backgroundColor: AppColors.success),
-            );
-            Navigator.pop(context, true);
+      final result = await _foodService.createFoodRecord(record);
+      if (mounted) {
+        if (result.success && result.data != null) {
+          final calories = double.tryParse(_caloriesController.text);
+          final protein = double.tryParse(_proteinController.text);
+          final fat = double.tryParse(_fatController.text);
+          final carbs = double.tryParse(_carbsController.text);
+
+          print('📝 营养数据: calories=$calories, protein=$protein, fat=$fat, carbs=$carbs');
+
+          if (calories != null || protein != null || fat != null || carbs != null) {
+            final nutritionResult = await _foodService.addNutritionDetail(result.data!.id, NutritionDetailCreate(
+              calories: calories,
+              protein: protein,
+              fat: fat,
+              carbohydrates: carbs,
+              analysisMethod: _isAutoEstimate ? 'auto_estimate' : 'manual',
+            ));
+
+            if (!nutritionResult.success) {
+              print('❌ 营养数据保存失败: ${nutritionResult.message}');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('营养信息保存失败: ${nutritionResult.message}'),
+                    backgroundColor: AppColors.warning,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              }
+            } else {
+              print('✅ 营养数据保存成功: recordId=${result.data!.id}');
+            }
           }
-          break;
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$foodName 已记录到${widget.mealName}'), backgroundColor: AppColors.success),
+          );
+          final today = DateTime.now();
+          final dateString = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+          await _foodService.invalidateRecordsCache(dateString);
+          Navigator.pop(context, true);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('记录失败: ${result.message}'), backgroundColor: AppColors.error),
+          );
         }
       }
     } catch (e) {
@@ -100,6 +147,147 @@ class _TextDescribePageState extends State<TextDescribePage> {
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  void _updateAutoEstimate() {
+    if (!_isAutoEstimate) return;
+    final foodName = _foodNameController.text.trim();
+    if (foodName.isEmpty) {
+      _caloriesController.clear();
+      _proteinController.clear();
+      _fatController.clear();
+      _carbsController.clear();
+      return;
+    }
+    final portion = double.tryParse(_portionController.text) ?? 1.0;
+    final estimate = _foodService.estimateNutrition(foodName, portion);
+    _caloriesController.text = (estimate['calories'] ?? 0).toStringAsFixed(0);
+    _proteinController.text = (estimate['protein'] ?? 0).toStringAsFixed(1);
+    _fatController.text = (estimate['fat'] ?? 0).toStringAsFixed(1);
+    _carbsController.text = (estimate['carbs'] ?? 0).toStringAsFixed(1);
+  }
+
+  Widget _buildNutritionSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundCard,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: AppColors.lightShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: () {
+              setState(() => _showNutritionInput = !_showNutritionInput);
+              if (!_showNutritionInput && _isAutoEstimate) {
+                _updateAutoEstimate();
+              }
+            },
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.warningLight,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(LucideIcons.flame, color: AppColors.warning, size: 18),
+                ),
+                const SizedBox(width: 10),
+                Text('营养信息', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+                const Spacer(),
+                Icon(
+                  _showNutritionInput ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                  color: AppColors.textSecondary,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+          if (_showNutritionInput) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text('自动估算', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+                const Spacer(),
+                Flexible(
+                  child: Text(
+                    _isAutoEstimate ? '根据食物数据库估算' : '手动输入',
+                    style: AppTextStyles.bodySmall.copyWith(color: AppColors.primary),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Switch(
+                  value: _isAutoEstimate,
+                  onChanged: (v) {
+                    setState(() => _isAutoEstimate = v);
+                    if (v) _updateAutoEstimate();
+                  },
+                  activeColor: AppColors.primary,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildNutritionField('热量(kcal)', _caloriesController, LucideIcons.flame),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildNutritionField('蛋白质(g)', _proteinController, LucideIcons.dumbbell),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildNutritionField('脂肪(g)', _fatController, LucideIcons.droplets),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildNutritionField('碳水(g)', _carbsController, LucideIcons.wheat),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (_isAutoEstimate)
+              Text(
+                '💡 支持多食物估算：用"、"分隔多种食物，如"鸡排、米饭"；复合食物自动拆分，如"鸡排饭"→鸡排+米饭',
+                style: TextStyle(fontSize: 12, color: AppColors.textHint),
+              )
+            else
+              Text(
+                '💡 请手动输入营养数据，或切换为自动估算',
+                style: TextStyle(fontSize: 12, color: AppColors.textHint),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNutritionField(String label, TextEditingController controller, IconData icon) {
+    return TextField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      enabled: !_isAutoEstimate,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, size: 16, color: AppColors.textSecondary),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.borderLight)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.borderLight)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
+        filled: true,
+        fillColor: AppColors.backgroundSecondary,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        isDense: true,
+      ),
+    );
   }
 
   void _quickAddFood(String name) {
@@ -142,6 +330,8 @@ class _TextDescribePageState extends State<TextDescribePage> {
             _buildPortionSection(),
             const SizedBox(height: 16),
             _buildDescriptionInput(),
+            const SizedBox(height: 16),
+            _buildNutritionSection(),
             const SizedBox(height: 20),
             _buildCommonFoodsSection(),
             const SizedBox(height: 24),
@@ -183,8 +373,9 @@ class _TextDescribePageState extends State<TextDescribePage> {
           const SizedBox(height: 12),
           TextField(
             controller: _foodNameController,
+            onChanged: (_) => _updateAutoEstimate(),
             decoration: InputDecoration(
-              hintText: '例如：红烧排骨、番茄炒蛋...',
+              hintText: '例如：鸡排、米饭 或 鸡排饭...',
               hintStyle: TextStyle(color: AppColors.textHint, fontSize: 14),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.borderLight)),
               enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.borderLight)),
@@ -235,6 +426,7 @@ class _TextDescribePageState extends State<TextDescribePage> {
                 child: TextField(
                   controller: _portionController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  onChanged: (_) => _updateAutoEstimate(),
                   decoration: InputDecoration(
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: AppColors.borderLight)),
                     enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: AppColors.borderLight)),

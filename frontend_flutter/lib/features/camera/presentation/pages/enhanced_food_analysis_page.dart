@@ -196,7 +196,7 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
             case 'record_created':
               if (data['record'] != null) {
                 _currentRecord = FoodRecord.fromJson(data['record']);
-                _foodName = _currentRecord!.foodName;
+                _foodName = _currentRecord!.foodName ?? '';
               }
               _currentStep = 'record_created';
               _currentMessage = data['message'] ?? '记录创建成功';
@@ -418,7 +418,7 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
   }
 
   void _parseAnalysisDataFromRecord(FoodRecord record) {
-    _foodName = record.foodName;
+    _foodName = record.foodName ?? '';
     
     if (record.analysisResult != null) {
       final analysisResult = record.analysisResult!;

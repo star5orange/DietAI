@@ -183,82 +183,182 @@ async def create_food_record(
 
 
 #
-# @router.post("/records/traditional", response_model=BaseResponse)
-# async def create_food_record_traditional(
-#         food_data: FoodRecordCreate,
-#         current_user: User = Depends(get_current_user),
-#         db: Session = Depends(get_db)
-# ):
-#     """创建食物记录（传统接口，不使用流式输出）"""
-#     try:
-#         # 创建食物记录
-#         food_record = FoodRecord(
-#             user_id=current_user.id,
-#             record_date=food_data.record_date,
-#             meal_type=food_data.meal_type,
-#             food_name=food_data.food_name,
-#             description=food_data.description,
-#             image_url=food_data.image_url,
-#             recording_method=food_data.recording_method or 1,
-#             analysis_status=1  # 待分析
-#         )
-#
-#         db.add(food_record)
-#         db.commit()
-#         db.refresh(food_record)
-#
-#         # 如果有图片URL，异步启动分析（不等待完成）
-#         if food_data.image_url:
-#             try:
-#                 # 设置分析状态为处理中
-#                 food_record.analysis_status = 2  # 分析中
-#                 db.commit()
-#
-#                 # 异步分析（在后台进行）
-#                 import asyncio
-#                 from concurrent.futures import ThreadPoolExecutor
-#
-#                 def background_analysis():
-#                     asyncio.run(_run_background_analysis(food_data.image_url, current_user, food_record.id))
-#
-#                 executor = ThreadPoolExecutor(max_workers=1)
-#                 executor.submit(background_analysis)
-#
-#             except Exception as e:
-#                 print(f"启动后台分析失败: {str(e)}")
-#                 # 分析启动失败，但记录已创建成功
-#
-#         # 清除相关缓存
-#         cache_key = f"nutrition:daily:{current_user.id}:{food_data.record_date}"
-#         cache_service.redis.delete(cache_key)
-#
-#         # 构建响应数据
-#         response_data = {
-#             "id": food_record.id,
-#             "user_id": food_record.user_id,
-#             "record_date": food_record.record_date.isoformat(),
-#             "meal_type": food_record.meal_type,
-#             "food_name": food_record.food_name,
-#             "description": food_record.description,
-#             "image_url": food_record.image_url,
-#             "recording_method": food_record.recording_method,
-#             "analysis_status": food_record.analysis_status,
-#             "created_at": food_record.created_at.isoformat(),
-#             "analysis_result": analysis_result  # 包含Agent分析结果
-#         }
-#
-#         return BaseResponse(
-#             success=True,
-#             message="食物记录创建成功，图片正在后台分析",
-#             data=response_data
-#         )
-#
-#     except Exception as e:
-#         db.rollback()
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail=f"创建食物记录失败: {str(e)}"
-#         )
+@router.post("/records/traditional", response_model=BaseResponse)
+async def create_food_record_traditional(
+        food_data: FoodRecordCreate,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """创建食物记录（传统接口，不使用流式输出）"""
+    try:
+        food_record = FoodRecord(
+            user_id=current_user.id,
+            record_date=food_data.record_date,
+            meal_type=food_data.meal_type,
+            food_name=food_data.food_name,
+            description=food_data.description,
+            image_url=food_data.image_url,
+            recording_method=food_data.recording_method or 1,
+            analysis_status=1
+        )
+
+        db.add(food_record)
+        db.commit()
+        db.refresh(food_record)
+
+        if food_data.image_url:
+            try:
+                food_record.analysis_status = 2
+                db.commit()
+
+                import asyncio
+                from concurrent.futures import ThreadPoolExecutor
+
+                def background_analysis():
+                    asyncio.run(_run_background_analysis(food_data.image_url, current_user, food_record.id))
+
+                executor = ThreadPoolExecutor(max_workers=1)
+                executor.submit(background_analysis)
+
+            except Exception as e:
+                print(f"启动后台分析失败: {str(e)}")
+
+        cache_key = f"nutrition:daily:{current_user.id}:{food_data.record_date}"
+        cache_service.redis.delete(cache_key)
+
+        response_data = {
+            "id": food_record.id,
+            "user_id": food_record.user_id,
+            "record_date": food_record.record_date.isoformat(),
+            "meal_type": food_record.meal_type,
+            "food_name": food_record.food_name,
+            "description": food_record.description,
+            "image_url": food_record.image_url,
+            "recording_method": food_record.recording_method,
+            "analysis_status": food_record.analysis_status,
+            "created_at": food_record.created_at.isoformat(),
+        }
+
+        return BaseResponse(
+            success=True,
+            message="食物记录创建成功",
+            data=response_data
+        )
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"创建食物记录失败: {str(e)}"
+        )
+
+
+@router.put("/records/{record_id}", response_model=BaseResponse)
+async def update_food_record(
+        record_id: int,
+        food_data: FoodRecordCreate,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """更新食物记录"""
+    try:
+        food_record = db.query(FoodRecord).filter(
+            FoodRecord.id == record_id,
+            FoodRecord.user_id == current_user.id
+        ).first()
+
+        if not food_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="食物记录不存在"
+            )
+
+        food_record.record_date = food_data.record_date
+        food_record.meal_type = food_data.meal_type
+        food_record.food_name = food_data.food_name
+        food_record.description = food_data.description
+        food_record.image_url = food_data.image_url
+        food_record.recording_method = food_data.recording_method or food_record.recording_method
+
+        db.commit()
+        db.refresh(food_record)
+
+        cache_key = f"nutrition:daily:{current_user.id}:{food_data.record_date}"
+        cache_service.redis.delete(cache_key)
+
+        response_data = {
+            "id": food_record.id,
+            "user_id": food_record.user_id,
+            "record_date": food_record.record_date.isoformat(),
+            "meal_type": food_record.meal_type,
+            "food_name": food_record.food_name,
+            "description": food_record.description,
+            "image_url": food_record.image_url,
+            "recording_method": food_record.recording_method,
+            "analysis_status": food_record.analysis_status,
+            "created_at": food_record.created_at.isoformat(),
+            "updated_at": food_record.updated_at.isoformat() if hasattr(food_record, 'updated_at') else None,
+        }
+
+        return BaseResponse(
+            success=True,
+            message="食物记录更新成功",
+            data=response_data
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"更新食物记录失败: {str(e)}"
+        )
+
+
+@router.delete("/records/{record_id}", response_model=BaseResponse)
+async def delete_food_record(
+        record_id: int,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """删除食物记录"""
+    try:
+        food_record = db.query(FoodRecord).filter(
+            FoodRecord.id == record_id,
+            FoodRecord.user_id == current_user.id
+        ).first()
+
+        if not food_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="食物记录不存在"
+            )
+
+        db.query(NutritionDetail).filter(
+            NutritionDetail.food_record_id == record_id
+        ).delete()
+
+        record_date = food_record.record_date
+        db.delete(food_record)
+        db.commit()
+
+        cache_key = f"nutrition:daily:{current_user.id}:{record_date.isoformat() if hasattr(record_date, 'isoformat') else str(record_date)}"
+        cache_service.redis.delete(cache_key)
+
+        return BaseResponse(
+            success=True,
+            message="食物记录删除成功"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"删除食物记录失败: {str(e)}"
+        )
 
 
 async def _run_background_analysis(image_url: str, current_user: User, food_record_id: int):
@@ -648,7 +748,11 @@ async def get_food_records(
 
         records_data = []
         for record in records:
-            records_data.append({
+            nutrition_detail = db.query(NutritionDetail).filter(
+                NutritionDetail.food_record_id == record.id
+            ).first()
+
+            record_dict = {
                 "id": record.id,
                 "user_id": record.user_id,
                 "record_date": record.record_date.isoformat(),
@@ -660,7 +764,35 @@ async def get_food_records(
                 "analysis_status": record.analysis_status,
                 "created_at": record.created_at.isoformat(),
                 "updated_at": record.updated_at.isoformat()
-            })
+            }
+
+            if nutrition_detail:
+                record_dict["nutrition_detail"] = {
+                    "id": nutrition_detail.id,
+                    "food_record_id": nutrition_detail.food_record_id,
+                    "calories": float(nutrition_detail.calories),
+                    "protein": float(nutrition_detail.protein),
+                    "fat": float(nutrition_detail.fat),
+                    "carbohydrates": float(nutrition_detail.carbohydrates),
+                    "dietary_fiber": float(nutrition_detail.dietary_fiber),
+                    "sugar": float(nutrition_detail.sugar),
+                    "sodium": float(nutrition_detail.sodium),
+                    "cholesterol": float(nutrition_detail.cholesterol),
+                    "vitamin_a": float(nutrition_detail.vitamin_a),
+                    "vitamin_c": float(nutrition_detail.vitamin_c),
+                    "vitamin_d": float(nutrition_detail.vitamin_d),
+                    "calcium": float(nutrition_detail.calcium),
+                    "iron": float(nutrition_detail.iron),
+                    "potassium": float(nutrition_detail.potassium),
+                    "confidence_score": float(nutrition_detail.confidence_score) if nutrition_detail.confidence_score else None,
+                    "analysis_method": nutrition_detail.analysis_method,
+                    "created_at": nutrition_detail.created_at.isoformat(),
+                    "updated_at": nutrition_detail.updated_at.isoformat()
+                }
+            else:
+                record_dict["nutrition_detail"] = None
+
+            records_data.append(record_dict)
 
         pagination_info = {
             "total": total,
@@ -842,10 +974,17 @@ async def add_nutrition_detail(
                 "sugar": float(nutrition_detail.sugar),
                 "sodium": float(nutrition_detail.sodium),
                 "cholesterol": float(nutrition_detail.cholesterol),
+                "vitamin_a": float(nutrition_detail.vitamin_a),
+                "vitamin_c": float(nutrition_detail.vitamin_c),
+                "vitamin_d": float(nutrition_detail.vitamin_d),
+                "calcium": float(nutrition_detail.calcium),
+                "iron": float(nutrition_detail.iron),
+                "potassium": float(nutrition_detail.potassium),
                 "confidence_score": float(
                     nutrition_detail.confidence_score) if nutrition_detail.confidence_score else None,
                 "analysis_method": nutrition_detail.analysis_method,
-                "created_at": nutrition_detail.created_at.isoformat()
+                "created_at": nutrition_detail.created_at.isoformat(),
+                "updated_at": nutrition_detail.updated_at.isoformat()
             }
         )
     except HTTPException as e:
@@ -898,7 +1037,7 @@ async def get_daily_nutrition_summary(
             "meal_count": summary.meal_count,
             "water_intake": float(summary.water_intake),
             "exercise_calories": float(summary.exercise_calories),
-            "health_score": float(summary.health_score) if summary.health_score else None,
+            "health_score": float(summary.health_level) if summary.health_level else None,
             "created_at": summary.created_at.isoformat(),
             "updated_at": summary.updated_at.isoformat()
         }
@@ -1134,7 +1273,7 @@ async def create_daily_nutrition_summary(user_id: int, summary_date: date, db: S
         meal_count=nutrition_stats.meal_count or 0,
         water_intake=0,  # 默认值，后续可以从其他地方获取
         exercise_calories=0,  # 默认值，后续可以从运动记录获取
-        health_score=None  # 后续计算健康评分
+        health_level=None  # 后续计算健康评分
     )
 
     db.add(summary)

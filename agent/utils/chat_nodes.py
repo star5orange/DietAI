@@ -133,7 +133,7 @@ def format_chat_response(state: ChatState) -> ChatState:
     """格式化聊天回复"""
     try:
         # 构建最终响应数据
-        from agent.utils.sturcts import ChatResponse
+        from agent.utils.structs import ChatResponse
         
         chat_response = {
             "success": True,
