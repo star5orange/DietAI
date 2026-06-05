@@ -27,3 +27,7 @@ from .water import WaterIntakeCreate, WaterIntakeOut, DailyWaterSummary, WaterSt
 from .reminder import ReminderCreate, ReminderUpdate, ReminderOut
 from .notification import NotificationResponseCreate, NotificationResponseOut
 from .wellness import WellnessKnowledgeOut, DailyWellnessRecommendation, SolarTermOut
+from .constitution import (
+    ConstitutionQuizRequest, QuizAnswer, ConstitutionQuizResponse,
+    ConstitutionTypeInfo, CONSTITUTION_TYPES, CONSTITUTION_DIET_ADVICE, QUIZ_QUESTIONS
+)

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func, Index
 from .database import Base
 
 class WaterIntakeRecord(Base):
@@ -10,3 +10,7 @@ class WaterIntakeRecord(Base):
     record_time = Column(DateTime, nullable=False)
     drink_type = Column(String(20))                     # 水/茶/咖啡/果汁等
     created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index('idx_water_user_time', 'user_id', 'record_time'),
+    )
