@@ -1,30 +1,84 @@
 # DietAI — Agent Working Guide
 
-## Critical Naming Quirk
+## Project Directory Structure
 
-- `agents/nutrition_agent/utils/sturcts.py` is a **typo** (should be `structs`). It is imported as `from agents.nutrition_agent.utils.sturcts import ...`. Do NOT rename it without updating all imports.
-
-## Agent Directory is `agents/` (upstream structure)
-
-The project uses `agents/` directory (upstream convention). All `langgraph.json` paths use `./agents/...`. All imports use `agents.*`.
-
-The `agents/` directory structure:
 ```
-agents/
-  __init__.py
-  nutrition_agent/          → nutrition_agent graph entry
-    agent.py
-    utils/                  → nodes, states, sturcts, tools, prompts
-  chat_agent/               → chat_agent graph entry
-    chat_agent.py
-    utils/                  → chat_nodes, chat_states, prompts, structs
-    memory/                 → memory_manager, schemas, sync_service
-    diet_deep_agent/        → Deep Agents SDK agent
-    enhanced_nutrition/     → enhanced_nutrition_agent
-    goal_tracking/          → goal_tracking_agent
-    test_agent.py           → test_agent graph
-  common_utils/             → image_utils, model_utils, rag_utils, redis_util, configuration
-  VectorStore/              → ChromaDB persistence dir (git-tracked binary)
+DietAI/
+├── main.py                     → FastAPI entry, middleware, all routers at /api/*
+├── vector_init.py              → One-time ChromaDB vector store init
+├── agent/                      → AI Agent core (LangGraph)
+│   ├── agent.py                → Top-level agent entry
+│   ├── chat_agent.py           → chat_agent graph entry
+│   ├── test_agent.py           → test_agent graph
+│   ├── common_utils/           → Shared utilities (image, model, rag, redis, configuration)
+│   ├── diet_deep_agent/        → Deep Agents SDK agent (qwen3.5-plus)
+│   │   ├── deep_agent.py
+│   │   ├── prompts.py
+│   │   ├── config.py
+│   │   ├── memory/             → md_checkpointer, md_store, backend, namespaces
+│   │   ├── skills/             → conversation, diet_planning, health_assessment, etc.
+│   │   ├── subagents/          → definitions
+│   │   └── tools/              → food_analysis, goal_tracking, memory_tools, etc.
+│   ├── enhanced_nutrition/     → enhanced_nutrition_agent
+│   ├── goal_tracking/          → goal_tracking_agent
+│   ├── memory/                 → memory_manager, schemas, sync_service, markdown_renderer
+│   ├── nutrition_agent/        → nutrition_agent graph entry
+│   │   ├── agent.py
+│   │   └── utils/              → nodes, states, structs, tools, prompts
+│   ├── utils/                  → Shared agent utils (nodes, states, structs, tools, prompts, chat_nodes, chat_states)
+│   ├── UserMemory/             → Per-user memory files (gitignored)
+│   └── VectorStore/            → ChromaDB persistence (gitignored)
+├── routers/                    → All API route handlers (unified)
+│   ├── auth_router.py          → /api/auth
+│   ├── user_router.py          → /api/users
+│   ├── food_router.py          → /api/foods
+│   ├── health_router.py        → /api/health
+│   ├── chat_router.py          → /api/chat (AI conversation)
+│   ├── analysis_chat_router.py → /api/analysis-chat
+│   ├── goal_router.py          → /api/goals
+│   ├── deep_router.py          → /api/deep (DietDeepAgent)
+│   ├── saved_meals_router.py   → /api/saved-meals
+│   ├── exercise_router.py      → /api/exercises
+│   ├── water_router.py         → /api/water
+│   ├── reminder_router.py      → /api/reminders
+│   ├── notification_router.py  → /api/notifications
+│   └── wellness_router.py      → /api/wellness
+├── shared/                     → Backend shared code
+│   ├── config/                 → settings.py (DIETAI_ env prefix), redis_config, minio_config
+│   ├── models/                 → SQLAlchemy models + Pydantic schemas
+│   │   ├── database.py         → engine, SessionLocal, get_db
+│   │   ├── schemas/            → Pydantic schemas (base, user, food, chat, health, agent, exercise, water, etc.)
+│   │   ├── user_models.py
+│   │   ├── food_models.py
+│   │   ├── conversation_models.py
+│   │   ├── saved_meal_models.py
+│   │   ├── exercise_models.py
+│   │   ├── water_models.py
+│   │   ├── reminder_models.py
+│   │   ├── notification_models.py
+│   │   └── wellness_models.py
+│   ├── services/               → Business logic services
+│   ├── tasks/                  → Background scheduler, memory_events
+│   └── utils/                  → auth, model, nutrition_calc
+├── alembic/                    → Database migrations
+├── scripts/                    → Utility scripts
+│   ├── init_wellness_data.py
+│   └── bats/                   → Windows service start scripts
+├── docs/                       → Project documentation
+│   └── 需求文档/               → Requirements docs
+├── frontend_flutter/           → Flutter mobile app
+│   └── lib/
+│       ├── main.dart
+│       ├── core/               → cache, constants, router, services, themes, utils
+│       ├── features/           → Feature modules (auth, camera, chat, health, history, home, onboarding, pet, profile, saved_meals)
+│       ├── services/           → Shared API services (food, chat, exercise, health, etc.)
+│       └── shared/             → Shared models, widgets, pages
+├── AGENTS.md                   → This file
+├── CLAUDE.md                   → Claude Code guide
+├── .env.example                → Environment variable template
+├── docker-compose.yml
+├── Dockerfile
+└── alembic.ini
 ```
 
 ## Environment & Config
@@ -43,8 +97,8 @@ Backend requires 3 external services running before `uvicorn`:
 | Redis | 6379 | Cache for nutrition summaries & RAG results |
 | MinIO | 9000 (API) / 9001 (Console) | Food image storage |
 
-Start locally: `docker-compose up -d postgres redis minio`  
-Windows local services: bats at `bats/minio_start.bat`, `bats/postgresql_start.bat`
+Start locally: `docker-compose up -d postgres redis minio`
+Windows local services: `scripts/bats/minio_start.bat`, `scripts/bats/postgresql_start.bat`
 
 LangGraph dev server must run separately: `langgraph dev --port 2024`
 
@@ -68,64 +122,22 @@ dart run build_runner build --delete-conflicting-outputs   # codegen before run
 flutter run -d windows   # or -d chrome
 ```
 
-No Alembic migrations directory exists; tables are created via `create_tables()` in `main.py` lifespan.
-
-## Architecture Mapping
-
-```
-main.py                    → FastAPI entry, middleware, all routers registered at /api/*
-routers/                   → 8 routers: auth, user, food, health, chat, analysis_chat, goal, deep, saved_meals
-shared/
-  config/settings.py       → Settings (DIETAI_ env prefix, .env.dev)
-  config/redis_config.py   → cache_service (Redis caching)
-  config/minio_config.py   → minio_client (object storage)
-  models/                  → SQLAlchemy models + Pydantic schemas
-    database.py            → engine, SessionLocal, get_db
-    saved_meal_models.py   → SavedMeal model (new, from upstream)
-  services/                → agent_orchestrator etc.
-  tasks/                   → scheduler, memory_events
-  utils/                   → auth, model, nutrition_calc
-agents/
-  nutrition_agent/
-    agent.py               → nutrition_agent graph entry
-    utils/                 → shared states/nodes/prompts/sturcts/tools
-  chat_agent/
-    chat_agent.py          → chat_agent graph entry
-    test_agent.py          → test_agent graph (LangGraph validation)
-    utils/                 → chat_nodes, chat_states, prompts, structs
-    common_utils/           → image_utils, model_utils, rag_utils, redis_util (shared)
-    diet_deep_agent/        → Deep Agents SDK agent (qwen3.5-plus, skills/subagents/tools/memory)
-    enhanced_nutrition/     → enhanced_nutrition_agent
-    goal_tracking/          → goal_tracking_agent
-    memory/                 → memory_manager, schemas, sync_service
-  common_utils/             → configuration, image_utils, model_utils, rag_utils, redis_util
-  VectorStore/              → ChromaDB persistence dir (git-tracked binary)
-```
-
 ## LangGraph Graphs (defined in langgraph.json)
 
 | Graph Name | Entry File | Flow |
 |------------|-------------|------|
-| `nutrition_agent` | `agents/nutrition_agent/agent.py:graph` | state_init → analyze_image → extract_nutrition → retrieve_knowledge → generate_deps → generate_advice → format_response |
-| `enhanced_nutrition_agent` | `agents/chat_agent/enhanced_nutrition/enhanced_agent.py` | Enhanced nutrition analysis |
-| `chat_agent` | `agents/chat_agent/chat_agent.py:chat_graph` | initialize_chat → analyze_context → generate_response → format_response |
-| `goal_tracking_agent` | `agents/chat_agent/goal_tracking/goal_agent.py` | Nutrition goals |
-| `diet_deep_agent` | `agents/chat_agent/diet_deep_agent/deep_agent.py:agent` | Deep Agents SDK, DashScope qwen3.5-plus |
-| `test_agent` | `agents/chat_agent/test_agent.py:test_graph` | Validation test graph |
+| `nutrition_agent` | `agent/nutrition_agent/agent.py:graph` | state_init → analyze_image → extract_nutrition → retrieve_knowledge → generate_deps → generate_advice → format_response |
+| `enhanced_nutrition_agent` | `agent/enhanced_nutrition/enhanced_agent.py` | Enhanced nutrition analysis |
+| `chat_agent` | `agent/chat_agent.py:chat_graph` | initialize_chat → analyze_context → generate_response → format_response |
+| `goal_tracking_agent` | `agent/goal_tracking/goal_agent.py` | Nutrition goals |
+| `diet_deep_agent` | `agent/diet_deep_agent/deep_agent.py:agent` | Deep Agents SDK, DashScope qwen3.5-plus |
+| `test_agent` | `agent/test_agent.py:test_graph` | Validation test graph |
 
 Agent model config passed via LangGraph SDK: `{"configurable": {"vision_model_provider": "openai", "vision_model": "gpt-4.1-nano-2025-04-14", "analysis_model_provider": "openai", "analysis_model": "o3-mini-2025-01-31"}}`
 
 ## Shared Models Import Convention
 
-`shared/models/schemas.py` uses `Generic[T]` for `BaseResponse[T]`. When adding new response schemas, keep them in `schemas.py`. Database models go in `user_models.py`, `food_models.py`, `conversation_models.py`, `saved_meal_models.py`. Register new models in `shared/models/__init__.py`.
-
-## Junk Files to Ignore
-
-These are leftover from a sync and can be deleted:
-- `routers/food_router_upstream.py`
-- `frontend_flutter/pubspec_upstream.yaml`
-- `frontend_flutter/gradle_upstream.properties`
-- `agent/` directory (old structure, superseded by `agents/`)
+Pydantic schemas live in `shared/models/schemas/` package. Import as `from shared.models.schemas.xxx import ...`. Database models go in `user_models.py`, `food_models.py`, `conversation_models.py`, `saved_meal_models.py`, etc. Register new models in `shared/models/__init__.py`.
 
 ## Test Infrastructure
 

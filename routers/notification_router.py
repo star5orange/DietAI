@@ -11,4 +11,3 @@ router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 @router.post("/responses", response_model=NotificationResponseOut)
 def create_response(response: NotificationResponseCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     return create_notification_response(db, user.id, response)
-

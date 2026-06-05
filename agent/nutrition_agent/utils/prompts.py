@@ -1,4 +1,4 @@
-﻿from agent.nutrition_agent.utils.sturcts import NutritionAnalysis, AdviceDependencies
+from agent.nutrition_agent.utils.structs import NutritionAnalysis, AdviceDependencies
 
 CHAT_SYSTEM_PROMPTS = {
     "default": "你是一名专业的AI营养顾问，致力于为用户提供科学、个性化的饮食和健康建议。请基于用户的问题，提供专业、友善、实用的回复。",

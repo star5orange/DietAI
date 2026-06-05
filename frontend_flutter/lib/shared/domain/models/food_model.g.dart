@@ -131,7 +131,7 @@ NutritionDetail _$NutritionDetailFromJson(Map<String, dynamic> json) =>
       iron: (json['iron'] as num).toDouble(),
       potassium: (json['potassium'] as num).toDouble(),
       confidenceScore: (json['confidence_score'] as num?)?.toDouble(),
-      analysisMethod: json['analysis_method'] as String,
+      analysisMethod: json['analysis_method'] as String?,
     );
 
 Map<String, dynamic> _$NutritionDetailToJson(NutritionDetail instance) =>
@@ -161,11 +161,11 @@ FoodRecord _$FoodRecordFromJson(Map<String, dynamic> json) => FoodRecord(
       userId: (json['user_id'] as num).toInt(),
       recordDate: json['record_date'] as String,
       mealType: (json['meal_type'] as num).toInt(),
-      foodName: json['food_name'] as String,
+      foodName: json['food_name'] as String?,
       description: json['description'] as String?,
       imageUrl: json['image_url'] as String?,
-      recordingMethod: (json['recording_method'] as num).toInt(),
-      analysisStatus: (json['analysis_status'] as num).toInt(),
+      recordingMethod: (json['recording_method'] as num?)?.toInt(),
+      analysisStatus: (json['analysis_status'] as num?)?.toInt(),
       createdAt: json['created_at'] as String,
       updatedAt: json['updated_at'] as String?,
       nutritionDetail: json['nutrition_detail'] == null

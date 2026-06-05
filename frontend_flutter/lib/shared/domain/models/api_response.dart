@@ -10,11 +10,15 @@ class ApiResponse<T> {
   final T? data;
   final String? error;
 
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final bool notFound;
+
   const ApiResponse({
     required this.success,
     required this.message,
     this.data,
     this.error,
+    this.notFound = false,
   });
 
   factory ApiResponse.fromJson(

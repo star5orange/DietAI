@@ -3,26 +3,111 @@ LangGraph 聊天 Agent 路由
 集成聊天机器人功能，支持与后端对话系统的完整交互
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import Optional, Dict, Any, List, AsyncGenerator
-from langgraph_sdk import get_client
-import asyncio
 import json
 
 from shared.models.database import get_db
 from shared.models import schemas, user_models, conversation_models
 from shared.utils.auth import get_current_user
 from shared.config.redis_config import cache_service
+from langgraph_sdk import get_client
+from agent.chat_agent import chat_graph
+from agent.common_utils.configuration import get_agent_model_config
 
 router = APIRouter(prefix="/chat", tags=["AI对话"])
+
+
+def _coerce_optional_int(value: Any) -> Optional[int]:
+    if value in (None, ""):
+        return None
+    return int(value)
+
+
+def _coerce_int(value: Any, default: int) -> int:
+    if value in (None, ""):
+        return default
+    return int(value)
+
+
+async def _resolve_chat_params(
+    request: Optional[Request],
+    session_id: Optional[int],
+    message: str,
+    session_type: int,
+) -> tuple[Optional[int], str, int]:
+    """Accept chat params from query, JSON body, or form body."""
+    body: dict[str, Any] = {}
+    content_type = request.headers.get("content-type", "") if request else ""
+
+    try:
+        if request and "application/json" in content_type:
+            payload = await request.json()
+            if isinstance(payload, dict):
+                body = payload
+        elif request and "form" in content_type:
+            form = await request.form()
+            body = dict(form)
+    except Exception:
+        body = {}
+
+    resolved_session_id = _coerce_optional_int(body.get("session_id", session_id))
+    resolved_message = str(body.get("message", message) or "")
+    resolved_session_type = _coerce_int(body.get("session_type", session_type), 1)
+
+    return resolved_session_id, resolved_message, resolved_session_type
+
+
+async def _run_chat_agent(
+    message: str,
+    session_id: int,
+    session_type: int,
+    current_user: user_models.User,
+    db: Session,
+) -> tuple[str, dict[str, Any], list[str]]:
+    user_context = await get_user_context(current_user.id, db)
+    recent_meals = await get_recent_meals(current_user.id, db)
+    health_goals = await get_health_goals(current_user.id, db)
+    conversation_history = await get_conversation_history(session_id, db)
+    if (
+        conversation_history
+        and conversation_history[-1].get("role") == "user"
+        and conversation_history[-1].get("content") == message
+    ):
+        conversation_history = conversation_history[:-1]
+
+    result = await chat_graph.ainvoke(
+        {
+            "user_message": message,
+            "session_id": str(session_id),
+            "session_type": session_type,
+            "user_id": current_user.id,
+            "user_context": user_context,
+            "recent_meals": recent_meals,
+            "health_goals": health_goals,
+            "conversation_history": conversation_history,
+        },
+        config={"configurable": get_agent_model_config(include_vision=False)},
+    )
+
+    if result.get("error_message"):
+        raise RuntimeError(result["error_message"])
+
+    formatted = result.get("formatted_response") or {}
+    full_response = result.get("response_content") or formatted.get("response_content") or ""
+    metadata = result.get("response_metadata") or formatted.get("metadata") or {}
+    suggestions = formatted.get("suggestions") or []
+
+    return full_response, metadata, suggestions
 
 
 
 @router.post("/send-message-stream")
 async def send_chat_message_stream(
+    request: Request = None,
     session_id: Optional[int] = None,
     message: str = "",
     session_type: int = 1,
@@ -30,6 +115,9 @@ async def send_chat_message_stream(
     db: Session = Depends(get_db)
 ):
     """发送聊天消息并返回流式响应"""
+    session_id, message, session_type = await _resolve_chat_params(
+        request, session_id, message, session_type
+    )
     
     async def generate_response() -> AsyncGenerator[str, None]:
         try:
@@ -43,7 +131,8 @@ async def send_chat_message_stream(
                 ).first()
                 
                 if not session:
-                    yield f"data: {json.dumps({'error': '对话会话不存在'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'error', 'message': '对话会话不存在'}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'complete'}, ensure_ascii=False)}\n\n"
                     return
             else:
                 # 创建新会话
@@ -69,39 +158,41 @@ async def send_chat_message_stream(
             db.add(user_message)
             db.commit()
             db.refresh(user_message)
-            
+
             # 3. 获取用户上下文数据
             user_context = await get_user_context(current_user.id, db)
             recent_meals = await get_recent_meals(current_user.id, db)
             health_goals = await get_health_goals(current_user.id, db)
             conversation_history = await get_conversation_history(session.id, db)
-            
+
             # 4. 调用 LangGraph Agent
             client = get_client(url="http://127.0.0.1:2024")
-            
+
             # 创建或获取 LangGraph thread
-            if not session.langgraph_thread_id:
+            if not session.langgraph_thread_id or session.langgraph_thread_id.startswith("local-"):
                 thread = await client.threads.create()
                 session.langgraph_thread_id = thread['thread_id']
                 db.commit()
-            
+
             # 创建助手（如果需要）
             assistant = await client.assistants.create(
                 graph_id="chat_agent",
                 config={
                     "configurable": {
                         "analysis_model_provider": "deepseek",
-                        "analysis_model": "deepseek-chat"
+                        "analysis_model": "deepseek-v4-flash"
                     }
                 }
             )
-            
+
             # 5. 流式运行聊天 Agent
             yield f"data: {json.dumps({'type': 'status', 'message': '正在生成回复...'})}\n\n"
-            
+
             full_response = ""
             last_response_len = 0
-            
+            metadata = {}
+            suggestions = []
+
             async for chunk in client.runs.stream(
                 assistant_id=assistant["assistant_id"],
                 thread_id=session.langgraph_thread_id,
@@ -119,44 +210,42 @@ async def send_chat_message_stream(
             ):
                 if chunk.event != "values":
                     continue
-                
+
                 state_data = chunk.data
                 if not isinstance(state_data, dict):
                     continue
-                
+
                 response_content = state_data.get("response_content", "")
                 error_msg = state_data.get("error_message")
-                
+
                 if error_msg:
                     yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
                     return
-                
+
                 if response_content and len(response_content) > last_response_len:
                     new_content = response_content[last_response_len:]
                     full_response = response_content
                     last_response_len = len(response_content)
                     yield f"data: {json.dumps({'type': 'content', 'content': new_content})}\n\n"
-            
+
             # 6. 创建AI回复消息记录
             ai_message = conversation_models.ConversationMessage(
                 session_id=session.id,
-                message_type=2,  # 助手消息
+                message_type=2,
                 content=full_response,
                 message_metadata={
+                    **metadata,
+                    "suggestions": suggestions,
                     "stream_generated": True,
-                    "assistant_id": assistant["assistant_id"]
+                    "agent_invocation": "local_langgraph",
                 }
             )
             db.add(ai_message)
-            
-            # 7. 更新会话信息
             session.last_message_at = datetime.now()
             session.updated_at = datetime.now()
-            
             db.commit()
             db.refresh(ai_message)
-            
-            # 8. 缓存对话上下文
+
             context_data = {
                 "last_user_message": message,
                 "last_ai_response": full_response,
@@ -164,12 +253,13 @@ async def send_chat_message_stream(
                 "session_type": session.session_type
             }
             cache_service.cache_conversation_context(str(session.id), context_data)
-            
-            # 发送完成信号
-            yield f"data: {json.dumps({'type': 'complete', 'message_id': ai_message.id})}\n\n"
+
+            yield f"data: {json.dumps({'type': 'complete', 'message_id': ai_message.id}, ensure_ascii=False)}\n\n"
+            return
             
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': f'发送消息失败: {str(e)}'})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': f'发送消息失败: {str(e)}'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'complete'}, ensure_ascii=False)}\n\n"
     
     return StreamingResponse(
         generate_response(),
@@ -185,6 +275,7 @@ async def send_chat_message_stream(
 
 @router.post("/send-message", response_model=schemas.BaseResponse)
 async def send_chat_message(
+    request: Request = None,
     session_id: Optional[int] = None,
     message: str = "",
     session_type: int = 1,
@@ -192,6 +283,9 @@ async def send_chat_message(
     db: Session = Depends(get_db)
 ):
     """发送聊天消息并获取AI回复"""
+    session_id, message, session_type = await _resolve_chat_params(
+        request, session_id, message, session_type
+    )
     
     try:
         # 1. 处理会话
@@ -226,38 +320,40 @@ async def send_chat_message(
             content=message
         )
         db.add(user_message)
-        
+        db.commit()
+        db.refresh(user_message)
+
         # 3. 获取用户上下文数据
         user_context = await get_user_context(current_user.id, db)
         recent_meals = await get_recent_meals(current_user.id, db)
         health_goals = await get_health_goals(current_user.id, db)
         conversation_history = await get_conversation_history(session.id, db)
-        
+
         # 4. 调用 LangGraph Agent
         client = get_client(url="http://127.0.0.1:2024")
-        
+
         # 创建或获取 LangGraph thread
-        if not session.langgraph_thread_id:
+        if not session.langgraph_thread_id or session.langgraph_thread_id.startswith("local-"):
             thread = await client.threads.create()
             session.langgraph_thread_id = thread['thread_id']
             db.commit()
-        
+
         # 创建助手（如果需要）
         assistant = await client.assistants.create(
             graph_id="chat_agent",
             config={
                 "configurable": {
                     "analysis_model_provider": "deepseek",
-                    "analysis_model": "deepseek-chat"
+                    "analysis_model": "deepseek-v4-flash"
                 }
             }
         )
-        
+
         # 运行聊天 Agent (非流式版本，兼容现有API)
         full_response = ""
         metadata = {}
         suggestions = []
-        
+
         async for chunk in client.runs.stream(
             assistant_id=assistant["assistant_id"],
             thread_id=session.langgraph_thread_id,
@@ -275,40 +371,35 @@ async def send_chat_message(
         ):
             if chunk.event != "values":
                 continue
-            
+
             state_data = chunk.data
             if not isinstance(state_data, dict):
                 continue
-            
+
             response_content = state_data.get("response_content", "")
             if response_content:
                 full_response = response_content
-        
+
         # 5. 获取AI回复
         ai_response = full_response if full_response else '抱歉，我现在无法回复您的消息。'
-        
-        # 6. 创建AI回复消息记录
         ai_message = conversation_models.ConversationMessage(
             session_id=session.id,
-            message_type=2,  # 助手消息
+            message_type=2,
             content=ai_response,
             message_metadata={
                 **metadata,
                 "suggestions": suggestions,
-                # "langgraph_run_id": run.get('run_id')
+                "agent_invocation": "local_langgraph",
             }
         )
         db.add(ai_message)
-        
-        # 7. 更新会话信息
+
         session.last_message_at = datetime.now()
         session.updated_at = datetime.now()
-        
+
         db.commit()
-        db.refresh(user_message)
         db.refresh(ai_message)
-        
-        # 8. 缓存对话上下文
+
         context_data = {
             "last_user_message": message,
             "last_ai_response": ai_response,
@@ -316,7 +407,7 @@ async def send_chat_message(
             "session_type": session.session_type
         }
         cache_service.cache_conversation_context(str(session.id), context_data)
-        
+
         return schemas.BaseResponse(
             success=True,
             message="消息发送成功",
@@ -366,14 +457,6 @@ async def start_chat_session(
         db.add(session)
         db.commit()
         db.refresh(session)
-        
-        # 创建 LangGraph thread
-        client = get_client(url="http://127.0.0.1:2024")
-        thread = await client.threads.create()
-        
-        # 更新会话的 LangGraph thread ID
-        session.langgraph_thread_id = thread['thread_id']
-        db.commit()
         
         return schemas.BaseResponse(
             success=True,
@@ -557,11 +640,14 @@ async def get_conversation_history(session_id: int, db: Session, limit: int = 10
 @router.get("/sessions", response_model=schemas.BaseResponse)
 async def get_chat_sessions(
         session_type: Optional[int] = None,
-        limit: int = 10,
+        keyword: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 50,
         current_user: user_models.User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    """获取用户的聊天会话列表 - 前端专用"""
+    """获取用户的聊天会话列表 - 前端专用，支持关键字和日期搜索"""
     try:
         query = db.query(conversation_models.ConversationSession).filter(
             conversation_models.ConversationSession.user_id == current_user.id
@@ -569,6 +655,33 @@ async def get_chat_sessions(
 
         if session_type:
             query = query.filter(conversation_models.ConversationSession.session_type == session_type)
+
+        if start_date:
+            try:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                query = query.filter(conversation_models.ConversationSession.created_at >= start_dt)
+            except ValueError:
+                pass
+
+        if end_date:
+            try:
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d") + __import__("datetime").timedelta(days=1)
+                query = query.filter(conversation_models.ConversationSession.created_at < end_dt)
+            except ValueError:
+                pass
+
+        if keyword:
+            keyword_filter = f"%{keyword}%"
+            session_ids_with_keyword = db.query(
+                conversation_models.ConversationMessage.session_id
+            ).filter(
+                conversation_models.ConversationMessage.content.ilike(keyword_filter)
+            ).subquery()
+
+            query = query.filter(
+                (conversation_models.ConversationSession.title.ilike(keyword_filter)) |
+                (conversation_models.ConversationSession.id.in_(session_ids_with_keyword))
+            )
 
         sessions = query.order_by(
             conversation_models.ConversationSession.last_message_at.desc().nullslast(),

@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 from langchain_core.documents import Document
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -12,7 +12,7 @@ from agent.common_utils.image_utils import encode_image_to_base64
 from agent.common_utils.redis_util import get_redis_client
 from agent.common_utils.configuration import Configuration
 from agent.nutrition_agent.utils.states import AgentState
-from agent.nutrition_agent.utils.sturcts import NutritionAnalysis, NutritionAdvice, AdviceDependencies
+from agent.nutrition_agent.utils.structs import NutritionAnalysis, NutritionAdvice, AdviceDependencies
 from agent.common_utils.model_utils import get_model
 from agent.nutrition_agent.utils.prompts import create_nutrition_prompt
 
@@ -211,7 +211,9 @@ async def retrieve_nutrition_knowledge(state: AgentState) -> AgentState:
         print(state["current_step"])
 
     except Exception as e:
-        state["error_message"] = f"营养知识检索失败: {str(e)}"
+        print(f"营养知识检索失败，已跳过 RAG 检索: {str(e)}")
+        state["retrieved_documents"] = []
+        state["current_step"] = "retrieve_nutrition_knowledge"
 
     return state
 

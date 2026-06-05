@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../services/food_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
@@ -15,6 +16,7 @@ import '../../../camera/presentation/pages/camera_page.dart';
 import '../../../chat/presentation/pages/chat_page.dart';
 import '../../../health/presentation/pages/exercise_record_page.dart';
 import '../../../pet/presentation/providers/pet_provider.dart';
+import '../../../profile/presentation/providers/profile_provider.dart';
 import 'meal_selection_page.dart';
 import 'text_describe_page.dart';
 
@@ -51,9 +53,17 @@ class _HomePageState extends ConsumerState<HomePage> {
         startDate: dateStr,
         endDate: dateStr,
       );
+      DailyNutritionSummary? summary;
+      try {
+        final summaryResult =
+            await _foodService.getDailyNutritionSummary(dateStr);
+        summary = summaryResult.data;
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
           _todayRecords = result.data?.records ?? [];
+          _dailySummary = summary;
           _isLoading = false;
         });
         _updatePetState();
@@ -85,9 +95,25 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget build(BuildContext context) {
     final currentCalories = _dailySummary?.totalCalories ?? 0.0;
     final remainingCalories = (_targetCalories - currentCalories).round();
+    final userProfile = ref.watch(userProfileProvider).value;
+    final crowdTag = userProfile?.crowdTag ?? '普通';
 
     return Scaffold(
       backgroundColor: AppColors.backgroundSecondary,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                const ChatPage(sessionType: 1, title: 'AI营养顾问'),
+          ),
+        ),
+        backgroundColor: AppColors.primary,
+        elevation: 6,
+        heroTag: 'ai_chat_fab',
+        child: const Icon(LucideIcons.messageCircle,
+            size: 28, color: Colors.white),
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -106,7 +132,10 @@ class _HomePageState extends ConsumerState<HomePage> {
                       if (_isLoading)
                         const Center(child: CircularProgressIndicator())
                       else ...[
-                        _buildCalorieCard(remainingCalories, currentCalories),
+                        _buildCrowdTagHighlight(crowdTag),
+                        const SizedBox(height: 20),
+                        _buildCalorieCard(
+                            remainingCalories, currentCalories, crowdTag),
                         const SizedBox(height: 20),
                         Row(
                           children: [
@@ -151,71 +180,6 @@ class _HomePageState extends ConsumerState<HomePage> {
         children: [
           Text(dateText, style: AppTextStyles.headlineSmall),
           const Spacer(),
-          Row(
-            children: [
-              GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        const ChatPage(sessionType: 1, title: '营养顾问'),
-                  ),
-                ),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    gradient: AppColors.primaryGradient,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(LucideIcons.bot,
-                          size: 14, color: AppColors.textInverse),
-                      const SizedBox(width: 4),
-                      Text('AI教练',
-                          style: AppTextStyles.labelSmall.copyWith(
-                              color: AppColors.textInverse,
-                              fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        const ChatPage(sessionType: 1, title: 'AI助手'),
-                  ),
-                ),
-                child: Container(
-                  width: 36,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryDark,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(LucideIcons.messageCircle,
-                      size: 16, color: AppColors.textInverse),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.accent,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text('0',
-                    style: AppTextStyles.labelSmall.copyWith(
-                        color: AppColors.textInverse,
-                        fontWeight: FontWeight.w600)),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -231,15 +195,23 @@ class _HomePageState extends ConsumerState<HomePage> {
         itemCount: 7,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemBuilder: (context, index) {
-          final date = DateTime.now().subtract(Duration(days: 3 - index));
+          // 计算本周一的日期
+          final now = DateTime.now();
+          final monday = now.subtract(Duration(days: now.weekday - 1));
+          final date = monday.add(Duration(days: index));
           final isSelected = _isSameDay(date, _selectedDate);
-          final dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+          final today = DateTime(now.year, now.month, now.day);
+          final isFutureDate =
+              DateTime(date.year, date.month, date.day).isAfter(today);
+          final dayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
           return GestureDetector(
-            onTap: () {
-              setState(() => _selectedDate = date);
-              _loadDataForDate(date);
-            },
+            onTap: isFutureDate
+                ? null
+                : () {
+                    setState(() => _selectedDate = date);
+                    _loadDataForDate(date);
+                  },
             child: Container(
               width: 60,
               margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -247,31 +219,34 @@ class _HomePageState extends ConsumerState<HomePage> {
                 gradient: isSelected ? AppColors.primaryGradient : null,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    dayNames[date.weekday % 7],
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: isSelected
-                          ? AppColors.textInverse
-                          : AppColors.textTertiary,
-                      fontWeight: FontWeight.w400,
+              child: Opacity(
+                opacity: isFutureDate ? 0.35 : 1.0,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      dayNames[date.weekday - 1],
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isSelected
+                            ? AppColors.textInverse
+                            : AppColors.textTertiary,
+                        fontWeight: FontWeight.w400,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${date.day}',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: isSelected
-                          ? AppColors.textInverse
-                          : AppColors.textPrimary,
-                      fontWeight: FontWeight.w600,
+                    const SizedBox(height: 4),
+                    Text(
+                      '${date.day}',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: isSelected
+                            ? AppColors.textInverse
+                            : AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           );
@@ -280,7 +255,8 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  Widget _buildCalorieCard(int remainingCalories, double currentCalories) {
+  Widget _buildCalorieCard(
+      int remainingCalories, double currentCalories, String crowdTag) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -296,9 +272,20 @@ class _HomePageState extends ConsumerState<HomePage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('卡路里摄入', style: AppTextStyles.h4),
+                  Text(
+                      crowdTag == '减脂'
+                          ? '热量缺口'
+                          : crowdTag == '健身'
+                              ? '能量摄入'
+                              : '卡路里摄入',
+                      style: AppTextStyles.h4),
                   const SizedBox(height: 4),
-                  Text('每日目标 ${_targetCalories.round()} kcal',
+                  Text(
+                      crowdTag == '减脂'
+                          ? '今日热量缺口 ${remainingCalories >= 0 ? remainingCalories : 0} kcal'
+                          : crowdTag == '健身'
+                              ? '蛋白质目标 150g'
+                              : '每日目标 ${_targetCalories.round()} kcal',
                       style: AppTextStyles.bodySmall
                           .copyWith(color: AppColors.textSecondary)),
                 ],
@@ -465,64 +452,295 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildHealthTipCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundCard,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppColors.lightShadow,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: const BoxDecoration(
-              gradient: AppColors.warningGradient,
-              borderRadius: BorderRadius.all(Radius.circular(12)),
+    final userProfile = ref.watch(userProfileProvider).value;
+    final crowdTag = userProfile?.crowdTag ?? '普通';
+    final constitution = userProfile?.constitutionType ?? '平和质';
+    final tip = _getPersonalizedTip(crowdTag, constitution);
+
+    return GestureDetector(
+      onTap: () => context.push('/wellness'),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.backgroundCard,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: AppColors.lightShadow,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                gradient: tip.gradient,
+                borderRadius: const BorderRadius.all(Radius.circular(12)),
+              ),
+              child: Icon(tip.icon, color: AppColors.textInverse, size: 24),
             ),
-            child: const Icon(LucideIcons.leaf,
-                color: AppColors.textInverse, size: 24),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text('今日养生',
-                        style: AppTextStyles.bodyMedium.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary)),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: AppColors.warning.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(4),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text('今日养生',
+                          style: AppTextStyles.bodyMedium.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary)),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: tip.tagColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(tip.tagName,
+                            style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                                color: tip.tagColor)),
                       ),
-                      child: Text('即将上线',
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.warning)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text('根据您的体质，每日推送个性化养生建议',
-                    style: AppTextStyles.bodySmall
-                        .copyWith(color: AppColors.textTertiary)),
-              ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(tip.description,
+                      style: AppTextStyles.bodySmall
+                          .copyWith(color: AppColors.textTertiary),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis),
+                ],
+              ),
             ),
-          ),
-          Icon(LucideIcons.chevronRight,
-              size: 18, color: AppColors.textTertiary),
-        ],
+            Icon(LucideIcons.chevronRight,
+                size: 18, color: AppColors.textTertiary),
+          ],
+        ),
       ),
     );
+  }
+
+  /// 根据体质、人群标签和当日饮食数据生成个性化养生建议
+  _WellnessTip _getPersonalizedTip(String crowdTag, String constitution) {
+    final cal = _dailySummary?.totalCalories ?? 0.0;
+    final protein = _dailySummary?.totalProtein ?? 0.0;
+    final fat = _dailySummary?.totalFat ?? 0.0;
+    final carbs = _dailySummary?.totalCarbohydrates ?? 0.0;
+    final fiber = _dailySummary?.totalFiber ?? 0.0;
+    final sodium = _dailySummary?.totalSodium ?? 0.0;
+    final noRecord = _todayRecords.isEmpty;
+
+    // 节气标签（简化：按月份取）
+    final month = DateTime.now().month;
+    final solarTerms = {
+      1: '大寒',
+      2: '立春',
+      3: '惊蛰',
+      4: '清明',
+      5: '立夏',
+      6: '芒种',
+      7: '小暑',
+      8: '立秋',
+      9: '白露',
+      10: '寒露',
+      11: '立冬',
+      12: '大雪',
+    };
+    final term = solarTerms[month] ?? '芒种';
+
+    // 优先基于当日饮食数据给出针对性建议
+    if (noRecord) {
+      return _WellnessTip(
+        icon: LucideIcons.utensils,
+        gradient: AppColors.primaryGradient,
+        tagColor: AppColors.primary,
+        tagName: constitution,
+        description: '今日尚未记录饮食，及时记录可获取个性化养生建议',
+      );
+    }
+
+    // 高钠提醒
+    if (sodium > 2000) {
+      return _WellnessTip(
+        icon: LucideIcons.droplets,
+        gradient: const LinearGradient(
+            colors: [Color(0xFF42A5F5), Color(0xFF90CAF9)]),
+        tagColor: const Color(0xFF42A5F5),
+        tagName: term,
+        description: '今日钠摄入偏高(${sodium.toInt()}mg)，建议多饮水、减少盐分，可食用冬瓜、薏仁利水',
+      );
+    }
+
+    // 低纤维提醒
+    if (fiber < 10) {
+      return _WellnessTip(
+        icon: LucideIcons.salad,
+        gradient: const LinearGradient(
+            colors: [Color(0xFF66BB6A), Color(0xFFA5D6A7)]),
+        tagColor: const Color(0xFF66BB6A),
+        tagName: term,
+        description: '今日膳食纤维不足(${fiber.toInt()}g)，建议增加蔬果摄入，如燕麦、红薯、绿叶菜',
+      );
+    }
+
+    // 按人群标签推荐
+    if (crowdTag == '减脂') {
+      if (cal > _targetCalories) {
+        return _WellnessTip(
+          icon: LucideIcons.flame,
+          gradient: const LinearGradient(
+              colors: [Color(0xFFFF6B6B), Color(0xFFFF8E8E)]),
+          tagColor: const Color(0xFFFF6B6B),
+          tagName: term,
+          description: '今日热量已超标，建议晚餐以蔬菜为主，搭配30分钟有氧运动消耗多余热量',
+        );
+      }
+      return _WellnessTip(
+        icon: LucideIcons.flame,
+        gradient: const LinearGradient(
+            colors: [Color(0xFFFF6B6B), Color(0xFFFF8E8E)]),
+        tagColor: const Color(0xFFFF6B6B),
+        tagName: term,
+        description: '减脂期注意控制碳水比例，多食高蛋白低脂食物如鸡胸、鱼虾，避免油炸',
+      );
+    }
+
+    if (crowdTag == '健身') {
+      if (protein < 60) {
+        return _WellnessTip(
+          icon: LucideIcons.dumbbell,
+          gradient: const LinearGradient(
+              colors: [Color(0xFF4ECDC4), Color(0xFF6EE7DE)]),
+          tagColor: const Color(0xFF4ECDC4),
+          tagName: term,
+          description: '今日蛋白质摄入不足(${protein.toInt()}g)，建议补充鸡蛋、牛奶或蛋白粉促进肌肉恢复',
+        );
+      }
+      return _WellnessTip(
+        icon: LucideIcons.dumbbell,
+        gradient: const LinearGradient(
+            colors: [Color(0xFF4ECDC4), Color(0xFF6EE7DE)]),
+        tagColor: const Color(0xFF4ECDC4),
+        tagName: term,
+        description: '健身期注意训练后30分钟内补充蛋白质和碳水，保证充足睡眠促进恢复',
+      );
+    }
+
+    if (crowdTag == '养生') {
+      return _getConstitutionTip(constitution, term);
+    }
+
+    // 普通人群：按体质推荐
+    return _getConstitutionTip(constitution, term);
+  }
+
+  /// 按中医体质推荐
+  _WellnessTip _getConstitutionTip(String constitution, String term) {
+    final cal = _dailySummary?.totalCalories ?? 0.0;
+    final fat = _dailySummary?.totalFat ?? 0.0;
+
+    switch (constitution) {
+      case '阳虚质':
+        return _WellnessTip(
+          icon: LucideIcons.sun,
+          gradient: const LinearGradient(
+              colors: [Color(0xFFFF9800), Color(0xFFFFB74D)]),
+          tagColor: const Color(0xFFFF9800),
+          tagName: term,
+          description: '阳虚体质宜温补，多食羊肉、生姜、桂圆，少食生冷寒凉，注意保暖避寒',
+        );
+      case '阴虚质':
+        return _WellnessTip(
+          icon: LucideIcons.moon,
+          gradient: const LinearGradient(
+              colors: [Color(0xFF9C27B0), Color(0xFFBA68C8)]),
+          tagColor: const Color(0xFF9C27B0),
+          tagName: term,
+          description: '阴虚体质宜滋阴润燥，多食银耳、百合、枸杞，少食辛辣燥热之物',
+        );
+      case '气虚质':
+        return _WellnessTip(
+          icon: LucideIcons.wind,
+          gradient: const LinearGradient(
+              colors: [Color(0xFFFFC107), Color(0xFFFFD54F)]),
+          tagColor: const Color(0xFFFFC107),
+          tagName: term,
+          description: '气虚体质宜补气健脾，多食山药、黄芪、红枣，避免过度劳累和剧烈运动',
+        );
+      case '痰湿质':
+        if (fat > 65) {
+          return _WellnessTip(
+            icon: LucideIcons.droplets,
+            gradient: const LinearGradient(
+                colors: [Color(0xFF78909C), Color(0xFFB0BEC5)]),
+            tagColor: const Color(0xFF78909C),
+            tagName: term,
+            description: '今日脂肪摄入偏高(${fat.toInt()}g)，痰湿体质宜清淡祛湿，多食薏仁、冬瓜、荷叶茶',
+          );
+        }
+        return _WellnessTip(
+          icon: LucideIcons.droplets,
+          gradient: const LinearGradient(
+              colors: [Color(0xFF78909C), Color(0xFFB0BEC5)]),
+          tagColor: const Color(0xFF78909C),
+          tagName: term,
+          description: '痰湿体质宜健脾祛湿，少食甜腻厚味，多运动排汗，可饮薏仁红豆汤',
+        );
+      case '湿热质':
+        return _WellnessTip(
+          icon: LucideIcons.thermometer,
+          gradient: const LinearGradient(
+              colors: [Color(0xFFF44336), Color(0xFFEF9A9A)]),
+          tagColor: const Color(0xFFF44336),
+          tagName: term,
+          description: '湿热体质宜清热利湿，多食绿豆、苦瓜、薏仁，少食辛辣油腻和甜食',
+        );
+      case '血瘀质':
+        return _WellnessTip(
+          icon: LucideIcons.heart,
+          gradient: const LinearGradient(
+              colors: [Color(0xFFE91E63), Color(0xFFF48FB1)]),
+          tagColor: const Color(0xFFE91E63),
+          tagName: term,
+          description: '血瘀体质宜活血化瘀，多食山楂、黑豆、醋，适量运动促进气血运行',
+        );
+      case '气郁质':
+        return _WellnessTip(
+          icon: LucideIcons.smile,
+          gradient: const LinearGradient(
+              colors: [Color(0xFF7E57C2), Color(0xFFB39DDB)]),
+          tagColor: const Color(0xFF7E57C2),
+          tagName: term,
+          description: '气郁体质宜疏肝解郁，多食玫瑰花茶、佛手、柑橘类，保持心情舒畅',
+        );
+      case '特禀质':
+        return _WellnessTip(
+          icon: LucideIcons.shield,
+          gradient: const LinearGradient(
+              colors: [Color(0xFF26A69A), Color(0xFF80CBC4)]),
+          tagColor: const Color(0xFF26A69A),
+          tagName: term,
+          description: '特禀体质宜益气固表，避免过敏原，饮食清淡均衡，增强免疫力',
+        );
+      default: // 平和质
+        if (cal > _targetCalories * 1.1) {
+          return _WellnessTip(
+            icon: LucideIcons.leaf,
+            gradient: AppColors.warningGradient,
+            tagColor: AppColors.success,
+            tagName: term,
+            description: '今日热量摄入偏高，建议适当控制饮食量，增加蔬果比例，保持均衡',
+          );
+        }
+        return _WellnessTip(
+          icon: LucideIcons.leaf,
+          gradient: AppColors.warningGradient,
+          tagColor: AppColors.success,
+          tagName: term,
+          description: '平和体质保持均衡饮食即可，注意顺应节气调养，规律作息适度运动',
+        );
+    }
   }
 
   Widget _buildFoodIntakeSection() {
@@ -541,9 +759,15 @@ class _HomePageState extends ConsumerState<HomePage> {
       },
       {
         'name': '晚餐',
-        'icon': LucideIcons.utensils,
+        'icon': LucideIcons.moon,
         'gradient': AppColors.dinnerGradient,
         'type': 3
+      },
+      {
+        'name': '加餐',
+        'icon': LucideIcons.croissant,
+        'gradient': AppColors.snackGradient,
+        'type': 4
       },
     ];
 
@@ -771,7 +995,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(record.foodName,
+                Text(record.foodName ?? '未命名食物',
                     style: AppTextStyles.bodyMedium
                         .copyWith(fontWeight: FontWeight.w500),
                     maxLines: 2,
@@ -805,7 +1029,8 @@ class _HomePageState extends ConsumerState<HomePage> {
   Future<void> _editFoodRecordName(FoodRecord record) async {
     final result = await showDialog<String>(
       context: context,
-      builder: (context) => _FoodNameDialog(initialValue: record.foodName),
+      builder: (context) =>
+          _FoodNameDialog(initialValue: record.foodName ?? ''),
     );
     if (result != null && result != record.foodName) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -820,7 +1045,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('删除食物记录', style: AppTextStyles.h4),
-        content: Text('确定要删除"${record.foodName}"吗？此操作不可撤销。',
+        content: Text('确定要删除"${record.foodName ?? '未命名食物'}"吗？此操作不可撤销。',
             style: AppTextStyles.bodyMedium),
         actions: [
           TextButton(
@@ -835,9 +1060,21 @@ class _HomePageState extends ConsumerState<HomePage> {
       ),
     );
     if (confirmed == true) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('食物记录已删除'), backgroundColor: AppColors.success));
-      _refreshData();
+      final result = await _foodService.deleteFoodRecord(record.id);
+      if (result.success || result.notFound) {
+        final today = DateTime.now();
+        final dateString =
+            '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+        await _foodService.invalidateRecordsCache(dateString);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(result.notFound ? '记录已不存在，已从列表移除' : '食物记录已删除'),
+            backgroundColor: AppColors.success));
+        _refreshData();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('删除失败: ${result.message}'),
+            backgroundColor: AppColors.error));
+      }
     }
   }
 
@@ -857,7 +1094,10 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   void _handleRecordMethod(String method, String mealName) {
-    if (mealName == '早餐' || mealName == '午餐' || mealName == '晚餐') {
+    if (mealName == '早餐' ||
+        mealName == '午餐' ||
+        mealName == '晚餐' ||
+        mealName == '加餐') {
       final mealType = _getMealTypeFromName(mealName);
       _executeRecordMethod(method, mealName, mealType);
     } else {
@@ -922,8 +1162,236 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
+  /// 根据人群标签显示差异化高亮卡片
+  Widget _buildCrowdTagHighlight(String crowdTag) {
+    if (crowdTag == '减脂') {
+      final currentCalories = _dailySummary?.totalCalories ?? 0.0;
+      final deficit = (_targetCalories - currentCalories).round();
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFF6B6B), Color(0xFFFF8E8E)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            const Icon(LucideIcons.flame, color: Colors.white, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('热量缺口追踪',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white)),
+                  const SizedBox(height: 2),
+                  Text(
+                    deficit > 0 ? '还需消耗 $deficit kcal 达到目标' : '已达成今日减脂目标！',
+                    style: const TextStyle(fontSize: 12, color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                deficit > 0 ? '$deficit' : '0',
+                style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (crowdTag == '健身') {
+      final protein = _dailySummary?.totalProtein ?? 0.0;
+      const targetProtein = 150.0;
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF4ECDC4), Color(0xFF6EE7DE)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            const Icon(LucideIcons.dumbbell, color: Colors.white, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('蛋白质摄入追踪',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white)),
+                  const SizedBox(height: 2),
+                  Text(
+                    '今日已摄入 ${protein.round()}g / 目标 ${targetProtein.round()}g',
+                    style: const TextStyle(fontSize: 12, color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${protein.round()}g',
+                style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // 普通或养生：均衡展示三大营养素比例
+      final protein = _dailySummary?.totalProtein ?? 0.0;
+      final carbs = _dailySummary?.totalCarbohydrates ?? 0.0;
+      final fat = _dailySummary?.totalFat ?? 0.0;
+      final total = protein + carbs + fat;
+      final proteinPct =
+          total > 0 ? (protein * 4 / (total * 4) * 100).round() : 0;
+      final carbsPct = total > 0 ? (carbs * 4 / (total * 4) * 100).round() : 0;
+      final fatPct = total > 0 ? (fat * 9 / (total * 4) * 100).round() : 0;
+
+      // 判断均衡度
+      final isBalanced = proteinPct >= 10 &&
+          proteinPct <= 35 &&
+          carbsPct >= 45 &&
+          carbsPct <= 65 &&
+          fatPct >= 20 &&
+          fatPct <= 35;
+      final statusText = total == 0
+          ? '今日尚未记录饮食'
+          : isBalanced
+              ? '三大营养素比例均衡'
+              : '营养素比例有待调整';
+
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF2BAF74), Color(0xFF4ECDC4)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Icon(
+                  total == 0
+                      ? LucideIcons.utensils
+                      : isBalanced
+                          ? LucideIcons.checkCircle2
+                          : LucideIcons.alertCircle,
+                  color: Colors.white,
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(crowdTag == '养生' ? '养生均衡饮食' : '均衡饮食追踪',
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white)),
+                      const SizedBox(height: 2),
+                      Text(statusText,
+                          style: const TextStyle(
+                              fontSize: 12, color: Colors.white70)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (total > 0) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildMacroBar(
+                        '蛋白质', proteinPct, 15, 35, const Color(0xFF4FC3F7)),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildMacroBar(
+                        '碳水', carbsPct, 45, 65, const Color(0xFFFFB74D)),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildMacroBar(
+                        '脂肪', fatPct, 20, 35, const Color(0xFFEF5350)),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+  }
+
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
+
+  /// 营养素比例条
+  Widget _buildMacroBar(
+      String label, int pct, int minTarget, int maxTarget, Color color) {
+    final inRange = pct >= minTarget && pct <= maxTarget;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(fontSize: 10, color: Colors.white70)),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+            value: (pct / 100).clamp(0.0, 1.0),
+            backgroundColor: Colors.white24,
+            valueColor: AlwaysStoppedAnimation<Color>(
+              inRange ? Colors.white : color,
+            ),
+            minHeight: 6,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text('$pct%',
+            style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: inRange ? Colors.white : color)),
+      ],
+    );
+  }
 
   Future<void> _showEditCalorieGoalDialog() async {
     final result = await showDialog<double>(
@@ -947,6 +1415,89 @@ class _HomePageState extends ConsumerState<HomePage> {
     const targetCarbs = 250.0;
     const targetFat = 65.0;
 
+    // 获取人群标签
+    final userProfile = ref.watch(userProfileProvider).value;
+    final crowdTag = userProfile?.crowdTag ?? '普通';
+
+    // 根据人群标签决定展示顺序
+    List<Map<String, dynamic>> nutrientList;
+    if (crowdTag == '健身') {
+      // 健身：蛋白质优先
+      nutrientList = [
+        {
+          'name': '蛋白质',
+          'current': protein,
+          'target': targetProtein,
+          'color': AppColors.proteinColor,
+          'highlight': true
+        },
+        {
+          'name': '碳水化合物',
+          'current': carbs,
+          'target': targetCarbs,
+          'color': AppColors.carbsColor,
+          'highlight': false
+        },
+        {
+          'name': '脂肪',
+          'current': fat,
+          'target': targetFat,
+          'color': AppColors.fatColor,
+          'highlight': false
+        },
+      ];
+    } else if (crowdTag == '减脂') {
+      // 减脂：碳水控制优先
+      nutrientList = [
+        {
+          'name': '碳水化合物',
+          'current': carbs,
+          'target': targetCarbs,
+          'color': AppColors.carbsColor,
+          'highlight': true
+        },
+        {
+          'name': '蛋白质',
+          'current': protein,
+          'target': targetProtein,
+          'color': AppColors.proteinColor,
+          'highlight': false
+        },
+        {
+          'name': '脂肪',
+          'current': fat,
+          'target': targetFat,
+          'color': AppColors.fatColor,
+          'highlight': false
+        },
+      ];
+    } else {
+      // 普通/养生：均衡展示
+      nutrientList = [
+        {
+          'name': '蛋白质',
+          'current': protein,
+          'target': targetProtein,
+          'color': AppColors.proteinColor,
+          'highlight': false
+        },
+        {
+          'name': '碳水化合物',
+          'current': carbs,
+          'target': targetCarbs,
+          'color': AppColors.carbsColor,
+          'highlight': false
+        },
+        {
+          'name': '脂肪',
+          'current': fat,
+          'target': targetFat,
+          'color': AppColors.fatColor,
+          'highlight': false
+        },
+      ];
+    }
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -957,22 +1508,32 @@ class _HomePageState extends ConsumerState<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('今日宏观营养素', style: AppTextStyles.h4),
+          Text(
+              crowdTag == '健身'
+                  ? '今日营养重点'
+                  : crowdTag == '减脂'
+                      ? '热量来源分析'
+                      : '今日宏观营养素',
+              style: AppTextStyles.h4),
           const SizedBox(height: 16),
-          _buildNutrientProgress(
-              '蛋白质', protein, targetProtein, AppColors.proteinColor),
-          const SizedBox(height: 12),
-          _buildNutrientProgress(
-              '碳水化合物', carbs, targetCarbs, AppColors.carbsColor),
-          const SizedBox(height: 12),
-          _buildNutrientProgress('脂肪', fat, targetFat, AppColors.fatColor),
+          ...nutrientList.map((n) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildNutrientProgress(
+                  n['name'] as String,
+                  n['current'] as double,
+                  n['target'] as double,
+                  n['color'] as Color,
+                  isHighlight: n['highlight'] as bool,
+                ),
+              )),
         ],
       ),
     );
   }
 
   Widget _buildNutrientProgress(
-      String name, double current, double target, Color color) {
+      String name, double current, double target, Color color,
+      {bool isHighlight = false}) {
     final progress = target > 0 ? (current / target).clamp(0.0, 1.0) : 0.0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -980,20 +1541,44 @@ class _HomePageState extends ConsumerState<HomePage> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(name,
-                style: AppTextStyles.bodyMedium.copyWith(
-                    fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
+            Row(
+              children: [
+                Text(name,
+                    style: AppTextStyles.bodyMedium.copyWith(
+                        fontWeight:
+                            isHighlight ? FontWeight.w700 : FontWeight.w500,
+                        color: isHighlight ? color : AppColors.textPrimary)),
+                if (isHighlight) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text('重点关注',
+                        style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                            color: color)),
+                  ),
+                ],
+              ],
+            ),
             Text('${current.round()}g / ${target.round()}g',
-                style: AppTextStyles.bodySmall
-                    .copyWith(color: AppColors.textSecondary)),
+                style: AppTextStyles.bodySmall.copyWith(
+                    color: isHighlight ? color : AppColors.textSecondary,
+                    fontWeight:
+                        isHighlight ? FontWeight.w600 : FontWeight.normal)),
           ],
         ),
         const SizedBox(height: 8),
         Container(
-          height: 8,
+          height: isHighlight ? 10 : 8,
           decoration: BoxDecoration(
               color: AppColors.backgroundTertiary,
-              borderRadius: BorderRadius.circular(4)),
+              borderRadius: BorderRadius.circular(isHighlight ? 5 : 4)),
           child: FractionallySizedBox(
             alignment: Alignment.centerLeft,
             widthFactor: progress,
@@ -1086,6 +1671,23 @@ class _CalorieGoalDialogState extends State<_CalorieGoalDialog> {
       ],
     );
   }
+}
+
+/// 养生推荐数据模型
+class _WellnessTip {
+  final IconData icon;
+  final LinearGradient gradient;
+  final Color tagColor;
+  final String tagName;
+  final String description;
+
+  const _WellnessTip({
+    required this.icon,
+    required this.gradient,
+    required this.tagColor,
+    required this.tagName,
+    required this.description,
+  });
 }
 
 class _FoodNameDialog extends StatefulWidget {

@@ -117,12 +117,18 @@ class ChatService {
   /// 获取用户的聊天会话列表
   Future<ApiResponse<List<ChatSessionSummary>>> getSessions({
     int? sessionType,
-    int limit = 10,
+    String? keyword,
+    String? startDate,
+    String? endDate,
+    int limit = 50,
   }) async {
     try {
       final queryParams = <String, dynamic>{
         'limit': limit,
         if (sessionType != null) 'session_type': sessionType,
+        if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
+        if (startDate != null) 'start_date': startDate,
+        if (endDate != null) 'end_date': endDate,
       };
 
       final response = await _apiService.get(

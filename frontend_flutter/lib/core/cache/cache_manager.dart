@@ -155,6 +155,22 @@ class CacheManager {
     }
   }
 
+  /// 移除指定内存缓存
+  void removeMemoryCache(String key) {
+    _memoryCache.remove(key);
+  }
+
+  /// 移除指定本地缓存
+  Future<void> removeLocalCache(String key) async {
+    _memoryCache.remove(key);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(key);
+    } catch (e) {
+      debugPrint('移除本地缓存失败: $e');
+    }
+  }
+
   /// 获取缓存统计信息
   Map<String, dynamic> getCacheStats() {
     return {

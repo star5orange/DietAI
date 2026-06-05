@@ -11,6 +11,10 @@ class PetStorage {
   static const _keyPetPositionY = 'pet_position_y';
   static const _keyJustRecordedAt = 'pet_just_recorded_at';
   static const _keyLastStateDate = 'pet_last_state_date';
+  static const _keyPetVisible = 'pet_visible';
+  static const _keyPetType = 'pet_type';
+  static const _keyPetName = 'pet_name';
+  static const _keySkipHideConfirm = 'pet_skip_hide_confirm';
 
   final SharedPreferences _prefs;
 
@@ -48,8 +52,7 @@ class PetStorage {
   }
 
   void markJustRecorded() {
-    _prefs.setInt(
-        _keyJustRecordedAt, DateTime.now().millisecondsSinceEpoch);
+    _prefs.setInt(_keyJustRecordedAt, DateTime.now().millisecondsSinceEpoch);
   }
 
   String? get lastStateDate => _prefs.getString(_keyLastStateDate);
@@ -66,6 +69,18 @@ class PetStorage {
     }
     return false;
   }
+
+  bool get petVisible => _prefs.getBool(_keyPetVisible) ?? true;
+  set petVisible(bool v) => _prefs.setBool(_keyPetVisible, v);
+
+  String get petType => _prefs.getString(_keyPetType) ?? 'cat';
+  set petType(String v) => _prefs.setString(_keyPetType, v);
+
+  String get petName => _prefs.getString(_keyPetName) ?? '桌宠一';
+  set petName(String v) => _prefs.setString(_keyPetName, v);
+
+  bool get skipHideConfirm => _prefs.getBool(_keySkipHideConfirm) ?? false;
+  set skipHideConfirm(bool v) => _prefs.setBool(_keySkipHideConfirm, v);
 
   void addExp(int amount) {
     final newExp = exp + amount;
@@ -92,8 +107,8 @@ class PetStorage {
   }
 
   static const levelNames = [
-    '小奶猫',
-    '贪吃猫',
+    '初来乍到',
+    '渐入佳境',
     '营养学徒',
     '饮食达人',
     '营养专家',
@@ -106,7 +121,7 @@ class PetStorage {
 
   String get levelName {
     final lv = level;
-    if (lv < 1 || lv > levelNames.length) return '小奶猫';
+    if (lv < 1 || lv > levelNames.length) return '初来乍到';
     return levelNames[lv - 1];
   }
 

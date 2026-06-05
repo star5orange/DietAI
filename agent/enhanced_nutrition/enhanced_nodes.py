@@ -25,7 +25,7 @@ from agent.enhanced_nutrition.states import EnhancedNutritionState
 from agent.memory.memory_manager import MemoryManager
 from agent.common_utils.model_utils import get_model
 from agent.utils.configuration import Configuration
-from agent.utils.sturcts import NutritionAdvice
+from agent.utils.structs import NutritionAdvice
 
 logger = logging.getLogger(__name__)
 

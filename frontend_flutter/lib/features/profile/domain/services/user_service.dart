@@ -132,6 +132,24 @@ class UserService {
     }
   }
 
+  /// 删除健康目标
+  Future<ApiResponse<dynamic>> deleteHealthGoal(int goalId) async {
+    try {
+      final response = await _apiService.delete('/users/health-goals/$goalId');
+      
+      if (response.isSuccess) {
+        return ApiResponse.success(
+          message: response.message,
+          data: response.data,
+        );
+      }
+      
+      return ApiResponse.failure(message: response.message);
+    } catch (e) {
+      return ApiResponse.failure(message: '删除健康目标失败: $e');
+    }
+  }
+
   /// 添加疾病信息
   Future<ApiResponse<Disease>> addDisease(
     DiseaseCreateRequest request,
@@ -188,6 +206,49 @@ class UserService {
     }
   }
 
+  /// 更新疾病信息
+  Future<ApiResponse<Disease>> updateDisease(
+    int diseaseId,
+    DiseaseCreateRequest request,
+  ) async {
+    try {
+      final response = await _apiService.put(
+        '/users/diseases/$diseaseId',
+        data: request.toJson(),
+      );
+      
+      if (response.isSuccess && response.data != null) {
+        final disease = Disease.fromJson(response.data);
+        return ApiResponse.success(
+          message: response.message,
+          data: disease,
+        );
+      }
+      
+      return ApiResponse.failure(message: response.message);
+    } catch (e) {
+      return ApiResponse.failure(message: '更新疾病信息失败: $e');
+    }
+  }
+
+  /// 删除疾病信息
+  Future<ApiResponse<dynamic>> deleteDisease(int diseaseId) async {
+    try {
+      final response = await _apiService.delete('/users/diseases/$diseaseId');
+      
+      if (response.isSuccess) {
+        return ApiResponse.success(
+          message: response.message,
+          data: response.data,
+        );
+      }
+      
+      return ApiResponse.failure(message: response.message);
+    } catch (e) {
+      return ApiResponse.failure(message: '删除疾病信息失败: $e');
+    }
+  }
+
   /// 添加过敏信息
   Future<ApiResponse<Allergy>> addAllergy(
     AllergyCreateRequest request,
@@ -241,6 +302,49 @@ class UserService {
       return ApiResponse.failure(message: response.message);
     } catch (e) {
       return ApiResponse.failure(message: '获取过敏信息列表失败: $e');
+    }
+  }
+
+  /// 更新过敏信息
+  Future<ApiResponse<Allergy>> updateAllergy(
+    int allergyId,
+    AllergyCreateRequest request,
+  ) async {
+    try {
+      final response = await _apiService.put(
+        '/users/allergies/$allergyId',
+        data: request.toJson(),
+      );
+      
+      if (response.isSuccess && response.data != null) {
+        final allergy = Allergy.fromJson(response.data);
+        return ApiResponse.success(
+          message: response.message,
+          data: allergy,
+        );
+      }
+      
+      return ApiResponse.failure(message: response.message);
+    } catch (e) {
+      return ApiResponse.failure(message: '更新过敏信息失败: $e');
+    }
+  }
+
+  /// 删除过敏信息
+  Future<ApiResponse<dynamic>> deleteAllergy(int allergyId) async {
+    try {
+      final response = await _apiService.delete('/users/allergies/$allergyId');
+      
+      if (response.isSuccess) {
+        return ApiResponse.success(
+          message: response.message,
+          data: response.data,
+        );
+      }
+      
+      return ApiResponse.failure(message: response.message);
+    } catch (e) {
+      return ApiResponse.failure(message: '删除过敏信息失败: $e');
     }
   }
 
@@ -304,6 +408,24 @@ class UserService {
       return ApiResponse.failure(message: response.message);
     } catch (e) {
       return ApiResponse.failure(message: '获取体重记录列表失败: $e');
+    }
+  }
+
+  /// 删除体重记录
+  Future<ApiResponse<dynamic>> deleteWeightRecord(int recordId) async {
+    try {
+      final response = await _apiService.delete('/users/weight-records/$recordId');
+      
+      if (response.isSuccess) {
+        return ApiResponse.success(
+          message: response.message,
+          data: response.data,
+        );
+      }
+      
+      return ApiResponse.failure(message: response.message);
+    } catch (e) {
+      return ApiResponse.failure(message: '删除体重记录失败: $e');
     }
   }
 

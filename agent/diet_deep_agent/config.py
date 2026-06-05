@@ -4,7 +4,7 @@ DietDeepAgent 配置模块
 定义 DietDeepAgent 的所有可配置参数。
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 
@@ -13,8 +13,8 @@ class DietDeepConfig:
     """DietDeepAgent 配置"""
 
     # 主 LLM 模型（Deep Agent 使用）
-    # 使用 DeepSeek 兼容 OpenAI 接口
-    primary_model: str = "openai:deepseek-chat"
+    # 使用 DeepSeek 的 OpenAI 兼容接口
+    primary_model: str = "openai:deepseek-v4-flash"
     primary_model_base_url: str = "https://api.deepseek.com"
     primary_model_api_key_env: str = "DEEPSEEK_API_KEY"
 
@@ -40,10 +40,10 @@ class DietDeepConfig:
     food_diversity_threshold: float = 0.6  # 饮食多样性阈值（top-3 占比 > 60%）
 
     # vision 模型配置（传递给子代理）
-    vision_model_provider: str = "deepseek"
-    vision_model: str = "deepseek-chat-vl"
+    vision_model_provider: str = "qwen"
+    vision_model: str = "qwen-vl-max"
     analysis_model_provider: str = "deepseek"
-    analysis_model: str = "deepseek-chat"
+    analysis_model: str = "deepseek-v4-flash"
 
     @property
     def agent_config(self) -> dict:

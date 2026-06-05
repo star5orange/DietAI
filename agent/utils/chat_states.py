@@ -37,3 +37,7 @@ class ChatInputState(TypedDict):
     session_id: Optional[str]
     session_type: int
     user_id: int
+    conversation_history: Optional[List[BaseMessage]]
+    user_context: Optional[Dict]
+    recent_meals: Optional[List[Dict]]
+    health_goals: Optional[Dict]

@@ -76,6 +76,8 @@ class UserProfile {
   final int? onboardingStep;
   @JsonKey(name: 'constitution_type')
   final String? constitutionType;
+  @JsonKey(name: 'crowd_tag')
+  final String? crowdTag;
   @JsonKey(name: 'created_at')
   final String createdAt;
   @JsonKey(name: 'updated_at')
@@ -102,6 +104,7 @@ class UserProfile {
     this.onboardingCompleted,
     this.onboardingStep,
     this.constitutionType,
+    this.crowdTag,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -132,6 +135,7 @@ class UserProfile {
     bool? onboardingCompleted,
     int? onboardingStep,
     String? constitutionType,
+    String? crowdTag,
     String? createdAt,
     String? updatedAt,
   }) {
@@ -156,6 +160,7 @@ class UserProfile {
       onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
       onboardingStep: onboardingStep ?? this.onboardingStep,
       constitutionType: constitutionType ?? this.constitutionType,
+      crowdTag: crowdTag ?? this.crowdTag,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -342,6 +347,8 @@ class UserProfileUpdateRequest {
   final int? healthStatus;
   @JsonKey(name: 'constitution_type')
   final String? constitutionType;
+  @JsonKey(name: 'crowd_tag')
+  final String? crowdTag;
 
   const UserProfileUpdateRequest({
     this.realName,
@@ -359,6 +366,7 @@ class UserProfileUpdateRequest {
     this.mealTimes,
     this.healthStatus,
     this.constitutionType,
+    this.crowdTag,
   });
 
   factory UserProfileUpdateRequest.fromJson(Map<String, dynamic> json) =>
@@ -533,6 +541,35 @@ class DiseaseCreateRequest {
   Map<String, dynamic> toJson() => _$DiseaseCreateRequestToJson(this);
 }
 
+/// 疾病信息更新请求模型
+@JsonSerializable()
+class DiseaseUpdateRequest {
+  @JsonKey(name: 'disease_code')
+  final String? diseaseCode;
+  @JsonKey(name: 'disease_name')
+  final String? diseaseName;
+  @JsonKey(name: 'severity_level')
+  final int? severityLevel;
+  @JsonKey(name: 'diagnosed_date')
+  final String? diagnosedDate;
+  @JsonKey(name: 'is_current')
+  final bool? isCurrent;
+  final String? notes;
+
+  const DiseaseUpdateRequest({
+    this.diseaseCode,
+    this.diseaseName,
+    this.severityLevel,
+    this.diagnosedDate,
+    this.isCurrent,
+    this.notes,
+  });
+
+  factory DiseaseUpdateRequest.fromJson(Map<String, dynamic> json) =>
+      _$DiseaseUpdateRequestFromJson(json);
+  Map<String, dynamic> toJson() => _$DiseaseUpdateRequestToJson(this);
+}
+
 /// 过敏信息模型
 @JsonSerializable()
 class Allergy {
@@ -617,6 +654,30 @@ class AllergyCreateRequest {
   factory AllergyCreateRequest.fromJson(Map<String, dynamic> json) =>
       _$AllergyCreateRequestFromJson(json);
   Map<String, dynamic> toJson() => _$AllergyCreateRequestToJson(this);
+}
+
+/// 过敏信息更新请求模型
+@JsonSerializable()
+class AllergyUpdateRequest {
+  @JsonKey(name: 'allergen_type')
+  final int? allergenType;
+  @JsonKey(name: 'allergen_name')
+  final String? allergenName;
+  @JsonKey(name: 'severity_level')
+  final int? severityLevel;
+  @JsonKey(name: 'reaction_description')
+  final String? reactionDescription;
+
+  const AllergyUpdateRequest({
+    this.allergenType,
+    this.allergenName,
+    this.severityLevel,
+    this.reactionDescription,
+  });
+
+  factory AllergyUpdateRequest.fromJson(Map<String, dynamic> json) =>
+      _$AllergyUpdateRequestFromJson(json);
+  Map<String, dynamic> toJson() => _$AllergyUpdateRequestToJson(this);
 }
 
 /// 体重记录模型

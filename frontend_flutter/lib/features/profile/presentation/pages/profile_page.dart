@@ -14,6 +14,10 @@ import '../widgets/profile_edit_sheet.dart';
 import '../widgets/health_goals_sheet.dart';
 import '../widgets/weight_records_sheet.dart';
 import '../widgets/health_info_sheet.dart';
+import 'help_center_page.dart';
+import 'about_us_page.dart';
+import 'my_pet_page.dart';
+import '../../../../core/services/api_service.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -23,13 +27,35 @@ class ProfilePage extends ConsumerStatefulWidget {
 }
 
 class _ProfilePageState extends ConsumerState<ProfilePage> {
+  int _streakDays = 0;
+  int _totalRecords = 0;
+  int _avgCalories = 0;
+  bool _statsLoaded = false;
+
   @override
   void initState() {
     super.initState();
-    // 加载用户资料
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(userProfileProvider.notifier).loadUserProfile();
+      _loadUserStats();
     });
+  }
+
+  Future<void> _loadUserStats() async {
+    try {
+      final apiService = ApiService();
+      final response = await apiService.get('/users/stats');
+      if (response.success && response.data != null) {
+        setState(() {
+          _streakDays = response.data['streak_days'] ?? 0;
+          _totalRecords = response.data['total_records'] ?? 0;
+          _avgCalories = response.data['avg_calories'] ?? 0;
+          _statsLoaded = true;
+        });
+      }
+    } catch (e) {
+      // 静默失败，保持默认值
+    }
   }
 
   @override
@@ -293,15 +319,18 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       child: Row(
         children: [
           Flexible(
-            child: _buildStatCard('连续打卡', '7', '天', AppColors.primary),
+            child:
+                _buildStatCard('连续打卡', '$_streakDays', '天', AppColors.primary),
           ),
           const SizedBox(width: 12),
           Flexible(
-            child: _buildStatCard('总记录', '142', '次', AppColors.success),
+            child:
+                _buildStatCard('总记录', '$_totalRecords', '次', AppColors.success),
           ),
           const SizedBox(width: 12),
           Flexible(
-            child: _buildStatCard('平均卡路里', '1,650', 'kcal', AppColors.warning),
+            child: _buildStatCard(
+                '平均卡路里', '$_avgCalories', 'kcal', AppColors.warning),
           ),
         ],
       ),
@@ -336,6 +365,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       ),
       child: Column(
         children: [
+          _buildMenuItem(
+            icon: LucideIcons.cat,
+            title: '我的精灵',
+            subtitle: '选择精灵和显示设置',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const MyPetPage(),
+                ),
+              );
+            },
+          ),
           _buildMenuItem(
             icon: LucideIcons.target,
             title: '健康目标',
@@ -394,25 +436,43 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             icon: LucideIcons.barChart3,
             title: '数据统计',
             subtitle: '查看详细的营养分析',
-            onTap: () {},
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('数据统计功能开发中，敬请期待')),
+              );
+            },
           ),
           _buildMenuItem(
             icon: LucideIcons.download,
             title: '数据导出',
             subtitle: '导出您的饮食记录',
-            onTap: () {},
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('数据导出功能开发中，敬请期待')),
+              );
+            },
           ),
           _buildMenuItem(
             icon: LucideIcons.helpCircle,
             title: '帮助中心',
             subtitle: '常见问题和使用指南',
-            onTap: () {},
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const HelpCenterPage()),
+              );
+            },
           ),
           _buildMenuItem(
             icon: LucideIcons.info,
             title: '关于我们',
             subtitle: '了解DietAI',
-            onTap: () {},
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AboutUsPage()),
+              );
+            },
             showDivider: false,
           ),
         ],

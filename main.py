@@ -12,7 +12,7 @@ from datetime import datetime
 # 导入配置
 from shared.config.settings import get_settings
 from shared.models.database import create_tables, engine
-from shared.models import user_models, food_models, conversation_models, saved_meal_models
+from shared.models import user_models, food_models, conversation_models, saved_meal_models, exercise_models, water_models, reminder_models, notification_models, wellness_models
 
 # 导入路由
 from routers.auth_router import router as auth_router
@@ -24,6 +24,12 @@ from routers.analysis_chat_router import router as analysis_chat_router
 from routers.goal_router import router as goal_router
 from routers.deep_router import router as deep_router
 from routers.saved_meals_router import router as saved_meals_router
+
+from routers.exercise_router import router as exercise_router
+from routers.water_router import router as water_router
+from routers.reminder_router import router as reminder_router
+from routers.notification_router import router as notification_router
+from routers.wellness_router import router as wellness_router
 
 settings = get_settings()
 
@@ -237,6 +243,13 @@ app.include_router(chat_router, prefix="/api", tags=["AI对话"])
 app.include_router(analysis_chat_router, prefix="/api", tags=["分析页面聊天"])
 app.include_router(deep_router, prefix="/api", tags=["DietDeepAgent"])
 app.include_router(saved_meals_router, prefix="/api", tags=["保存菜品"])
+
+# Milestone 1 新增路由
+app.include_router(exercise_router)
+app.include_router(water_router)
+app.include_router(reminder_router)
+app.include_router(notification_router)
+app.include_router(wellness_router)
 
 # 启动服务器
 if __name__ == "__main__":

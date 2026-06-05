@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../services/health_analysis_service.dart';
-import '../../shared/domain/models/api_response.dart';
+import '../../../../services/health_analysis_service.dart';
+import '../../../../shared/domain/models/api_response.dart';
 
 class HealthAnalysisPage extends ConsumerStatefulWidget {
   const HealthAnalysisPage({super.key});
@@ -44,21 +44,26 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
     });
 
     try {
-      // 并行加载所有健康数据
-      final results = await Future.wait([
-        _healthAnalysisService.calculateBMR(),
-        _healthAnalysisService.calculateTDEE(),
+      final results = await Future.wait<dynamic>([
+        _healthAnalysisService.getBMR(),
+        _healthAnalysisService.getTDEE(),
         _healthAnalysisService.getHealthScore(),
-        _healthAnalysisService.analyzeNutritionBalance(),
+        _healthAnalysisService.getNutritionBalance(),
         _healthAnalysisService.getWeightTrend(),
       ]);
 
       setState(() {
-        if (results[0].success) _bmrResult = results[0].data as BMRResult?;
-        if (results[1].success) _tdeeResult = results[1].data as TDEEResult?;
-        if (results[2].success) _healthScoreResult = results[2].data as HealthScoreResult?;
-        if (results[3].success) _nutritionBalanceResult = results[3].data as NutritionBalanceResult?;
-        if (results[4].success) _weightTrendResult = results[4].data as WeightTrendResult?;
+        final bmrRes = results[0] as ApiResponse<BMRResult>;
+        final tdeeRes = results[1] as ApiResponse<TDEEResult>;
+        final healthRes = results[2] as ApiResponse<HealthScoreResult>;
+        final nutritionRes = results[3] as ApiResponse<NutritionBalanceResult>;
+        final weightRes = results[4] as ApiResponse<WeightTrendResult>;
+
+        if (bmrRes.success && bmrRes.data != null) _bmrResult = bmrRes.data;
+        if (tdeeRes.success && tdeeRes.data != null) _tdeeResult = tdeeRes.data;
+        if (healthRes.success && healthRes.data != null) _healthScoreResult = healthRes.data;
+        if (nutritionRes.success && nutritionRes.data != null) _nutritionBalanceResult = nutritionRes.data;
+        if (weightRes.success && weightRes.data != null) _weightTrendResult = weightRes.data;
         _isLoading = false;
       });
     } catch (e) {
@@ -99,22 +104,11 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: Colors.red,
-                      ),
+                      const Icon(Icons.error_outline, size: 64, color: Colors.red),
                       const SizedBox(height: 16),
-                      Text(
-                        _errorMessage!,
-                        style: const TextStyle(fontSize: 16),
-                        textAlign: TextAlign.center,
-                      ),
+                      Text(_errorMessage!, style: const TextStyle(fontSize: 16), textAlign: TextAlign.center),
                       const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadHealthData,
-                        child: const Text('重试'),
-                      ),
+                      ElevatedButton(onPressed: _loadHealthData, child: const Text('重试')),
                     ],
                   ),
                 )
@@ -147,17 +141,15 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '基础代谢率 (BMR)',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
+                  const Text('基础代谢率 (BMR)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
-                  Text(
-                    '${_bmrResult!.bmr.round()} kcal/日',
-                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-                  ),
+                  Text('${_bmrResult!.bmr.round()} ${_bmrResult!.unit}', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
-                  Text('计算公式: ${_bmrResult!.formula}'),
+                  Text('计算方法: ${_bmrResult!.method}'),
+                  if (_bmrResult!.description.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(_bmrResult!.description, style: const TextStyle(color: Colors.grey)),
+                  ],
                 ],
               ),
             ),
@@ -183,17 +175,18 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '每日总能量消耗 (TDEE)',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
+                  const Text('每日总能量消耗 (TDEE)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
-                  Text(
-                    '${_tdeeResult!.tdee.round()} kcal/日',
-                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-                  ),
+                  Text('${_tdeeResult!.tdee.round()} ${_tdeeResult!.unit}', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   Text('活动系数: ${_tdeeResult!.activityFactor}'),
+                  Text('活动水平: ${_tdeeResult!.activityDescription}'),
+                  const SizedBox(height: 8),
+                  Text('基础代谢: ${_tdeeResult!.bmr.round()} ${_tdeeResult!.unit}'),
+                  if (_tdeeResult!.description.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(_tdeeResult!.description, style: const TextStyle(color: Colors.grey)),
+                  ],
                 ],
               ),
             ),
@@ -210,50 +203,49 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
 
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '健康评分',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Text(
-                        '${_healthScoreResult!.score.round()}',
-                        style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 16),
-                      Text(
-                        _healthScoreResult!.level,
-                        style: const TextStyle(fontSize: 24),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  if (_healthScoreResult!.recommendations.isNotEmpty) ...[
-                    const Text(
-                      '建议：',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('健康评分', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Text('${_healthScoreResult!.totalScore.round()}', style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 16),
+                        Text(_healthScoreResult!.grade, style: const TextStyle(fontSize: 24)),
+                      ],
                     ),
-                    const SizedBox(height: 8),
-                    ..._healthScoreResult!.recommendations.map((rec) => Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Text('• $rec'),
-                        )),
+                    if (_healthScoreResult!.components.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      const Text('评分明细：', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      ..._healthScoreResult!.components.entries.map((entry) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text('• ${entry.key}: ${entry.value.score}/${entry.value.maxScore} - ${entry.value.description}'),
+                      )),
+                    ],
+                    if (_healthScoreResult!.suggestions.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      const Text('建议：', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      ..._healthScoreResult!.suggestions.map((s) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text('• $s'),
+                      )),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -263,51 +255,58 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
       return const Center(child: Text('暂无营养平衡数据'));
     }
 
+    final avg = _nutritionBalanceResult!.averages;
+    final pct = _nutritionBalanceResult!.percentages;
+    final ref = _nutritionBalanceResult!.reference;
+
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '营养平衡分析',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  if (_nutritionBalanceResult!.deficiencies.isNotEmpty) ...[
-                    const Text(
-                      '营养不足：',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red),
-                    ),
-                    ..._nutritionBalanceResult!.deficiencies.map((def) => Text('• $def')),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('营养平衡分析', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 16),
+                    Text('分析周期: ${_nutritionBalanceResult!.period.startDate} ~ ${_nutritionBalanceResult!.period.endDate}'),
+                    const SizedBox(height: 12),
+                    const Text('日均摄入：', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text('• 热量: ${avg.calories.toStringAsFixed(1)} kcal'),
+                    Text('• 蛋白质: ${avg.protein.toStringAsFixed(1)} g'),
+                    Text('• 脂肪: ${avg.fat.toStringAsFixed(1)} g'),
+                    Text('• 碳水化合物: ${avg.carbohydrates.toStringAsFixed(1)} g'),
+                    Text('• 膳食纤维: ${avg.fiber.toStringAsFixed(1)} g'),
+                    Text('• 钠: ${avg.sodium.toStringAsFixed(1)} mg'),
+                    const SizedBox(height: 12),
+                    const Text('营养素比例：', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text('• 蛋白质: ${pct.protein.toStringAsFixed(1)}%'),
+                    Text('• 脂肪: ${pct.fat.toStringAsFixed(1)}%'),
+                    Text('• 碳水化合物: ${pct.carbohydrates.toStringAsFixed(1)}%'),
+                    const SizedBox(height: 12),
+                    Text('推荐热量: ${ref.recommendedCalories.toStringAsFixed(1)} kcal'),
+                    Text('热量达标率: ${(ref.calorieRatio * 100).toStringAsFixed(1)}%'),
+                    if (_nutritionBalanceResult!.recommendations.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      const Text('建议：', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      ..._nutritionBalanceResult!.recommendations.map((r) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text('• $r'),
+                      )),
+                    ],
                   ],
-                  if (_nutritionBalanceResult!.excesses.isNotEmpty) ...[
-                    const Text(
-                      '营养过量：',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange),
-                    ),
-                    ..._nutritionBalanceResult!.excesses.map((exc) => Text('• $exc')),
-                    const SizedBox(height: 16),
-                  ],
-                  if (_nutritionBalanceResult!.recommendations.isNotEmpty) ...[
-                    const Text(
-                      '建议：',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    ..._nutritionBalanceResult!.recommendations.entries.map((entry) => 
-                        Text('• ${entry.key}: ${entry.value}')),
-                  ],
-                ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -328,29 +327,25 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '体重趋势',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
+                  const Text('体重趋势', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
-                  Text('变化率: ${_weightTrendResult!.changeRate.toStringAsFixed(2)} kg/月'),
+                  Text('趋势: ${_weightTrendResult!.trend}'),
+                  Text('体重变化: ${_weightTrendResult!.weightChange.toStringAsFixed(2)} kg'),
+                  Text('变化率: ${_weightTrendResult!.weightChangePercentage.toStringAsFixed(2)}%'),
                   const SizedBox(height: 8),
-                  Text('预测: ${_weightTrendResult!.prediction}'),
-                  const SizedBox(height: 16),
-                  if (_weightTrendResult!.trend.isNotEmpty) ...[
-                    const Text(
-                      '趋势数据：',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
+                  Text('分析: ${_weightTrendResult!.analysis}'),
+                  if (_weightTrendResult!.records.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Text('历史记录：', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     Expanded(
                       child: ListView.builder(
-                        itemCount: _weightTrendResult!.trend.length,
+                        itemCount: _weightTrendResult!.records.length,
                         itemBuilder: (context, index) {
-                          final point = _weightTrendResult!.trend[index];
+                          final record = _weightTrendResult!.records[index];
                           return ListTile(
-                            title: Text('${point['date'] ?? ''}'),
-                            trailing: Text('${point['weight'] ?? ''} kg'),
+                            title: Text(record.date),
+                            trailing: Text('${record.weight.toStringAsFixed(1)} kg'),
                           );
                         },
                       ),

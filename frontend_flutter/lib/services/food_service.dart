@@ -285,12 +285,22 @@ class FoodService {
       );
 
       if (response.success) {
-        final foodRecordsResponse = FoodRecordsResponse.fromJson(response.data as Map<String, dynamic>);
-        return ApiResponse<FoodRecordsResponse>(
-          success: true,
-          message: response.message,
-          data: foodRecordsResponse,
-        );
+        try {
+          final foodRecordsResponse = FoodRecordsResponse.fromJson(response.data as Map<String, dynamic>);
+          return ApiResponse<FoodRecordsResponse>(
+            success: true,
+            message: response.message,
+            data: foodRecordsResponse,
+          );
+        } catch (parseError, stackTrace) {
+          print('❌ FoodRecordsResponse解析失败: $parseError');
+          print('❌ 堆栈: $stackTrace');
+          print('❌ 原始数据: ${response.data}');
+          return ApiResponse<FoodRecordsResponse>(
+            success: false,
+            message: '解析食物记录失败: $parseError',
+          );
+        }
       } else {
         return ApiResponse<FoodRecordsResponse>(
           success: false,
@@ -337,25 +347,41 @@ class FoodService {
     NutritionDetailCreate nutritionData,
   ) async {
     try {
+      final requestBody = nutritionData.toJson();
+      print('📤 添加营养详情请求: recordId=$recordId, body=$requestBody');
+
       final response = await _apiService.post(
         '/foods/records/$recordId/nutrition',
-        data: nutritionData.toJson(),
+        data: requestBody,
       );
 
+      print('📥 添加营养详情响应: success=${response.success}, message=${response.message}');
+
       if (response.success) {
-        final nutritionDetail = NutritionDetail.fromJson(response.data as Map<String, dynamic>);
-        return ApiResponse<NutritionDetail>(
-          success: true,
-          message: response.message,
-          data: nutritionDetail,
-        );
+        try {
+          final nutritionDetail = NutritionDetail.fromJson(response.data as Map<String, dynamic>);
+          print('✅ 营养详情解析成功: id=${nutritionDetail.id}');
+          return ApiResponse<NutritionDetail>(
+            success: true,
+            message: response.message,
+            data: nutritionDetail,
+          );
+        } catch (parseError) {
+          print('❌ 营养详情解析失败: $parseError, 原始数据: ${response.data}');
+          return ApiResponse<NutritionDetail>(
+            success: false,
+            message: '营养详情解析失败: $parseError',
+          );
+        }
       } else {
+        print('❌ 添加营养详情API失败: ${response.message}');
         return ApiResponse<NutritionDetail>(
           success: false,
           message: response.message,
         );
       }
     } catch (e) {
+      print('❌ 添加营养详情异常: $e');
       return ApiResponse<NutritionDetail>(
         success: false,
         message: '添加营养详情失败: $e',
@@ -769,28 +795,39 @@ class FoodService {
     try {
       // 1. 检查内存缓存
       final cachedData = _cacheManager.getMemoryCache(cacheKey);
-      if (cachedData != null) {
+      if (cachedData != null && (cachedData as List).isNotEmpty) {
         print('✅ 从内存缓存获取食物记录: date=$date');
-        final records = (cachedData as List).map((item) => FoodRecord.fromJson(item)).toList();
-        return ApiResponse<List<FoodRecord>>(
-          success: true,
-          message: '从缓存获取',
-          data: records,
-        );
+        try {
+          final records = (cachedData as List).map((item) => FoodRecord.fromJson(item as Map<String, dynamic>)).toList();
+          if (records.isNotEmpty) {
+            return ApiResponse<List<FoodRecord>>(
+              success: true,
+              message: '从缓存获取',
+              data: records,
+            );
+          }
+        } catch (e) {
+           print('⚠️ 内存缓存解析失败，跳过缓存: $e');
+         }
       }
 
       // 2. 检查本地缓存
       final localCachedData = await _cacheManager.getLocalCache(cacheKey);
-      if (localCachedData != null) {
+      if (localCachedData != null && (localCachedData as List).isNotEmpty) {
         print('✅ 从本地缓存获取食物记录: date=$date');
-        final records = (localCachedData as List).map((item) => FoodRecord.fromJson(item)).toList();
-        // 将本地缓存数据也放入内存缓存
-        _cacheManager.setMemoryCache(cacheKey, localCachedData);
-        return ApiResponse<List<FoodRecord>>(
-          success: true,
-          message: '从缓存获取',
-          data: records,
-        );
+        try {
+          final records = (localCachedData as List).map((item) => FoodRecord.fromJson(item as Map<String, dynamic>)).toList();
+          if (records.isNotEmpty) {
+            _cacheManager.setMemoryCache(cacheKey, localCachedData);
+            return ApiResponse<List<FoodRecord>>(
+              success: true,
+              message: '从缓存获取',
+              data: records,
+            );
+          }
+        } catch (e) {
+           print('⚠️ 本地缓存解析失败，跳过缓存: $e');
+         }
       }
 
       print('📤 从服务器获取食物记录: date=$date');
@@ -798,13 +835,15 @@ class FoodService {
       final result = await getFoodRecords(
         startDate: date,
         endDate: date,
-        pageSize: 100, // 获取当天所有记录
+        pageSize: 100,
       );
+
+      print('📤 服务器响应: success=${result.success}, message=${result.message}');
 
       if (result.success && result.data != null) {
         final records = result.data!.records;
+        print('📤 服务器返回记录数: ${records.length}');
         
-        // 缓存数据
         final recordsJson = records.map((record) => record.toJson()).toList();
         _cacheManager.setMemoryCache(cacheKey, recordsJson);
         await _cacheManager.setLocalCache(cacheKey, recordsJson);
@@ -817,12 +856,15 @@ class FoodService {
           data: records,
         );
       } else {
+        print('❌ 服务器返回失败: ${result.message}');
         return ApiResponse<List<FoodRecord>>(
           success: false,
           message: result.message,
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ getFoodRecordsByDay异常: $e');
+      print('❌ 堆栈: $stackTrace');
       return ApiResponse<List<FoodRecord>>(
         success: false,
         message: '获取指定日期食物记录失败: $e',
@@ -865,4 +907,283 @@ class FoodService {
       endDate: endDate,
     );
   }
-} 
+
+  Future<ApiResponse<FoodRecord>> updateFoodRecord(int recordId, FoodRecordCreate foodData) async {
+    try {
+      final response = await _apiService.put(
+        '/foods/records/$recordId',
+        data: foodData.toJson(),
+      );
+
+      if (response.success && response.data != null) {
+        final foodRecord = FoodRecord.fromJson(response.data as Map<String, dynamic>);
+        return ApiResponse<FoodRecord>(
+          success: true,
+          message: response.message.isNotEmpty ? response.message : '更新成功',
+          data: foodRecord,
+        );
+      }
+      return ApiResponse<FoodRecord>(
+        success: false,
+        message: response.message.isNotEmpty ? response.message : '更新失败',
+      );
+    } catch (e) {
+      return ApiResponse<FoodRecord>(
+        success: false,
+        message: '更新食物记录失败: $e',
+      );
+    }
+  }
+
+  Future<ApiResponse<void>> deleteFoodRecord(int recordId) async {
+    try {
+      final response = await _apiService.delete('/foods/records/$recordId');
+
+      if (response.success) {
+        return ApiResponse<void>(
+          success: true,
+          message: response.message.isNotEmpty ? response.message : '删除成功',
+        );
+      }
+      return ApiResponse<void>(
+        success: false,
+        message: response.message.isNotEmpty ? response.message : '删除失败',
+        notFound: response.notFound,
+      );
+    } catch (e) {
+      return ApiResponse<void>(
+        success: false,
+        message: '删除食物记录失败: $e',
+      );
+    }
+  }
+
+  Future<void> invalidateRecordsCache(String date) async {
+    final cacheKey = 'food_records_$date';
+    _cacheManager.removeMemoryCache(cacheKey);
+    await _cacheManager.removeLocalCache(cacheKey);
+    print('🗑️ 已清除食物记录缓存: date=$date');
+  }
+
+  static const Map<String, Map<String, double>> _foodNutritionDB = {
+    '米饭': {'calories': 116, 'protein': 2.6, 'fat': 0.3, 'carbs': 25.9},
+    '白米饭': {'calories': 116, 'protein': 2.6, 'fat': 0.3, 'carbs': 25.9},
+    '馒头': {'calories': 221, 'protein': 7.0, 'fat': 1.1, 'carbs': 47.0},
+    '面条': {'calories': 110, 'protein': 3.5, 'fat': 0.5, 'carbs': 23.0},
+    '面包': {'calories': 312, 'protein': 8.3, 'fat': 5.1, 'carbs': 58.6},
+    '饺子': {'calories': 196, 'protein': 7.8, 'fat': 6.5, 'carbs': 26.0},
+    '包子': {'calories': 174, 'protein': 6.4, 'fat': 4.5, 'carbs': 27.0},
+    '粥': {'calories': 46, 'protein': 1.1, 'fat': 0.3, 'carbs': 9.8},
+    '白粥': {'calories': 46, 'protein': 1.1, 'fat': 0.3, 'carbs': 9.8},
+    '鸡蛋': {'calories': 144, 'protein': 13.3, 'fat': 8.8, 'carbs': 2.8},
+    '煮鸡蛋': {'calories': 144, 'protein': 13.3, 'fat': 8.8, 'carbs': 2.8},
+    '煎蛋': {'calories': 199, 'protein': 14.1, 'fat': 15.2, 'carbs': 1.2},
+    '牛奶': {'calories': 54, 'protein': 3.0, 'fat': 3.2, 'carbs': 3.4},
+    '豆浆': {'calories': 31, 'protein': 3.0, 'fat': 1.6, 'carbs': 1.2},
+    '酸奶': {'calories': 72, 'protein': 2.5, 'fat': 2.7, 'carbs': 9.3},
+    '鸡胸肉': {'calories': 133, 'protein': 19.4, 'fat': 5.0, 'carbs': 2.5},
+    '鸡腿': {'calories': 181, 'protein': 16.0, 'fat': 13.0, 'carbs': 0},
+    '鸡翅': {'calories': 194, 'protein': 17.4, 'fat': 13.6, 'carbs': 0},
+    '红烧肉': {'calories': 337, 'protein': 13.2, 'fat': 30.5, 'carbs': 4.2},
+    '排骨': {'calories': 264, 'protein': 16.7, 'fat': 20.4, 'carbs': 3.5},
+    '牛肉': {'calories': 125, 'protein': 19.9, 'fat': 4.2, 'carbs': 2.0},
+    '猪肉': {'calories': 143, 'protein': 20.3, 'fat': 6.2, 'carbs': 1.5},
+    '羊肉': {'calories': 118, 'protein': 20.5, 'fat': 3.9, 'carbs': 0},
+    '鱼': {'calories': 104, 'protein': 17.6, 'fat': 3.3, 'carbs': 0},
+    '三文鱼': {'calories': 139, 'protein': 17.2, 'fat': 7.8, 'carbs': 0},
+    '虾': {'calories': 87, 'protein': 16.4, 'fat': 2.4, 'carbs': 0},
+    '豆腐': {'calories': 81, 'protein': 8.1, 'fat': 3.7, 'carbs': 4.2},
+    '蔬菜': {'calories': 23, 'protein': 1.5, 'fat': 0.3, 'carbs': 3.5},
+    '白菜': {'calories': 18, 'protein': 1.5, 'fat': 0.2, 'carbs': 2.8},
+    '西兰花': {'calories': 36, 'protein': 4.1, 'fat': 0.6, 'carbs': 4.3},
+    '番茄': {'calories': 15, 'protein': 0.9, 'fat': 0.2, 'carbs': 2.5},
+    '西红柿': {'calories': 15, 'protein': 0.9, 'fat': 0.2, 'carbs': 2.5},
+    '土豆': {'calories': 76, 'protein': 2.0, 'fat': 0.2, 'carbs': 16.5},
+    '黄瓜': {'calories': 15, 'protein': 0.7, 'fat': 0.2, 'carbs': 2.4},
+    '胡萝卜': {'calories': 37, 'protein': 1.0, 'fat': 0.2, 'carbs': 7.7},
+    '苹果': {'calories': 53, 'protein': 0.2, 'fat': 0.2, 'carbs': 13.5},
+    '香蕉': {'calories': 93, 'protein': 1.4, 'fat': 0.2, 'carbs': 22.0},
+    '橙子': {'calories': 48, 'protein': 0.8, 'fat': 0.2, 'carbs': 11.1},
+    '葡萄': {'calories': 44, 'protein': 0.5, 'fat': 0.2, 'carbs': 10.3},
+    '西瓜': {'calories': 25, 'protein': 0.5, 'fat': 0.1, 'carbs': 5.8},
+    '草莓': {'calories': 30, 'protein': 1.0, 'fat': 0.2, 'carbs': 6.2},
+    '沙拉': {'calories': 35, 'protein': 1.5, 'fat': 1.0, 'carbs': 5.5},
+    '汉堡': {'calories': 295, 'protein': 14.0, 'fat': 14.5, 'carbs': 28.0},
+    '披萨': {'calories': 266, 'protein': 11.0, 'fat': 10.0, 'carbs': 33.0},
+    '炸鸡': {'calories': 279, 'protein': 18.5, 'fat': 18.0, 'carbs': 10.5},
+    '薯条': {'calories': 298, 'protein': 3.3, 'fat': 15.0, 'carbs': 36.0},
+    '可乐': {'calories': 43, 'protein': 0, 'fat': 0, 'carbs': 10.6},
+    '咖啡': {'calories': 2, 'protein': 0.3, 'fat': 0, 'carbs': 0},
+    '奶茶': {'calories': 52, 'protein': 0.8, 'fat': 1.5, 'carbs': 9.2},
+    '绿茶': {'calories': 1, 'protein': 0, 'fat': 0, 'carbs': 0},
+    '火锅': {'calories': 150, 'protein': 8.0, 'fat': 8.5, 'carbs': 10.0},
+    '炒饭': {'calories': 174, 'protein': 4.5, 'fat': 6.5, 'carbs': 25.0},
+    '炒面': {'calories': 160, 'protein': 4.0, 'fat': 5.5, 'carbs': 24.0},
+    '拉面': {'calories': 130, 'protein': 5.0, 'fat': 3.0, 'carbs': 21.0},
+    '方便面': {'calories': 472, 'protein': 9.5, 'fat': 21.1, 'carbs': 61.6},
+    '饼干': {'calories': 433, 'protein': 7.5, 'fat': 14.8, 'carbs': 70.3},
+    '蛋糕': {'calories': 348, 'protein': 7.0, 'fat': 15.0, 'carbs': 46.0},
+    '巧克力': {'calories': 544, 'protein': 5.3, 'fat': 31.0, 'carbs': 60.0},
+    '冰淇淋': {'calories': 127, 'protein': 2.4, 'fat': 5.3, 'carbs': 17.7},
+    '花生': {'calories': 563, 'protein': 24.8, 'fat': 44.3, 'carbs': 21.7},
+    '核桃': {'calories': 627, 'protein': 14.9, 'fat': 58.8, 'carbs': 19.1},
+    '红枣': {'calories': 276, 'protein': 3.2, 'fat': 0.5, 'carbs': 67.8},
+    '燕麦': {'calories': 367, 'protein': 15.0, 'fat': 6.7, 'carbs': 61.6},
+    '玉米': {'calories': 112, 'protein': 4.0, 'fat': 1.2, 'carbs': 22.8},
+    '紫薯': {'calories': 82, 'protein': 1.5, 'fat': 0.2, 'carbs': 18.0},
+    '红薯': {'calories': 86, 'protein': 1.1, 'fat': 0.2, 'carbs': 20.1},
+    '茄子': {'calories': 23, 'protein': 1.1, 'fat': 0.2, 'carbs': 3.6},
+    '青椒': {'calories': 22, 'protein': 1.0, 'fat': 0.2, 'carbs': 3.7},
+    '蘑菇': {'calories': 24, 'protein': 2.7, 'fat': 0.1, 'carbs': 4.1},
+    '海带': {'calories': 16, 'protein': 1.2, 'fat': 0.1, 'carbs': 2.1},
+    '紫菜': {'calories': 207, 'protein': 26.7, 'fat': 1.1, 'carbs': 22.5},
+    '鸡蛋灌饼': {'calories': 248, 'protein': 8.0, 'fat': 11.0, 'carbs': 30.0},
+    '油条': {'calories': 386, 'protein': 6.9, 'fat': 17.6, 'carbs': 51.0},
+    '烧饼': {'calories': 326, 'protein': 8.0, 'fat': 10.5, 'carbs': 50.0},
+    '煎饼果子': {'calories': 235, 'protein': 7.5, 'fat': 8.5, 'carbs': 32.0},
+    '小笼包': {'calories': 204, 'protein': 8.0, 'fat': 7.5, 'carbs': 26.0},
+    '馄饨': {'calories': 110, 'protein': 5.5, 'fat': 3.0, 'carbs': 14.0},
+    '粽子': {'calories': 195, 'protein': 4.5, 'fat': 3.5, 'carbs': 37.0},
+    '汤圆': {'calories': 311, 'protein': 5.0, 'fat': 6.0, 'carbs': 60.0},
+    '月饼': {'calories': 421, 'protein': 8.0, 'fat': 19.0, 'carbs': 55.0},
+  };
+
+  Map<String, double?> estimateNutrition(String foodName, double portion) {
+    final key = foodName.trim();
+    if (key.isEmpty) {
+      return {'calories': 0, 'protein': 0, 'fat': 0, 'carbs': 0};
+    }
+
+    final exactMatch = _foodNutritionDB[key];
+    if (exactMatch != null) {
+      return {
+        'calories': (exactMatch['calories'] ?? 0) * portion,
+        'protein': (exactMatch['protein'] ?? 0) * portion,
+        'fat': (exactMatch['fat'] ?? 0) * portion,
+        'carbs': (exactMatch['carbs'] ?? 0) * portion,
+      };
+    }
+
+    final tokens = _splitFoodName(key);
+    if (tokens.length > 1) {
+      return _estimateMultipleFoods(tokens, portion);
+    }
+
+    return _estimateSingleFood(key, portion);
+  }
+
+  List<String> _splitFoodName(String foodName) {
+    final delimiters = ['、', '，', ',', '和', '加', '配', '搭', '跟', '与'];
+    for (final d in delimiters) {
+      if (foodName.contains(d)) {
+        return foodName.split(d).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      }
+    }
+    return [foodName];
+  }
+
+  Map<String, double?> _estimateMultipleFoods(List<String> tokens, double portion) {
+    double totalCalories = 0, totalProtein = 0, totalFat = 0, totalCarbs = 0;
+    for (final token in tokens) {
+      final est = _estimateSingleFood(token, 1.0);
+      totalCalories += est['calories'] ?? 0;
+      totalProtein += est['protein'] ?? 0;
+      totalFat += est['fat'] ?? 0;
+      totalCarbs += est['carbs'] ?? 0;
+    }
+    return {
+      'calories': totalCalories * portion,
+      'protein': totalProtein * portion,
+      'fat': totalFat * portion,
+      'carbs': totalCarbs * portion,
+    };
+  }
+
+  Map<String, double?> _estimateSingleFood(String foodName, double portion) {
+    final exactMatch = _foodNutritionDB[foodName];
+    if (exactMatch != null) {
+      return {
+        'calories': (exactMatch['calories'] ?? 0) * portion,
+        'protein': (exactMatch['protein'] ?? 0) * portion,
+        'fat': (exactMatch['fat'] ?? 0) * portion,
+        'carbs': (exactMatch['carbs'] ?? 0) * portion,
+      };
+    }
+
+    final decomposed = _decomposeCompoundFood(foodName);
+    if (decomposed.length > 1) {
+      return _estimateMultipleFoods(decomposed, portion);
+    }
+
+    String? fuzzyKey;
+    int fuzzyKeyLen = 0;
+    for (final k in _foodNutritionDB.keys) {
+      if (foodName.contains(k) && k.length > fuzzyKeyLen) {
+        fuzzyKey = k;
+        fuzzyKeyLen = k.length;
+      }
+    }
+    if (fuzzyKey != null) {
+      final data = _foodNutritionDB[fuzzyKey]!;
+      return {
+        'calories': (data['calories'] ?? 0) * portion,
+        'protein': (data['protein'] ?? 0) * portion,
+        'fat': (data['fat'] ?? 0) * portion,
+        'carbs': (data['carbs'] ?? 0) * portion,
+      };
+    }
+
+    for (final entry in _foodNutritionDB.entries) {
+      if (entry.key.contains(foodName)) {
+        return {
+          'calories': (entry.value['calories'] ?? 0) * portion,
+          'protein': (entry.value['protein'] ?? 0) * portion,
+          'fat': (entry.value['fat'] ?? 0) * portion,
+          'carbs': (entry.value['carbs'] ?? 0) * portion,
+        };
+      }
+    }
+
+    return {
+      'calories': 100 * portion,
+      'protein': 5 * portion,
+      'fat': 3 * portion,
+      'carbs': 15 * portion,
+    };
+  }
+
+  List<String> _decomposeCompoundFood(String foodName) {
+    final sortedKeys = _foodNutritionDB.keys.toList()
+      ..sort((a, b) => b.length.compareTo(a.length));
+
+    List<String> result = [];
+    String remaining = foodName;
+
+    while (remaining.isNotEmpty) {
+      bool found = false;
+      for (final key in sortedKeys) {
+        if (remaining.contains(key)) {
+          result.add(key);
+          remaining = remaining.replaceAll(key, '');
+          found = true;
+          break;
+        }
+      }
+      if (!found) break;
+    }
+
+    remaining = remaining.replaceAll(RegExp(r'[饭面米汤饼粥粉皮卷丝粒丁块条片碎末沫]'), '');
+    if (remaining.isNotEmpty && result.isNotEmpty) {
+      for (final key in sortedKeys) {
+        if (key.length == 1 && remaining.contains(key)) {
+          result.add(key);
+          remaining = remaining.replaceAll(key, '');
+        }
+      }
+    }
+
+    if (result.length <= 1) return [foodName];
+
+    return result;
+  }
+}

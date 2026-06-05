@@ -5,7 +5,7 @@ from typing_extensions import TypedDict
 
 from langchain_openai.chat_models.base import BaseChatOpenAI
 
-from agent.utils.sturcts import NutritionAnalysis, NutritionAdvice, AdviceDependencies
+from agent.utils.structs import NutritionAnalysis, NutritionAdvice, AdviceDependencies
 
 
 class AgentState(TypedDict):

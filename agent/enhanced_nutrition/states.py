@@ -12,7 +12,7 @@ Key difference from original: Includes user memory context for personalized anal
 from typing import Dict, List, Optional, TypedDict
 from langchain_openai.chat_models.base import BaseChatOpenAI
 
-from agent.utils.sturcts import NutritionAnalysis, NutritionAdvice, AdviceDependencies
+from agent.utils.structs import NutritionAnalysis, NutritionAdvice, AdviceDependencies
 
 
 class EnhancedNutritionState(TypedDict):

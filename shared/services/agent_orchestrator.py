@@ -21,6 +21,7 @@ from datetime import datetime, date
 from langgraph_sdk import get_client
 from sqlalchemy.orm import Session
 
+from agent.common_utils.configuration import get_agent_model_config
 from agent.memory.memory_manager import MemoryManager
 from agent.memory.sync_service import SyncService
 from shared.config.settings import get_settings
@@ -333,14 +334,7 @@ class AgentOrchestrator:
             # Create assistant for enhanced nutrition agent
             assistant = await client.assistants.create(
                 graph_id="enhanced_nutrition_agent",
-                config={
-                    "configurable": {
-                        "vision_model_provider": "openai",
-                        "vision_model": "gpt-4.1-nano-2025-04-14",
-                        "analysis_model_provider": "openai",
-                        "analysis_model": "o3-mini-2025-01-31"
-                    }
-                }
+                config={"configurable": get_agent_model_config()}
             )
 
             # Create thread
@@ -386,14 +380,7 @@ class AgentOrchestrator:
 
             assistant = await client.assistants.create(
                 graph_id="nutrition_agent",
-                config={
-                    "configurable": {
-                        "vision_model_provider": "openai",
-                        "vision_model": "gpt-4.1-nano-2025-04-14",
-                        "analysis_model_provider": "openai",
-                        "analysis_model": "o3-mini-2025-01-31"
-                    }
-                }
+                config={"configurable": get_agent_model_config()}
             )
 
             thread = await client.threads.create()

@@ -13,7 +13,7 @@ import logging
 import uuid
 from typing import Any, AsyncGenerator, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -24,6 +24,28 @@ from shared.utils.auth import get_current_user
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/deep", tags=["DietDeepAgent"])
+
+
+async def _resolve_deep_chat_params(
+    request: Request,
+    message: str,
+    session_id: Optional[str],
+) -> tuple[str, Optional[str]]:
+    body: dict[str, Any] = {}
+    content_type = request.headers.get("content-type", "") if request else ""
+
+    try:
+        if request and "application/json" in content_type:
+            payload = await request.json()
+            if isinstance(payload, dict):
+                body = payload
+        elif request and "form" in content_type:
+            form = await request.form()
+            body = dict(form)
+    except Exception:
+        body = {}
+
+    return str(body.get("message", message) or ""), body.get("session_id", session_id)
 
 
 def _get_agent():
@@ -45,8 +67,9 @@ def _get_cached_agent():
 
 @router.post("/chat")
 async def deep_chat(
-    message: str = Form(""),
-    session_id: Optional[str] = Form(None),
+    request: Request,
+    message: str = "",
+    session_id: Optional[str] = None,
     current_user: user_models.User = Depends(get_current_user),
 ):
     """
@@ -55,6 +78,8 @@ async def deep_chat(
     支持文字消息，Agent 自动规划任务并调用工具。
     返回 SSE 流式响应。
     """
+    message, session_id = await _resolve_deep_chat_params(request, message, session_id)
+
     async def generate_response() -> AsyncGenerator[str, None]:
         try:
             agent = _get_cached_agent()
@@ -87,13 +112,15 @@ async def deep_chat(
                     if hasattr(last_msg, "content")
                     else str(last_msg)
                 )
-                yield f"data: {json.dumps({'type': 'message', 'content': content}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'content', 'content': content}, ensure_ascii=False)}\n\n"
 
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
 
         except Exception as e:
             logger.error(f"deep_chat error: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'complete'}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         generate_response(),
@@ -158,11 +185,13 @@ async def deep_analyze(
                 )
                 yield f"data: {json.dumps({'type': 'analysis', 'content': content}, ensure_ascii=False)}\n\n"
 
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
 
         except Exception as e:
             logger.error(f"deep_analyze error: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'complete'}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         generate_response(),

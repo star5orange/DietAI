@@ -350,9 +350,11 @@ class ApiService {
       );
     } catch (e) {
       if (e is DioException) {
+        final isNotFound = e.response?.statusCode == 404;
         return ApiResponse<dynamic>(
           success: false,
           message: e.response?.data?['message'] ?? e.message ?? '请求失败',
+          notFound: isNotFound,
         );
       }
       return ApiResponse<dynamic>(

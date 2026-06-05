@@ -64,7 +64,7 @@ class FoodRecordCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                foodRecord.foodName.isNotEmpty ? foodRecord.foodName : '未命名食物',
+                foodRecord.foodName?.isNotEmpty == true ? foodRecord.foodName! : '未命名食物',
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
@@ -100,7 +100,7 @@ class FoodRecordCard extends StatelessWidget {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: _getStatusColor(foodRecord.analysisStatus),
+                      color: _getStatusColor(foodRecord.analysisStatus ?? 0),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
