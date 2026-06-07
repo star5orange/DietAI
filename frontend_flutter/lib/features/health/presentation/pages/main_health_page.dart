@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:intl/intl.dart';
 
@@ -15,16 +16,18 @@ import '../../../health/presentation/pages/health_analysis_page.dart';
 import '../../../health/presentation/pages/exercise_record_page.dart';
 import '../../../health/presentation/pages/reminder_settings_page.dart';
 import '../../../health/presentation/pages/constitution_quiz_page.dart';
+import '../../../health/presentation/pages/wellness_page.dart';
 import '../../../../shared/presentation/widgets/water_intake_widget.dart';
+import '../../../profile/presentation/providers/profile_provider.dart';
 
-class HealthPage extends StatefulWidget {
+class HealthPage extends ConsumerStatefulWidget {
   const HealthPage({super.key});
 
   @override
-  State<HealthPage> createState() => _HealthPageState();
+  ConsumerState<HealthPage> createState() => _HealthPageState();
 }
 
-class _HealthPageState extends State<HealthPage> {
+class _HealthPageState extends ConsumerState<HealthPage> {
   final FoodService _foodService = FoodService();
   final WaterService _waterService = WaterService();
   DailyNutritionSummary? _dailySummary;
@@ -43,7 +46,8 @@ class _HealthPageState extends State<HealthPage> {
     setState(() => _isLoading = true);
     try {
       final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      final summaryResult = await _foodService.getDailyNutritionSummary(dateStr);
+      final summaryResult =
+          await _foodService.getDailyNutritionSummary(dateStr);
       final waterResult = await _waterService.getBackendWaterIntake(dateStr);
 
       if (mounted) {
@@ -92,10 +96,22 @@ class _HealthPageState extends State<HealthPage> {
 
   Widget _buildHealthSummaryCard() {
     final calories = _dailySummary?.totalCalories ?? 0.0;
-    final waterLiters = _waterIntake / 1000;
-    final waterGoalLiters = _waterGoal / 1000;
-    final caloriesProgress = _targetCalories > 0 ? (calories / _targetCalories).clamp(0.0, 1.0) : 0.0;
-    final waterProgress = _waterGoal > 0 ? (_waterIntake / _waterGoal).clamp(0.0, 1.0) : 0.0;
+    // 智能格式化水量
+    String fmtWater(double ml) {
+      if (ml < 1000) return '${ml.toInt()}';
+      final s = (ml / 1000).toStringAsFixed(2);
+      return s.replaceAll(RegExp(r'\.?0+$'), '');
+    }
+
+    final waterDisplay = _waterIntake >= 1000
+        ? '${fmtWater(_waterIntake)} / ${fmtWater(_waterGoal)}'
+        : '${_waterIntake.toInt()} / ${fmtWater(_waterGoal)}';
+    final waterUnit = _waterIntake >= 1000 ? 'L' : 'ml / L';
+    final caloriesProgress = _targetCalories > 0
+        ? (calories / _targetCalories).clamp(0.0, 1.0)
+        : 0.0;
+    final waterProgress =
+        _waterGoal > 0 ? (_waterIntake / _waterGoal).clamp(0.0, 1.0) : 0.0;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -150,8 +166,8 @@ class _HealthPageState extends State<HealthPage> {
               Expanded(
                 child: _buildSummaryItem(
                   '水分',
-                  '${waterLiters.toStringAsFixed(1)} / ${waterGoalLiters.toStringAsFixed(1)}',
-                  'L',
+                  waterDisplay,
+                  waterUnit,
                   waterProgress,
                 ),
               ),
@@ -302,16 +318,30 @@ class _HealthPageState extends State<HealthPage> {
           MaterialPageRoute(builder: (context) => const ConstitutionQuizPage()),
         ),
       ),
+      _FeatureItem(
+        icon: LucideIcons.leaf,
+        title: '养生推荐',
+        subtitle: '每日养生建议与食谱',
+        color: const Color(0xFF43A047),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const WellnessPage()),
+        ),
+      ),
     ];
+
+    // 根据屏幕宽度自适应列数
+    final screenWidth = MediaQuery.of(context).size.width;
+    final crossCount = screenWidth >= 600 ? 4 : (screenWidth >= 400 ? 4 : 3);
 
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        childAspectRatio: 1.2,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossCount,
+        childAspectRatio: 0.85,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
       ),
       itemCount: features.length,
       itemBuilder: (context, index) {
@@ -324,47 +354,39 @@ class _HealthPageState extends State<HealthPage> {
   Widget _buildFeatureCard(_FeatureItem feature) {
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      elevation: 2,
+      borderRadius: BorderRadius.circular(12),
+      elevation: 1,
       shadowColor: AppColors.shadow,
       child: InkWell(
         onTap: feature.onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 48,
-                height: 48,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   color: feature.color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   feature.icon,
                   color: feature.color,
-                  size: 24,
+                  size: 22,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               Text(
                 feature.title,
-                style: AppTextStyles.h6.copyWith(
+                style: AppTextStyles.labelMedium.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
-              ),
-              const SizedBox(height: 4),
-              Expanded(
-                child: Text(
-                  feature.subtitle,
-                  style: AppTextStyles.bodySmall.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -375,8 +397,85 @@ class _HealthPageState extends State<HealthPage> {
 
   Widget _buildHealthTipsCard() {
     final calories = _dailySummary?.totalCalories ?? 0.0;
-    final remaining = _targetCalories - calories;
+    final protein = _dailySummary?.totalProtein ?? 0.0;
+    final fat = _dailySummary?.totalFat ?? 0.0;
+    final carbs = _dailySummary?.totalCarbohydrates ?? 0.0;
+    final fiber = _dailySummary?.totalFiber ?? 0.0;
+    final sodium = _dailySummary?.totalSodium ?? 0.0;
+    final exerciseCal = _dailySummary?.exerciseCalories ?? 0.0;
+    final remaining = _targetCalories - calories + exerciseCal;
     final waterRemaining = _waterGoal - _waterIntake;
+
+    final userProfile = ref.watch(userProfileProvider).value;
+    final crowdTag = userProfile?.crowdTag ?? '普通';
+    final constitution = userProfile?.constitutionType ?? '平和质';
+
+    // 动态生成贴士列表
+    final tips = <MapEntry<String, String>>[];
+
+    // 饮水提示
+    if (waterRemaining > 0) {
+      tips.add(MapEntry('💧 记得多喝水',
+          '今天的饮水量还差${(waterRemaining / 1000).toStringAsFixed(2)}L，保持充足水分有助于新陈代谢。'));
+    } else if (_waterIntake > 0) {
+      tips.add(MapEntry('💧 饮水达标', '今天的饮水量已达标，继续保持！'));
+    }
+
+    // 热量提示
+    if (calories == 0) {
+      tips.add(MapEntry('🍽️ 开始记录', '今日尚未记录饮食，及时记录可获取个性化建议。'));
+    } else if (remaining > 0) {
+      tips.add(MapEntry('🍽️ 热量预算', '今日还可摄入约${remaining.toInt()}kcal，注意营养均衡。'));
+    } else if (remaining < 0) {
+      tips.add(MapEntry(
+          '⚠️ 热量超标', '今日热量已超出目标${(-remaining).toInt()}kcal，建议适当增加运动。'));
+    } else {
+      tips.add(MapEntry('🍽️ 热量达标', '今日热量摄入已达到目标，注意保持营养均衡。'));
+    }
+
+    // 高钠提醒
+    if (sodium > 2000) {
+      tips.add(
+          MapEntry('🧂 钠摄入偏高', '今日钠摄入${sodium.toInt()}mg，建议减少盐分，多食冬瓜、薏仁利水。'));
+    }
+
+    // 低纤维提醒
+    if (fiber < 10 && calories > 0) {
+      tips.add(
+          MapEntry('🥦 膳食纤维不足', '今日膳食纤维仅${fiber.toInt()}g，建议增加蔬果如燕麦、红薯、绿叶菜。'));
+    }
+
+    // 蛋白质提醒
+    if (protein < 40 && calories > 0) {
+      tips.add(
+          MapEntry('🥚 蛋白质不足', '今日蛋白质仅${protein.toInt()}g，建议补充鸡蛋、牛奶、鱼虾等优质蛋白。'));
+    }
+
+    // 运动提醒
+    if (exerciseCal > 0) {
+      tips.add(
+          MapEntry('🏃 运动消耗', '今日运动消耗${exerciseCal.toInt()}kcal，继续保持运动习惯！'));
+    } else if (calories > _targetCalories * 0.5) {
+      tips.add(MapEntry('🏃 适量运动', '今日尚未记录运动，适当活动有助于消耗多余热量。'));
+    }
+
+    // 体质相关提示
+    final constitutionTip = _getConstitutionTip(constitution, crowdTag);
+    if (constitutionTip != null) {
+      tips.add(constitutionTip);
+    }
+
+    // 人群标签提示
+    if (crowdTag == '减脂' && fat > 65) {
+      tips.add(
+          MapEntry('🔥 脂肪偏高', '今日脂肪摄入${fat.toInt()}g，减脂期建议控制油脂，选择低脂烹饪方式。'));
+    } else if (crowdTag == '健身' && protein >= 60) {
+      tips.add(
+          MapEntry('💪 蛋白质充足', '今日蛋白质${protein.toInt()}g，健身期保持蛋白质摄入有助于肌肉恢复。'));
+    }
+
+    // 限制最多显示5条
+    final displayTips = tips.take(5).toList();
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -411,40 +510,38 @@ class _HealthPageState extends State<HealthPage> {
             ],
           ),
           const SizedBox(height: 16),
-          if (waterRemaining > 0)
-            _buildHealthTip(
-              '💧 记得多喝水',
-              '今天的饮水量还差${(waterRemaining / 1000).toStringAsFixed(1)}L，保持充足的水分有助于新陈代谢。',
-            )
-          else
-            _buildHealthTip(
-              '💧 饮水达标',
-              '今天的饮水量已达标，继续保持！',
-            ),
-          const SizedBox(height: 12),
-          if (remaining > 0)
-            _buildHealthTip(
-              '🍽️ 热量预算',
-              '今日还可摄入约${remaining.toInt()}kcal，注意营养均衡。',
-            )
-          else if (remaining < 0)
-            _buildHealthTip(
-              '⚠️ 热量超标',
-              '今日热量已超出目标${(-remaining).toInt()}kcal，建议适当增加运动。',
-            )
-          else
-            _buildHealthTip(
-              '🍽️ 热量达标',
-              '今日热量摄入已达到目标，注意保持营养均衡。',
-            ),
-          const SizedBox(height: 12),
-          _buildHealthTip(
-            '🥗 营养均衡',
-            '建议每餐搭配蛋白质、碳水和蔬菜，保持营养均衡。',
-          ),
+          ...displayTips.map((tip) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildHealthTip(tip.key, tip.value),
+              )),
         ],
       ),
     );
+  }
+
+  /// 根据体质和人群标签返回个性化贴士
+  MapEntry<String, String>? _getConstitutionTip(
+      String constitution, String crowdTag) {
+    switch (constitution) {
+      case '阳虚质':
+        return MapEntry('☀️ 阳虚体质', '宜温补，多食羊肉、生姜、桂圆，少食生冷寒凉，注意保暖避寒。');
+      case '阴虚质':
+        return MapEntry('🌙 阴虚体质', '宜滋阴润燥，多食银耳、百合、枸杞，少食辛辣燥热之物。');
+      case '气虚质':
+        return MapEntry('💨 气虚体质', '宜补气健脾，多食山药、黄芪、红枣，避免过度劳累。');
+      case '痰湿质':
+        return MapEntry('💧 痰湿体质', '宜健脾祛湿，少食甜腻厚味，多运动排汗，可饮薏仁红豆汤。');
+      case '湿热质':
+        return MapEntry('🌡️ 湿热体质', '宜清热利湿，多食绿豆、苦瓜、薏仁，少食辛辣油腻。');
+      case '血瘀质':
+        return MapEntry('❤️ 血瘀体质', '宜活血化瘀，多食山楂、黑豆、醋，适量运动促进气血运行。');
+      case '气郁质':
+        return MapEntry('😊 气郁体质', '宜疏肝解郁，多食玫瑰花茶、佛手、柑橘类，保持心情舒畅。');
+      case '特禀质':
+        return MapEntry('🛡️ 特禀体质', '宜益气固表，避免过敏原，饮食清淡均衡，增强免疫力。');
+      default:
+        return null;
+    }
   }
 
   Widget _buildHealthTip(String title, String content) {

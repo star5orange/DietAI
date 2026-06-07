@@ -16,6 +16,7 @@ import '../widgets/weight_records_sheet.dart';
 import '../widgets/health_info_sheet.dart';
 import 'help_center_page.dart';
 import 'about_us_page.dart';
+import 'my_pet_page.dart';
 import '../../../../core/services/api_service.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
@@ -318,15 +319,18 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       child: Row(
         children: [
           Flexible(
-            child: _buildStatCard('连续打卡', '$_streakDays', '天', AppColors.primary),
+            child:
+                _buildStatCard('连续打卡', '$_streakDays', '天', AppColors.primary),
           ),
           const SizedBox(width: 12),
           Flexible(
-            child: _buildStatCard('总记录', '$_totalRecords', '次', AppColors.success),
+            child:
+                _buildStatCard('总记录', '$_totalRecords', '次', AppColors.success),
           ),
           const SizedBox(width: 12),
           Flexible(
-            child: _buildStatCard('平均卡路里', '$_avgCalories', 'kcal', AppColors.warning),
+            child: _buildStatCard(
+                '平均卡路里', '$_avgCalories', 'kcal', AppColors.warning),
           ),
         ],
       ),
@@ -361,6 +365,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       ),
       child: Column(
         children: [
+          _buildMenuItem(
+            icon: LucideIcons.cat,
+            title: '我的精灵',
+            subtitle: '选择精灵和显示设置',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const MyPetPage(),
+                ),
+              );
+            },
+          ),
           _buildMenuItem(
             icon: LucideIcons.target,
             title: '健康目标',
