@@ -192,7 +192,7 @@ $RECYCLE.BIN/
 # ==========================================
 # Documentation & Personal Files
 # ==========================================
-docs/
+# docs/
 CLAUDE.local.md
 *.draft.md
 notes/
