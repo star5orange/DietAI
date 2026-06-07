@@ -96,9 +96,16 @@ class _HealthPageState extends ConsumerState<HealthPage> {
 
   Widget _buildHealthSummaryCard() {
     final calories = _dailySummary?.totalCalories ?? 0.0;
+    // 智能格式化水量
+    String fmtWater(double ml) {
+      if (ml < 1000) return '${ml.toInt()}';
+      final s = (ml / 1000).toStringAsFixed(2);
+      return s.replaceAll(RegExp(r'\.?0+$'), '');
+    }
+
     final waterDisplay = _waterIntake >= 1000
-        ? '${(_waterIntake / 1000).toStringAsFixed(2)} / ${(_waterGoal / 1000).toStringAsFixed(2)}'
-        : '${_waterIntake.toInt()} / ${(_waterGoal / 1000).toStringAsFixed(2)}';
+        ? '${fmtWater(_waterIntake)} / ${fmtWater(_waterGoal)}'
+        : '${_waterIntake.toInt()} / ${fmtWater(_waterGoal)}';
     final waterUnit = _waterIntake >= 1000 ? 'L' : 'ml / L';
     final caloriesProgress = _targetCalories > 0
         ? (calories / _targetCalories).clamp(0.0, 1.0)

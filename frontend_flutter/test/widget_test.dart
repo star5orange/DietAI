@@ -16,9 +16,9 @@ void main() {
     // Build our app and trigger a frame.
     await tester.pumpWidget(const ProviderScope(child: DietAIApp()));
 
-    // Verify that the app loads without crashing
-    await tester.pumpAndSettle();
-    
+    // pumpAndSettle 会因持续动画（脉冲圆环、GIF等）超时，改用 pump
+    await tester.pump(const Duration(seconds: 2));
+
     // The test passes if no exceptions are thrown
     expect(find.byType(MaterialApp), findsOneWidget);
   });

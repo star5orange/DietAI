@@ -354,18 +354,6 @@ class _MyPetPageState extends ConsumerState<MyPetPage> {
                               ),
                             ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      pet['name'] as String,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight:
-                            isSelected ? FontWeight.w700 : FontWeight.w500,
-                        color: isSelected
-                            ? (pet['color'] as Color)
-                            : const Color(0xFF222222),
-                      ),
-                    ),
                     if (isSelected) ...[
                       const SizedBox(height: 8),
                       Container(

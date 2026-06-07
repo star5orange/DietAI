@@ -28,6 +28,8 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
+  Offset _fabOffset = const Offset(0, 0);
+  bool _fabInitialized = false;
   final FoodService _foodService = FoodService();
   List<FoodRecord> _todayRecords = [];
   DailyNutritionSummary? _dailySummary;
@@ -100,19 +102,61 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     return Scaffold(
       backgroundColor: AppColors.backgroundSecondary,
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                const ChatPage(sessionType: 1, title: 'AI营养顾问'),
-          ),
-        ),
-        backgroundColor: AppColors.primary,
-        elevation: 6,
-        heroTag: 'ai_chat_fab',
-        child: const Icon(LucideIcons.messageCircle,
-            size: 28, color: Colors.white),
+      floatingActionButton: LayoutBuilder(
+        builder: (context, constraints) {
+          // 初始化位置：右下角默认FAB位置
+          if (!_fabInitialized) {
+            _fabOffset = Offset(
+              constraints.maxWidth - 64,
+              constraints.maxHeight - 160,
+            );
+            _fabInitialized = true;
+          }
+          return Stack(
+            children: [
+              Positioned(
+                left: _fabOffset.dx,
+                top: _fabOffset.dy,
+                child: GestureDetector(
+                  onPanUpdate: (details) {
+                    setState(() {
+                      _fabOffset = Offset(
+                        (_fabOffset.dx + details.delta.dx)
+                            .clamp(0, constraints.maxWidth - 56),
+                        (_fabOffset.dy + details.delta.dy)
+                            .clamp(0, constraints.maxHeight - 56),
+                      );
+                    });
+                  },
+                  onPanEnd: (_) {
+                    // 松手后吸附到左侧或右侧
+                    setState(() {
+                      final snapLeft = _fabOffset.dx < constraints.maxWidth / 2;
+                      _fabOffset = Offset(
+                        snapLeft ? 16.0 : constraints.maxWidth - 72,
+                        _fabOffset.dy,
+                      );
+                    });
+                  },
+                  child: FloatingActionButton(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            const ChatPage(sessionType: 1, title: 'AI营养顾问'),
+                      ),
+                    ),
+                    backgroundColor: AppColors.primary,
+                    elevation: 6,
+                    heroTag: 'ai_chat_fab',
+                    child: const Icon(LucideIcons.messageCircle,
+                        size: 28, color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
       body: SafeArea(
         child: Column(
