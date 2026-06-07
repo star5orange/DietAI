@@ -14,11 +14,14 @@ import '../../features/profile/presentation/pages/profile_page.dart';
 import '../../features/health/presentation/pages/main_health_page.dart';
 import '../../features/health/presentation/pages/reminder_settings_page.dart';
 import '../../features/health/presentation/pages/constitution_quiz_page.dart';
+import '../../features/health/presentation/pages/wellness_page.dart';
 import '../../features/saved_meals/presentation/pages/saved_meals_page.dart';
 import '../../features/onboarding/presentation/pages/onboarding_welcome_page.dart';
 import '../../features/onboarding/presentation/pages/onboarding_basic_info_page.dart';
 import '../../features/onboarding/presentation/pages/onboarding_physical_data_page.dart';
 import '../../features/onboarding/presentation/pages/onboarding_health_goals_page.dart';
+import '../../features/onboarding/presentation/pages/onboarding_crowd_tag_page.dart';
+import '../../features/onboarding/presentation/pages/onboarding_constitution_page.dart';
 import '../../features/onboarding/presentation/pages/onboarding_complete_page.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../shared/domain/models/user_model.dart';
@@ -138,6 +141,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
 
       GoRoute(
+        path: '/onboarding/crowd-tag',
+        name: 'onboarding_crowd_tag',
+        builder: (context, state) => const OnboardingCrowdTagPage(),
+      ),
+
+      GoRoute(
+        path: '/onboarding/constitution',
+        name: 'onboarding_constitution',
+        builder: (context, state) => const OnboardingConstitutionPage(),
+      ),
+
+      GoRoute(
         path: '/onboarding/complete',
         name: 'onboarding_complete',
         builder: (context, state) => const OnboardingCompletePage(),
@@ -201,6 +216,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/constitution-quiz',
             name: 'constitution_quiz',
             builder: (context, state) => const ConstitutionQuizPage(),
+          ),
+
+          // 养生推荐页面
+          GoRoute(
+            path: '/wellness',
+            name: 'wellness',
+            builder: (context, state) => const WellnessPage(),
           ),
         ],
       ),

@@ -1,0 +1,106 @@
+PS F:\project\DietAI> uv run langgraph dev --port 2024
+INFO:langgraph_api.cli:
+
+        Welcome to
+
+╦  ┌─┐┌┐┌┌─┐╔═╗┬─┐┌─┐┌─┐┬ ┬
+║  ├─┤││││ ┬║ ╦├┬┘├─┤├─┘├─┤
+╩═╝┴ ┴┘└┘└─┘╚═╝┴└─┴ ┴┴  ┴ ┴
+
+- 🚀 API: http://127.0.0.1:2024
+- 🎨 Studio UI: https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024
+- 📚 API Docs: http://127.0.0.1:2024/docs
+
+This in-memory server is designed for development and testing.
+For production use, please use LangSmith Deployment.
+
+
+[version] A newer version of langgraph-api is available: 0.7.71 → 0.8.7  (pip install -U langgraph-api)
+2026-05-19T08:38:50.515390Z [info     ] [version] A newer version of langgraph-api is available: 0.7.71 → 0.8.7  (pip install -U langgraph-api) [version_check] api_variant=local_dev langgraph_api_version=0.7.71 message='[version] A newer version of langgraph-api is available: 0.7.71 → 0.8.7  (pip install -U langgraph-api)' thread_name='Thread-3 (_check_newer_version)'
+⚠️ [support] langgraph-api 0.7.71 is in Critical support.
+Only critical security and installation fixes are provided.
+You are one minor version behind the latest (0.8.x).
+Please plan an upgrade soon. See changelog: https://docs.langchain.com/langgraph-platform/langgraph-server-changelog
+2026-05-19T08:38:50.515390Z [info     ] ⚠️ [support] langgraph-api 0.7.71 is in Critical support.
+Only critical security and installation fixes are provided.
+You are one minor version behind the latest (0.8.x).
+Please plan an upgrade soon. See changelog: https://docs.langchain.com/langgraph-platform/langgraph-server-changelog [version_check] api_variant=local_dev langgraph_api_version=0.7.71 message='⚠️ [support] langgraph-api 0.7.71 is in Critical support.\nOnly critical security and installation fixes are provided.\nYou are one minor version behind the latest (0.8.x).\nPlease plan an upgrade soon. See changelog: https://docs.langchain.com/langgraph-platform/langgraph-server-changelog' thread_name='Thread-3 (_check_newer_version)'
+2026-05-19T08:38:51.091703Z [info     ] Starting dev persistence flush loop [langgraph_runtime_inmem._persistence] api_variant=local_dev langgraph_api_version=0.7.71 thread_name=MainThread
+2026-05-19T08:38:51.106809Z [info     ] Using langgraph_runtime_inmem  [langgraph_runtime] api_variant=local_dev langgraph_api_version=0.7.71 thread_name=MainThread
+2026-05-19T08:38:51.117086Z [info     ] Using auth of type=noop        [langgraph_api.auth.middleware] api_variant=local_dev langgraph_api_version=0.7.71 thread_name=MainThread
+2026-05-19T08:38:51.121598Z [info     ] Starting In-Memory runtime with langgraph-api=0.7.71 and in-memory runtime=0.26.0 [langgraph_runtime_inmem.lifespan] api_variant=local_dev langgraph_api_version=0.7.71 langgraph_runtime_inmem_version=0.26.0 thread_name=asyncio_0 version=0.7.71
+2026-05-19T08:38:51.200943Z [info     ] No license key or control plane API key set, skipping metadata loop [langgraph_api.metadata] api_variant=local_dev langgraph_api_version=0.7.71 thread_name=MainThread
+2026-05-19T08:38:51.263833Z [warning  ] F:\project\DietAI\.venv\Lib\site-packages\structlog\stdlib.py:1166: UserWarning: Remove `format_exc_info` from your processor chain if you want pretty exceptions.
+  ed = p(logger, meth_name, ed)  # type: ignore[arg-type]
+ [py.warnings] api_variant=local_dev langgraph_api_version=0.7.71 thread_name=asyncio_0
+2026-05-19T08:38:51.262827Z [info     ] Importing graph with id nutrition_agent [langgraph_api.timing.timer] api_variant=local_dev elapsed_seconds=0.06248559999949066 graph_id=nutrition_agent langgraph_api_version=0.7.71 module=None name=_graph_from_spec path=./agents/nutrition_agent/agent.py thread_name=asyncio_0
+ModuleNotFoundError("No module named 'langchain.schema'")
+2026-05-19T08:38:51.266575Z [error    ] Graph 'nutrition_agent' failed to load: ModuleNotFoundError: No module named 'langchain.schema' [langgraph_runtime_inmem.lifespan] action=fix_user_graph api_variant=local_dev error_boundary=user_graph error_message="ModuleNotFoundError: No module named 'langchain.schema'" error_type=ModuleNotFoundError graph_id=nutrition_agent hint='Check that your project dependencies are installed and imports are correct.' langgraph_api_version=0.7.71 location=./agents/nutrition_agent/agent.py notes="Could not import python module for graph:\nGraphSpec(id='nutrition_agent', path='./agents/nutrition_agent/agent.py', module=None, variable='graph', config={}, description=None)\nThis error likely means you haven't installed your project and its dependencies yet. Before running the server, install your project:\n\nIf you are using requirements.txt:\npython -m pip install -r requirements.txt\n\nIf you are using pyproject.toml or setuptools:\npython -m pip install -e .\n\nMake sure to run this command from your project's root directory (where your setup.py or pyproject.toml is located)" summary="ModuleNotFoundError: ModuleNotFoundError: No module named 'langchain.schema'" thread_name=asyncio_0 user_traceback='Traceback (most recent call last):\n  File "F:\\project\\DietAI\\.venv\\Lib\\site-packages\\langgraph_api\\graph.py", line 487, in collect_graphs_from_env\n    graph = await run_in_executor(None, _graph_from_spec, spec)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "F:\\project\\DietAI\\.venv\\Lib\\site-packages\\langgraph_api\\utils\\config.py", line 145, in run_in_executor\n    return await asyncio.get_running_loop().run_in_executor(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "C:\\Users\\胡明松\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\Lib\\concurrent\\futures\\thread.py", line 59, in run\n    result = self.fn(*self.args, **self.kwargs)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "F:\\project\\DietAI\\.venv\\Lib\\site-packages\\langgraph_api\\utils\\config.py", line 136, in wrapper\n    return func(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^\n  File "F:\\project\\DietAI\\.venv\\Lib\\site-packages\\langgraph_api\\timing\\timer.py", line 101, in wrapper\n    return func(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^\n  File "F:\\project\\DietAI\\.venv\\Lib\\site-packages\\langgraph_api\\graph.py", line 553, in _graph_from_spec\n    modspec.loader.exec_module(module)  # type: ignore[possibly-unbound-attribute]\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "<frozen importlib._bootstrap_external>", line 999, in exec_module\n  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed\n  File "F:\\project\\DietAI\\agents/nutrition_agent/agent.py", line 4, in <module>\n    from agents.nutrition_agent.utils.nodes import *\n  File "F:\\project\\DietAI\\agents\\nutrition_agent\\utils\\nodes.py", line 2, in <module>\n    from langchain.schema import Document\nModuleNotFoundError: No module named \'langchain.schema\'\nCould not import python module for graph:\nGraphSpec(id=\'nutrition_agent\', path=\'./agents/nutrition_agent/agent.py\', module=None, variable=\'graph\', config={}, description=None)\nThis error likely means you haven\'t installed your project and its dependencies yet. Before running the server, install your project:\n\nIf you are using requirements.txt:\npython -m pip install -r requirements.txt\n\nIf you are using pyproject.toml or setuptools:\npython -m pip install -e .\n\nMake sure to run this command from your project\'s root directory (where your setup.py or pyproject.toml is located)\n'
+2026-05-19T08:38:51.267584Z [info     ] Shutting down remote graphs    [langgraph_api.graph] api_variant=local_dev langgraph_api_version=0.7.71 thread_name=MainThread
+2026-05-19T08:38:51.286105Z [info     ] Stopping dev persistence flush loop [langgraph_runtime_inmem._persistence] api_variant=local_dev langgraph_api_version=0.7.71 thread_name=MainThread
+2026-05-19T08:38:51.286105Z [info     ] dev persistence flush loop exiting [langgraph_runtime_inmem._persistence] api_variant=local_dev langgraph_api_version=0.7.71 thread_name=Thread-1
+2026-05-19T08:38:51.294451Z [error    ] Traceback (most recent call last):
+  File "F:\project\DietAI\.venv\Lib\site-packages\langgraph_api\graph.py", line 487, in collect_graphs_from_env
+    graph = await run_in_executor(None, _graph_from_spec, spec)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\project\DietAI\.venv\Lib\site-packages\langgraph_api\utils\config.py", line 145, in run_in_executor
+    return await asyncio.get_running_loop().run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\胡明松\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\project\DietAI\.venv\Lib\site-packages\langgraph_api\utils\config.py", line 136, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "F:\project\DietAI\.venv\Lib\site-packages\langgraph_api\timing\timer.py", line 101, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "F:\project\DietAI\.venv\Lib\site-packages\langgraph_api\graph.py", line 553, in _graph_from_spec
+    modspec.loader.exec_module(module)  # type: ignore[possibly-unbound-attribute]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 999, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "F:\project\DietAI\agents/nutrition_agent/agent.py", line 4, in <module>
+    from agents.nutrition_agent.utils.nodes import *
+  File "F:\project\DietAI\agents\nutrition_agent\utils\nodes.py", line 2, in <module>
+    from langchain.schema import Document
+ModuleNotFoundError: No module named 'langchain.schema'
+Could not import python module for graph:
+GraphSpec(id='nutrition_agent', path='./agents/nutrition_agent/agent.py', module=None, variable='graph', config={}, description=None)
+This error likely means you haven't installed your project and its dependencies yet. Before running the server, install your project:
+
+If you are using requirements.txt:
+python -m pip install -r requirements.txt
+
+If you are using pyproject.toml or setuptools:
+python -m pip install -e .
+
+Make sure to run this command from your project's root directory (where your setup.py or pyproject.toml is located)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "F:\project\DietAI\.venv\Lib\site-packages\starlette\routing.py", line 694, in lifespan
+    async with self.lifespan_context(app) as maybe_state:
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\胡明松\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "F:\project\DietAI\.venv\Lib\site-packages\langgraph_api\timing\timer.py", line 227, in combined_lifespan
+    await stack.enter_async_context(ls(app))
+  File "C:\Users\胡明松\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 659, in enter_async_context
+    result = await _enter(cm)
+             ^^^^^^^^^^^^^^^^
+  File "C:\Users\胡明松\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "F:\project\DietAI\.venv\Lib\site-packages\langgraph_runtime_inmem\lifespan.py", line 113, in lifespan
+    await graph.collect_graphs_from_env(True)
+  File "F:\project\DietAI\.venv\Lib\site-packages\langgraph_api\graph.py", line 489, in collect_graphs_from_env
+    raise GraphLoadError(spec, exc) from exc
+langgraph_api.utils.errors.GraphLoadError: Failed to load graph 'nutrition_agent' from ./agents/nutrition_agent/agent.py: No module named 'langchain.schema'
+ [uvicorn.error] api_variant=local_dev langgraph_api_version=0.7.71 thread_name=MainThread
+2026-05-19T08:38:51.294451Z [error    ] Application startup failed. Exiting. [uvicorn.error] api_variant=local_dev langgraph_api_version=0.7.71 thread_name=MainThread
+2026-05-19T08:38:51.359338Z [info     ] 22 changes detected            [watchfiles.main] api_variant=local_dev langgraph_api_version=0.7.71 thread_name=MainThread
+2026-05-19T08:38:51.716109Z [info     ] 1 change detected              [watchfiles.main] api_variant=local_dev langgraph_api_version=0.7.71 thread_name=MainThread
+2026-05-19T08:41:13.667412Z [info     ] 1 change detected              [watchfiles.main] api_variant=local_dev langgraph_api_version=0.7.71 thread_name=MainThread

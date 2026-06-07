@@ -27,6 +27,8 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
   double _petLeft = -1;
   double _petTop = -1;
   bool _positionLoaded = false;
+  bool _showRecycleBin = false;
+  bool _isDragging = false;
 
   @override
   void initState() {
@@ -49,24 +51,147 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     }
   }
 
+  bool _isOverRecycleBin() {
+    final screenSize = MediaQuery.of(context).size;
+    final binCenterX = screenSize.width / 2;
+    final binCenterY = screenSize.height - 160;
+    final distance = ((_petLeft + 48 - binCenterX).abs() +
+        (_petTop + 48 - binCenterY).abs());
+    return distance < 120;
+  }
+
+  void _onPetLongPress() {
+    setState(() {
+      _showRecycleBin = true;
+      _isDragging = true;
+    });
+  }
+
+  void _onPetDragEnd() {
+    if (_showRecycleBin && _isOverRecycleBin()) {
+      _confirmHidePet();
+    }
+    setState(() {
+      _showRecycleBin = false;
+      _isDragging = false;
+    });
+    final storage = ref.read(petProvider.notifier).storage;
+    if (storage != null) {
+      storage.positionX = _petLeft;
+      storage.positionY = _petTop;
+    }
+  }
+
+  void _confirmHidePet() {
+    final storage = ref.read(petProvider.notifier).storage;
+    if (storage != null && storage.skipHideConfirm) {
+      ref.read(petProvider.notifier).setPetVisible(false);
+      return;
+    }
+
+    bool dontRemind = false;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 24),
+              SizedBox(width: 8),
+              Text('隐藏精灵'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('确定要隐藏精灵吗？\n您可以在「个人中心 → 我的精灵」中重新开启显示。'),
+              const SizedBox(height: 16),
+              GestureDetector(
+                onTap: () {
+                  setDialogState(() {
+                    dontRemind = !dontRemind;
+                  });
+                },
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: Checkbox(
+                        value: dontRemind,
+                        onChanged: (v) {
+                          setDialogState(() {
+                            dontRemind = v ?? false;
+                          });
+                        },
+                        activeColor: const Color(0xFF2BAF74),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      '下次不再提醒',
+                      style: TextStyle(fontSize: 14, color: Color(0xFF666666)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (dontRemind) {
+                  storage?.skipHideConfirm = true;
+                }
+                Navigator.of(ctx).pop();
+                ref.read(petProvider.notifier).setPetVisible(false);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('确定隐藏'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
+    final petState = ref.watch(petProvider);
+    final showPet = _positionLoaded && petState.visible;
 
-    if (_positionLoaded && _petLeft < 0) {
-      _petLeft = 16;
-      _petTop = screenSize.height - 280;
+    if (_positionLoaded) {
+      final storage = ref.read(petProvider.notifier).storage;
+      if (storage != null && (storage.positionX < 0 || storage.positionY < 0)) {
+        _petLeft = 16;
+        _petTop = screenSize.height - 280;
+      } else if (_petLeft < 0) {
+        _petLeft = 16;
+        _petTop = screenSize.height - 280;
+      }
     }
 
     return Scaffold(
       body: Stack(
         children: [
           widget.child,
-          if (_positionLoaded)
+          if (showPet)
             Positioned(
               left: _petLeft,
               top: _petTop,
               child: GestureDetector(
+                onLongPress: _onPetLongPress,
                 onPanUpdate: (details) {
                   setState(() {
                     _petLeft = (_petLeft + details.delta.dx)
@@ -74,18 +199,63 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
                     _petTop = (_petTop + details.delta.dy)
                         .clamp(0.0, screenSize.height - 200);
                   });
-                },
-                onPanEnd: (_) {
-                  final storage = ref.read(petProvider.notifier).storage;
-                  if (storage != null) {
-                    storage.positionX = _petLeft;
-                    storage.positionY = _petTop;
+                  if (!_isDragging) {
+                    setState(() {
+                      _isDragging = true;
+                      _showRecycleBin = true;
+                    });
                   }
                 },
-                child: const PetWidget(
-                  size: 96,
-                  draggable: true,
-                  showBubble: true,
+                onPanEnd: (_) => _onPetDragEnd(),
+                child: AnimatedOpacity(
+                  opacity: _showRecycleBin && _isOverRecycleBin() ? 0.4 : 1.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: const PetWidget(
+                    size: 96,
+                    draggable: true,
+                    showBubble: true,
+                  ),
+                ),
+              ),
+            ),
+          if (_showRecycleBin)
+            Positioned(
+              left: screenSize.width / 2 - 40,
+              top: screenSize.height - 160,
+              child: AnimatedScale(
+                scale: _isOverRecycleBin() ? 1.3 : 1.0,
+                duration: const Duration(milliseconds: 200),
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: _isOverRecycleBin()
+                        ? Colors.red.withValues(alpha: 0.9)
+                        : Colors.red.withValues(alpha: 0.7),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.red.withValues(alpha: 0.3),
+                        blurRadius: 20,
+                        spreadRadius: 5,
+                      ),
+                    ],
+                  ),
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.delete_outline, color: Colors.white, size: 28),
+                      SizedBox(height: 2),
+                      Text(
+                        '隐藏',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

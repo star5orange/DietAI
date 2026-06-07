@@ -640,11 +640,14 @@ async def get_conversation_history(session_id: int, db: Session, limit: int = 10
 @router.get("/sessions", response_model=schemas.BaseResponse)
 async def get_chat_sessions(
         session_type: Optional[int] = None,
-        limit: int = 10,
+        keyword: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 50,
         current_user: user_models.User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    """获取用户的聊天会话列表 - 前端专用"""
+    """获取用户的聊天会话列表 - 前端专用，支持关键字和日期搜索"""
     try:
         query = db.query(conversation_models.ConversationSession).filter(
             conversation_models.ConversationSession.user_id == current_user.id
@@ -652,6 +655,33 @@ async def get_chat_sessions(
 
         if session_type:
             query = query.filter(conversation_models.ConversationSession.session_type == session_type)
+
+        if start_date:
+            try:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                query = query.filter(conversation_models.ConversationSession.created_at >= start_dt)
+            except ValueError:
+                pass
+
+        if end_date:
+            try:
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d") + __import__("datetime").timedelta(days=1)
+                query = query.filter(conversation_models.ConversationSession.created_at < end_dt)
+            except ValueError:
+                pass
+
+        if keyword:
+            keyword_filter = f"%{keyword}%"
+            session_ids_with_keyword = db.query(
+                conversation_models.ConversationMessage.session_id
+            ).filter(
+                conversation_models.ConversationMessage.content.ilike(keyword_filter)
+            ).subquery()
+
+            query = query.filter(
+                (conversation_models.ConversationSession.title.ilike(keyword_filter)) |
+                (conversation_models.ConversationSession.id.in_(session_ids_with_keyword))
+            )
 
         sessions = query.order_by(
             conversation_models.ConversationSession.last_message_at.desc().nullslast(),

@@ -122,6 +122,24 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
     );
   }
 
+  Future<void> _undoLastRecord() async {
+    if (_todayRecords.isEmpty) return;
+    // _todayRecords 按存储顺序排列（最新在前），第一条才是最近添加的
+    final lastRecord = _todayRecords.first;
+    final amountMl = lastRecord.amountMl;
+    await _waterService.deleteWaterRecord(lastRecord.id);
+    _loadData();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已撤回 ${amountMl}ml 饮水记录'),
+          backgroundColor: AppColors.info,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   void _showGoalSettingDialog() {
     final currentGoal = _summary?.goalMl ?? 2000;
     final controller =
@@ -335,6 +353,16 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
                       color: AppColors.textInverse,
                       fontWeight: FontWeight.w600)),
               const Spacer(),
+              if (_todayRecords.isNotEmpty)
+                IconButton(
+                  icon: const Icon(LucideIcons.undo2, size: 18),
+                  color: AppColors.textInverse,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: '撤回上一次记录',
+                  onPressed: _undoLastRecord,
+                ),
+              const SizedBox(width: 8),
               GestureDetector(
                 onTap: _showGoalSettingDialog,
                 child: Container(
@@ -350,7 +378,7 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
                       const Icon(LucideIcons.target,
                           color: AppColors.textInverse, size: 14),
                       const SizedBox(width: 4),
-                      Text('${(goalMl / 1000).toStringAsFixed(1)}L',
+                      Text('${_formatWater(goalMl)}L',
                           style: AppTextStyles.labelSmall.copyWith(
                               color: AppColors.textInverse,
                               fontWeight: FontWeight.w500)),
@@ -382,17 +410,20 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('${(totalMl / 1000).toStringAsFixed(1)}',
+                        Text(
+                            totalMl >= 1000
+                                ? _formatWater(totalMl)
+                                : '$totalMl',
                             style: AppTextStyles.numberLarge
                                 .copyWith(color: AppColors.textInverse)),
-                        Text('升',
+                        Text(totalMl >= 1000 ? '升' : 'ml',
                             style: AppTextStyles.bodySmall.copyWith(
                                 color: AppColors.whiteWithOpacity(0.7))),
                         const SizedBox(height: 4),
                         Text(
                           isGoalReached
                               ? '✅ 已达标'
-                              : '还差 ${(summary?.remainingMl ?? 0) >= 1000 ? '${((summary?.remainingMl ?? 0) / 1000).toStringAsFixed(1)}L' : '${summary?.remainingMl ?? 0}ml'}',
+                              : '还差 ${_formatWaterWithUnit(summary?.remainingMl ?? 0)}',
                           style: AppTextStyles.labelSmall
                               .copyWith(color: AppColors.whiteWithOpacity(0.7)),
                         ),
@@ -462,5 +493,21 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
         ),
       ),
     );
+  }
+
+  /// 智能格式化水量：不足1L用ml，1L以上去掉多余小数零
+  String _formatWater(int ml) {
+    if (ml < 1000) return '$ml';
+    final liters = ml / 1000;
+    final s = liters.toStringAsFixed(2);
+    // 去掉末尾多余的0，但至少保留整数部分
+    final trimmed = s.replaceAll(RegExp(r'\.?0+$'), '');
+    return trimmed.isEmpty ? '0' : trimmed;
+  }
+
+  /// 格式化水量带单位
+  String _formatWaterWithUnit(int ml) {
+    if (ml < 1000) return '${ml}ml';
+    return '${_formatWater(ml)}L';
   }
 }

@@ -11,14 +11,20 @@ class PetState {
   final int level;
   final int exp;
   final String levelName;
+  final bool visible;
+  final String petType;
+  final String petName;
 
   const PetState({
     this.expression = PetExpression.calm,
     this.gifPath = 'assets/pet/calm.gif',
-    this.dialogue = '喵~',
+    this.dialogue = '嗯~',
     this.level = 1,
     this.exp = 0,
-    this.levelName = '小奶猫',
+    this.levelName = '初来乍到',
+    this.visible = true,
+    this.petType = 'cat',
+    this.petName = '桌宠一',
   });
 
   PetState copyWith({
@@ -28,6 +34,9 @@ class PetState {
     int? level,
     int? exp,
     String? levelName,
+    bool? visible,
+    String? petType,
+    String? petName,
   }) {
     return PetState(
       expression: expression ?? this.expression,
@@ -36,6 +45,9 @@ class PetState {
       level: level ?? this.level,
       exp: exp ?? this.exp,
       levelName: levelName ?? this.levelName,
+      visible: visible ?? this.visible,
+      petType: petType ?? this.petType,
+      petName: petName ?? this.petName,
     );
   }
 }
@@ -53,7 +65,7 @@ class PetNotifier extends StateNotifier<PetState> {
       state = state.copyWith(
         expression: PetExpression.calm,
         gifPath: 'assets/pet/calm.gif',
-        dialogue: '喵~',
+        dialogue: '嗯~',
       );
     }
 
@@ -66,6 +78,9 @@ class PetNotifier extends StateNotifier<PetState> {
       level: _storage!.level,
       exp: _storage!.exp,
       levelName: _storage!.levelName,
+      visible: _storage!.petVisible,
+      petType: _storage!.petType,
+      petName: _storage!.petName,
     );
   }
 
@@ -107,6 +122,25 @@ class PetNotifier extends StateNotifier<PetState> {
   void addExp(int amount) {
     _storage?.addExp(amount);
     _syncFromStorage();
+  }
+
+  void setPetVisible(bool visible) {
+    _storage?.petVisible = visible;
+    if (visible) {
+      _storage?.positionX = -1;
+      _storage?.positionY = -1;
+    }
+    state = state.copyWith(visible: visible);
+  }
+
+  void setPetType(String petType) {
+    _storage?.petType = petType;
+    state = state.copyWith(petType: petType);
+  }
+
+  void setPetName(String petName) {
+    _storage?.petName = petName;
+    state = state.copyWith(petName: petName);
   }
 
   PetStorage? get storage => _storage;

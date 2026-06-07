@@ -157,6 +157,16 @@ class _OnboardingCompletePageState extends ConsumerState<OnboardingCompletePage>
                                   completed: onboardingState.medicalConditions.isNotEmpty || 
                                            onboardingState.allergies.isNotEmpty,
                                 ),
+                                _buildSummaryItem(
+                                  icon: LucideIcons.users,
+                                  title: '人群标签',
+                                  completed: onboardingState.basicInfo.containsKey('crowd_tag'),
+                                ),
+                                _buildSummaryItem(
+                                  icon: LucideIcons.leaf,
+                                  title: '体质辨识',
+                                  completed: onboardingState.basicInfo.containsKey('constitution_type'),
+                                ),
                               ],
                             ),
                           ),

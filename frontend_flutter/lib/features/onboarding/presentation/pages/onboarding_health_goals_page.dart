@@ -11,14 +11,16 @@ class OnboardingHealthGoalsPage extends ConsumerStatefulWidget {
   const OnboardingHealthGoalsPage({super.key});
 
   @override
-  ConsumerState<OnboardingHealthGoalsPage> createState() => _OnboardingHealthGoalsPageState();
+  ConsumerState<OnboardingHealthGoalsPage> createState() =>
+      _OnboardingHealthGoalsPageState();
 }
 
-class _OnboardingHealthGoalsPageState extends ConsumerState<OnboardingHealthGoalsPage>
+class _OnboardingHealthGoalsPageState
+    extends ConsumerState<OnboardingHealthGoalsPage>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<Offset> _slideAnimation;
-  
+
   int _selectedGoal = 0;
   final _targetWeightController = TextEditingController();
   DateTime? _targetDate;
@@ -55,7 +57,8 @@ class _OnboardingHealthGoalsPageState extends ConsumerState<OnboardingHealthGoal
         backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(LucideIcons.chevronLeft, color: AppColors.textPrimary),
+          icon:
+              const Icon(LucideIcons.chevronLeft, color: AppColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Text(
@@ -64,7 +67,7 @@ class _OnboardingHealthGoalsPageState extends ConsumerState<OnboardingHealthGoal
         ),
         actions: [
           TextButton(
-            onPressed: () => context.go('/onboarding/complete'),
+            onPressed: () => context.go('/onboarding/crowd-tag'),
             child: const Text('跳过'),
           ),
         ],
@@ -78,9 +81,9 @@ class _OnboardingHealthGoalsPageState extends ConsumerState<OnboardingHealthGoal
               children: [
                 // 进度指示器
                 _buildProgressIndicator(3),
-                
+
                 const SizedBox(height: 32),
-                
+
                 // 标题
                 Text(
                   '设置您的健康目标',
@@ -90,9 +93,9 @@ class _OnboardingHealthGoalsPageState extends ConsumerState<OnboardingHealthGoal
                   ),
                   textAlign: TextAlign.center,
                 ),
-                
+
                 const SizedBox(height: 8),
-                
+
                 Text(
                   '明确的目标有助于制定合适的饮食计划',
                   style: AppTextStyles.bodyMedium.copyWith(
@@ -100,9 +103,9 @@ class _OnboardingHealthGoalsPageState extends ConsumerState<OnboardingHealthGoal
                   ),
                   textAlign: TextAlign.center,
                 ),
-                
+
                 const SizedBox(height: 32),
-                
+
                 Expanded(
                   child: SingleChildScrollView(
                     child: Column(
@@ -128,9 +131,9 @@ class _OnboardingHealthGoalsPageState extends ConsumerState<OnboardingHealthGoal
                             }),
                           ],
                         ),
-                        
+
                         const SizedBox(height: 32),
-                        
+
                         // 目标体重（可选）
                         if (_selectedGoal == 1 || _selectedGoal == 2) ...[
                           Column(
@@ -165,7 +168,7 @@ class _OnboardingHealthGoalsPageState extends ConsumerState<OnboardingHealthGoal
                           ),
                           const SizedBox(height: 20),
                         ],
-                        
+
                         // 目标达成时间
                         if (_selectedGoal > 0) ...[
                           Column(
@@ -199,7 +202,8 @@ class _OnboardingHealthGoalsPageState extends ConsumerState<OnboardingHealthGoal
                                         _targetDate != null
                                             ? '${_targetDate!.year}-${_targetDate!.month.toString().padLeft(2, '0')}-${_targetDate!.day.toString().padLeft(2, '0')}'
                                             : '请选择目标日期',
-                                        style: AppTextStyles.bodyMedium.copyWith(
+                                        style:
+                                            AppTextStyles.bodyMedium.copyWith(
                                           color: _targetDate != null
                                               ? AppColors.textPrimary
                                               : AppColors.textSecondary,
@@ -222,7 +226,7 @@ class _OnboardingHealthGoalsPageState extends ConsumerState<OnboardingHealthGoal
                     ),
                   ),
                 ),
-                
+
                 // 继续按钮
                 AppButton(
                   text: '完成设置',
@@ -247,7 +251,9 @@ class _OnboardingHealthGoalsPageState extends ConsumerState<OnboardingHealthGoal
             width: i == currentStep ? 24 : 8,
             height: 8,
             decoration: BoxDecoration(
-              color: i <= currentStep ? AppColors.primary : AppColors.backgroundSecondary,
+              color: i <= currentStep
+                  ? AppColors.primary
+                  : AppColors.backgroundSecondary,
               borderRadius: BorderRadius.circular(4),
             ),
           ),
@@ -258,13 +264,15 @@ class _OnboardingHealthGoalsPageState extends ConsumerState<OnboardingHealthGoal
   Widget _buildGoalOption(int goalType) {
     final isSelected = _selectedGoal == goalType;
     final goalData = _getGoalData(goalType);
-    
+
     return GestureDetector(
       onTap: () => setState(() => _selectedGoal = goalType),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withValues(alpha: 0.1) : AppColors.cardBackground,
+          color: isSelected
+              ? AppColors.primary.withValues(alpha: 0.1)
+              : AppColors.cardBackground,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? AppColors.primary : AppColors.border,
@@ -286,8 +294,11 @@ class _OnboardingHealthGoalsPageState extends ConsumerState<OnboardingHealthGoal
                   Text(
                     goalData['title'],
                     style: AppTextStyles.bodyMedium.copyWith(
-                      color: isSelected ? AppColors.primary : AppColors.textPrimary,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.textPrimary,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.normal,
                     ),
                   ),
                   Text(
@@ -355,7 +366,7 @@ class _OnboardingHealthGoalsPageState extends ConsumerState<OnboardingHealthGoal
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
     );
-    
+
     if (picked != null) {
       setState(() {
         _targetDate = picked;
@@ -374,10 +385,10 @@ class _OnboardingHealthGoalsPageState extends ConsumerState<OnboardingHealthGoal
         'target_date': _targetDate?.toIso8601String().split('T')[0],
       }
     ];
-    
+
     ref.read(onboardingProvider.notifier).updateHealthGoals(healthGoals);
-    
-    // 跳转到完成页面
-    context.go('/onboarding/complete');
+
+    // 跳转到人群标签页面
+    context.go('/onboarding/crowd-tag');
   }
 }

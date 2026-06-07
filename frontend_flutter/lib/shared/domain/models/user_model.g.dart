@@ -55,6 +55,7 @@ UserProfile _$UserProfileFromJson(Map<String, dynamic> json) => UserProfile(
       onboardingCompleted: json['onboarding_completed'] as bool?,
       onboardingStep: (json['onboarding_step'] as num?)?.toInt(),
       constitutionType: json['constitution_type'] as String?,
+      crowdTag: json['crowd_tag'] as String?,
       createdAt: json['created_at'] as String,
       updatedAt: json['updated_at'] as String,
     );
@@ -81,6 +82,7 @@ Map<String, dynamic> _$UserProfileToJson(UserProfile instance) =>
       'onboarding_completed': instance.onboardingCompleted,
       'onboarding_step': instance.onboardingStep,
       'constitution_type': instance.constitutionType,
+      'crowd_tag': instance.crowdTag,
       'created_at': instance.createdAt,
       'updated_at': instance.updatedAt,
     };
@@ -176,6 +178,7 @@ UserProfileUpdateRequest _$UserProfileUpdateRequestFromJson(
       ),
       healthStatus: (json['health_status'] as num?)?.toInt(),
       constitutionType: json['constitution_type'] as String?,
+      crowdTag: json['crowd_tag'] as String?,
     );
 
 Map<String, dynamic> _$UserProfileUpdateRequestToJson(
@@ -196,6 +199,7 @@ Map<String, dynamic> _$UserProfileUpdateRequestToJson(
       'meal_times': instance.mealTimes,
       'health_status': instance.healthStatus,
       'constitution_type': instance.constitutionType,
+      'crowd_tag': instance.crowdTag,
     };
 
 HealthGoal _$HealthGoalFromJson(Map<String, dynamic> json) => HealthGoal(

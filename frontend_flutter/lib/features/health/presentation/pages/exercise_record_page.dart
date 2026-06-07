@@ -129,11 +129,31 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddExerciseModal(),
         backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.textInverse,
-        icon: const Icon(LucideIcons.dumbbell),
-        label: const Text(
-          '记录运动',
-          style: TextStyle(fontWeight: FontWeight.w600),
+        foregroundColor: Colors.white,
+        elevation: 4,
+        extendedPadding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        label: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '记录',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                height: 1.2,
+              ),
+            ),
+            Text(
+              '运动',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                height: 1.2,
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -61,14 +61,29 @@ class _HealthGoalsPageState extends ConsumerState<HealthGoalsPage> {
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
               elevation: 4,
-              extendedPadding: const EdgeInsets.symmetric(horizontal: 20),
-              icon: const Icon(LucideIcons.target, size: 20),
-              label: const Text(
-                '新建目标',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
+              extendedPadding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              label: const Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '新建',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      height: 1.2,
+                    ),
+                  ),
+                  Text(
+                    '目标',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
               ),
             )
           : null,

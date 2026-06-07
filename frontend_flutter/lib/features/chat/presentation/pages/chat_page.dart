@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../services/chat_service.dart';
 import '../../../../shared/domain/models/api_response.dart';
+import 'chat_history_page.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   final int? sessionId;
@@ -139,7 +140,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       // 准备AI消息占位符
       final aiMessageId = DateTime.now().millisecondsSinceEpoch + 1;
       String aiContent = '';
-      
+
       // 添加AI消息占位符
       setState(() {
         _messages.add(ChatMessageDetail(
@@ -164,7 +165,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         } else if (event.isContent && event.content != null) {
           // 累积AI回复内容
           aiContent += event.content!;
-          
+
           setState(() {
             // 更新AI消息内容
             final index = _messages.indexWhere((m) => m.id == aiMessageId);
@@ -177,7 +178,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               );
             }
           });
-          
+
           _scrollToBottom();
         } else if (event.isComplete) {
           // 完成流式响应
@@ -249,6 +250,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(
+              Icons.history,
+              size: 24,
+              color: Color(0xFF2BAF74),
+            ),
+            onPressed: () => _navigateToChatHistory(),
+          ),
           if (_currentSessionId != null)
             IconButton(
               icon: Container(
@@ -321,7 +330,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         if (index == _messages.length && _isSending) {
           return _buildTypingIndicator();
         }
-        
+
         final message = _messages[index];
         return _buildMessageBubble(message);
       },
@@ -434,7 +443,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(50),
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
               ),
               child: Text(
                 suggestion,
@@ -453,11 +463,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   Widget _buildMessageBubble(ChatMessageDetail message) {
     final isUser = message.role == 'user';
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
       child: Row(
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment:
+            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isUser) ...[
@@ -480,12 +491,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: isUser 
-                  ? const Color(0xFF2BAF74)
-                  : Colors.white,
+                color: isUser ? const Color(0xFF2BAF74) : Colors.white,
                 borderRadius: BorderRadius.circular(20).copyWith(
-                  bottomLeft: isUser ? const Radius.circular(20) : const Radius.circular(4),
-                  bottomRight: isUser ? const Radius.circular(4) : const Radius.circular(20),
+                  bottomLeft: isUser
+                      ? const Radius.circular(20)
+                      : const Radius.circular(4),
+                  bottomRight: isUser
+                      ? const Radius.circular(4)
+                      : const Radius.circular(20),
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -536,7 +549,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   Text(
                     _formatTime(message.timestamp),
                     style: TextStyle(
-                      color: isUser ? Colors.white.withValues(alpha: 0.8) : const Color(0xFF999999),
+                      color: isUser
+                          ? Colors.white.withValues(alpha: 0.8)
+                          : const Color(0xFF999999),
                       fontSize: 12,
                     ),
                   ),
@@ -668,7 +683,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(25),
-                      borderSide: const BorderSide(color: Color(0xFF2BAF74), width: 2),
+                      borderSide:
+                          const BorderSide(color: Color(0xFF2BAF74), width: 2),
                     ),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 20,
@@ -692,7 +708,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: _isSending ? const Color(0xFFE6FAF0) : const Color(0xFF2BAF74),
+                color: _isSending
+                    ? const Color(0xFFE6FAF0)
+                    : const Color(0xFF2BAF74),
                 shape: BoxShape.circle,
               ),
               child: IconButton(
@@ -730,6 +748,30 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
 
+  void _navigateToChatHistory() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatHistoryPage(
+          sessionType: widget.sessionType,
+          onSessionSelected: (sessionId) {
+            Navigator.pop(context);
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ChatPage(
+                  sessionId: sessionId,
+                  sessionType: widget.sessionType,
+                  title: widget.title,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   void _showSessionInfo() {
     showDialog(
       context: context,
@@ -741,7 +783,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           children: [
             Text('会话ID: ${_currentSessionId ?? '未知'}'),
             const SizedBox(height: 8),
-            Text('会话类型: ${_chatService.getSessionTypeName(widget.sessionType)}'),
+            Text(
+                '会话类型: ${_chatService.getSessionTypeName(widget.sessionType)}'),
             const SizedBox(height: 8),
             Text('消息数量: ${_messages.length}'),
           ],

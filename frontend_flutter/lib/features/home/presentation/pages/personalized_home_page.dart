@@ -302,8 +302,8 @@ class _PersonalizedHomePageState extends ConsumerState<PersonalizedHomePage> {
                 Expanded(
                   child: _buildStatusItem(
                     '健康评分',
-                    _healthScore?.score.toStringAsFixed(0) ?? '--',
-                    _getScoreColor(_healthScore?.score ?? 0),
+                    _healthScore?.totalScore.toStringAsFixed(0) ?? '--',
+                    _getScoreColor(_healthScore?.totalScore ?? 0),
                     Icons.health_and_safety,
                   ),
                 ),
@@ -650,8 +650,8 @@ class _PersonalizedHomePageState extends ConsumerState<PersonalizedHomePage> {
                 Expanded(
                   child: _buildStatusItem(
                     '健康评分',
-                    _healthScore?.score.toStringAsFixed(0) ?? '--',
-                    _getScoreColor(_healthScore?.score ?? 0),
+                    _healthScore?.totalScore.toStringAsFixed(0) ?? '--',
+                    _getScoreColor(_healthScore?.totalScore ?? 0),
                     Icons.star,
                   ),
                 ),
