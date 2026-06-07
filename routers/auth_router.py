@@ -1,19 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from datetime import datetime
+import logging
 
 from shared.models.database import get_db
 from shared.models.schemas import (
-    UserCreate, UserLogin, BaseResponse, TokenResponse, 
+    UserCreate, UserLogin, BaseResponse, TokenResponse,
     RefreshTokenRequest, PasswordChangeRequest
 )
 from shared.utils.auth import (
-    AuthService, authenticate_user, create_user, 
+    AuthService, authenticate_user, create_user,
     get_current_user, update_user_password, update_last_login
 )
 from shared.models.user_models import User
 
 router = APIRouter(prefix="/auth", tags=["认证"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/register", response_model=BaseResponse)
@@ -28,7 +30,15 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
             password=user_data.password,
             phone=user_data.phone
         )
-        
+
+        # 自动创建默认提醒模板
+        try:
+            from shared.services.reminder_service import create_default_reminders
+            result = create_default_reminders(db, user.id)
+            logger.info(f"新用户 {user.id} 默认提醒模板创建完成: {result}")
+        except Exception as e:
+            logger.warning(f"新用户 {user.id} 默认提醒模板创建失败 (非致命): {e}")
+
         return BaseResponse(
             success=True,
             message="注册成功",

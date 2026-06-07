@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, Time, Text, DateTime, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Boolean, Time, Text, DateTime, ForeignKey, func, Index
 from sqlalchemy.dialects.postgresql import JSON
 from .database import Base
 
@@ -15,3 +15,7 @@ class Reminder(Base):
     description = Column(Text)
     virtual_pet_status = Column(JSON, nullable=True)     # 预留
     created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index('idx_reminders_user_type_enabled', 'user_id', 'reminder_type', 'is_enabled', 'remind_time'),
+    )

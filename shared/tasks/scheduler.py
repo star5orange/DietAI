@@ -276,6 +276,18 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True
     )
 
+    # Minute task: Check and trigger reminders every 60 seconds
+    from shared.tasks.reminder_check import check_reminders
+    _scheduler.add_job(
+        check_reminders,
+        trigger=IntervalTrigger(minutes=1),
+        id="check_reminders",
+        name="Reminder Check",
+        replace_existing=True,
+        misfire_grace_time=30  # 30s 宽限期，避免堆积
+    )
+    logger.info("Reminder check task registered (interval=1min)")
+
     _scheduler.start()
     logger.info("Background task scheduler started")
 
@@ -302,11 +314,13 @@ async def run_task_now(task_name: str) -> bool:
     Returns:
         True if task was triggered successfully
     """
+    from shared.tasks.reminder_check import check_reminders
     task_mapping = {
         "shared_memory": regenerate_shared_memories,
         "goal_tracking": update_goal_workspaces,
         "nutrition": generate_weekly_nutrition_summary,
-        "chat": generate_chat_summary
+        "chat": generate_chat_summary,
+        "check_reminders": check_reminders,
     }
 
     task_func = task_mapping.get(task_name)

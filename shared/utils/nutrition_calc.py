@@ -10,7 +10,7 @@ Used by:
 Formulas:
 - BMR: Mifflin-St Jeor equation
 - TDEE: BMR * Activity Factor
-- Daily Targets: TDEE +/- adjustment based on goal type
+- Daily Targets: TDEE +/- adjustment based on goal type and crowd tag
 """
 
 from typing import Dict, Any, Optional
@@ -34,6 +34,13 @@ class ActivityLevel(IntEnum):
     MODERATE = 3         # 中度活动 (中等运动/每周3-5天)
     ACTIVE = 4           # 重度活动 (剧烈运动/每周6-7天)
     VERY_ACTIVE = 5      # 超重度活动 (极剧烈运动/体力劳动)
+
+
+class CrowdTag:
+    """人群标签常量"""
+    FAT_LOSS = "减脂"
+    FITNESS = "健身"
+    NORMAL = "普通日常"
 
 
 # Activity level multipliers for TDEE calculation
@@ -70,6 +77,37 @@ MACRO_RATIOS: Dict[int, Dict[str, float]] = {
     GoalType.MAINTAIN: {"protein": 0.25, "carbs": 0.50, "fat": 0.25},
     GoalType.BUILD_MUSCLE: {"protein": 0.35, "carbs": 0.40, "fat": 0.25},
     GoalType.LOSE_FAT: {"protein": 0.30, "carbs": 0.35, "fat": 0.35},
+}
+
+# Crowd tag specific calorie adjustments (on top of goal_type adjustments)
+CROWD_TAG_CALORIE_ADJUSTMENT: Dict[str, int] = {
+    CrowdTag.FAT_LOSS: -200,    # 减脂人群额外热量缺口
+    CrowdTag.FITNESS: 100,      # 健身人群额外热量盈余
+    CrowdTag.NORMAL: 0,         # 普通日常不额外调整
+}
+
+# Crowd tag specific macro overrides (protein, carbs, fat)
+# 减脂：高蛋白低碳水，保持肌肉，增强饱腹感
+# 健身：高蛋白高碳水，支持肌肉合成和训练恢复
+# 普通日常：均衡配比
+CROWD_TAG_MACRO_RATIOS: Dict[str, Dict[str, float]] = {
+    CrowdTag.FAT_LOSS: {"protein": 0.40, "carbs": 0.30, "fat": 0.30},
+    CrowdTag.FITNESS: {"protein": 0.35, "carbs": 0.45, "fat": 0.20},
+    CrowdTag.NORMAL: {"protein": 0.25, "carbs": 0.50, "fat": 0.25},
+}
+
+# Crowd tag daily fiber target (g)
+CROWD_TAG_FIBER_TARGET: Dict[str, int] = {
+    CrowdTag.FAT_LOSS: 35,  # 减脂人群需要更多膳食纤维增加饱腹感
+    CrowdTag.FITNESS: 30,
+    CrowdTag.NORMAL: 25,
+}
+
+# Crowd tag recommended water intake per kg body weight (ml/kg)
+CROWD_TAG_WATER_RATIO: Dict[str, float] = {
+    CrowdTag.FAT_LOSS: 40,   # 减脂需多喝水促进代谢
+    CrowdTag.FITNESS: 45,    # 健身出汗多需更多水分
+    CrowdTag.NORMAL: 35,
 }
 
 
@@ -141,24 +179,43 @@ def calculate_tdee(
 
 def calculate_daily_targets(
     tdee: float,
-    goal_type: int
+    goal_type: int,
+    crowd_tag: Optional[str] = None
 ) -> Dict[str, float]:
     """
-    Calculate daily nutrition targets based on TDEE and goal type.
+    Calculate daily nutrition targets based on TDEE, goal type, and crowd tag.
 
     Args:
         tdee: Total Daily Energy Expenditure
         goal_type: Health goal type (1-5)
+        crowd_tag: 人群标签 (减脂/健身/普通日常), None defaults to 普通日常
 
     Returns:
-        Dictionary with calories, protein (g), carbs (g), fat (g)
+        Dictionary with calories, protein (g), carbs (g), fat (g), fiber (g),
+        and crowd-specific metadata
     """
-    # Apply calorie adjustment based on goal
+    # Apply calorie adjustment based on goal type
     adjustment = CALORIE_ADJUSTMENTS.get(goal_type, 0)
-    calorie_target = tdee + adjustment
 
-    # Get macro ratios for goal type
-    ratios = MACRO_RATIOS.get(goal_type, MACRO_RATIOS[GoalType.MAINTAIN])
+    # Apply crowd tag specific calorie adjustment
+    crowd_tag = crowd_tag or CrowdTag.NORMAL
+    crowd_adj = CROWD_TAG_CALORIE_ADJUSTMENT.get(crowd_tag, 0)
+
+    calorie_target = tdee + adjustment + crowd_adj
+
+    # Get macro ratios: crowd tag overrides goal-based ratios
+    crowd_ratios = CROWD_TAG_MACRO_RATIOS.get(crowd_tag, CROWD_TAG_MACRO_RATIOS[CrowdTag.NORMAL])
+
+    # Apply goal_type modifications on top of crowd base ratios
+    # 减脂人群在维持目标时仍走减脂配比，增重目标时适当调整
+    if crowd_tag == CrowdTag.FAT_LOSS and goal_type in [GoalType.GAIN_WEIGHT, GoalType.BUILD_MUSCLE]:
+        # 减脂人群想增重/增肌 → 蛋白仍然高，碳水稍增
+        ratios = {"protein": 0.35, "carbs": 0.40, "fat": 0.25}
+    elif crowd_tag == CrowdTag.FITNESS and goal_type == GoalType.LOSE_FAT:
+        # 健身人群想减脂 → 保持高蛋白，降低碳水
+        ratios = {"protein": 0.40, "carbs": 0.35, "fat": 0.25}
+    else:
+        ratios = crowd_ratios
 
     # Calculate macro targets in grams
     # Protein: 4 cal/g, Carbs: 4 cal/g, Fat: 9 cal/g
@@ -166,13 +223,56 @@ def calculate_daily_targets(
     carbs_target = (calorie_target * ratios["carbs"]) / 4
     fat_target = (calorie_target * ratios["fat"]) / 9
 
+    fiber_target = CROWD_TAG_FIBER_TARGET.get(crowd_tag, 25)
+
     return {
         "calories": round(calorie_target),
         "protein": round(protein_target),
         "carbs": round(carbs_target),
         "fat": round(fat_target),
-        "calorie_adjustment": adjustment
+        "fiber": fiber_target,
+        "calorie_adjustment": adjustment + crowd_adj,
+        "crowd_tag": crowd_tag,
+        "crowd_description": _get_crowd_description(crowd_tag),
+        "crowd_recommendations": _get_crowd_recommendations(crowd_tag),
     }
+
+
+def _get_crowd_description(crowd_tag: str) -> str:
+    """Get human-readable description for crowd tag."""
+    descriptions = {
+        CrowdTag.FAT_LOSS: "减脂人群：高蛋白低碳水、增加饱腹感、促进脂肪代谢",
+        CrowdTag.FITNESS: "健身人群：高蛋白高碳水、支持肌肉合成、加快训练恢复",
+        CrowdTag.NORMAL: "普通日常：均衡营养配比、维持健康体重",
+    }
+    return descriptions.get(crowd_tag, descriptions[CrowdTag.NORMAL])
+
+
+def _get_crowd_recommendations(crowd_tag: str) -> list:
+    """Get crowd-specific dietary recommendations."""
+    recommendations = {
+        CrowdTag.FAT_LOSS: [
+            "优先选择优质蛋白（鸡胸肉、鱼虾、豆制品）",
+            "控制精制碳水，多摄入全谷物和薯类",
+            "保证膳食纤维摄入（>=35g/天），增加蔬菜摄入",
+            "每天饮水2000-2500ml，促进脂肪代谢",
+            "避免油炸食品、含糖饮料和高脂零食",
+        ],
+        CrowdTag.FITNESS: [
+            "保证足量优质蛋白（1.6-2.0g/kg体重）",
+            "训练后30分钟内补充碳水和蛋白质",
+            "复合碳水为主要能量来源（燕麦、糙米、红薯）",
+            "每天饮水2500-3000ml，运动时额外补充",
+            "多摄入富含支链氨基酸的食物",
+        ],
+        CrowdTag.NORMAL: [
+            "均衡搭配谷物、蔬菜、水果、蛋白质食物",
+            "每日摄入12种以上食物，保证营养全面",
+            "控制油盐用量，培养清淡口味",
+            "保持规律三餐，避免暴饮暴食",
+        ],
+    }
+    return recommendations.get(crowd_tag, recommendations[CrowdTag.NORMAL])
 
 
 def calculate_full_nutrition_profile(
@@ -181,7 +281,8 @@ def calculate_full_nutrition_profile(
     age: int,
     gender: int,
     activity_level: int,
-    goal_type: int
+    goal_type: int,
+    crowd_tag: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Calculate complete nutrition profile including BMR, TDEE, and daily targets.
@@ -193,13 +294,16 @@ def calculate_full_nutrition_profile(
         gender: 1 = Male, 2 = Female
         activity_level: Activity level (1-5)
         goal_type: Health goal type (1-5)
+        crowd_tag: 人群标签
 
     Returns:
         Complete nutrition profile dictionary
     """
     bmr = calculate_bmr(weight, height, age, gender)
     tdee = calculate_tdee(bmr, activity_level)
-    daily_targets = calculate_daily_targets(tdee, goal_type)
+    daily_targets = calculate_daily_targets(tdee, goal_type, crowd_tag)
+
+    crowd_tag = crowd_tag or CrowdTag.NORMAL
 
     return {
         "bmr": bmr,
@@ -207,7 +311,8 @@ def calculate_full_nutrition_profile(
         "activity_factor": ACTIVITY_FACTORS.get(activity_level, 1.375),
         "activity_description": ACTIVITY_DESCRIPTIONS.get(activity_level, "轻度活动"),
         "daily_targets": daily_targets,
-        "macro_ratios": MACRO_RATIOS.get(goal_type, MACRO_RATIOS[GoalType.MAINTAIN]),
+        "macro_ratios": CROWD_TAG_MACRO_RATIOS.get(crowd_tag, CROWD_TAG_MACRO_RATIOS[CrowdTag.NORMAL]),
+        "crowd_tag": crowd_tag,
         "user_data": {
             "weight": weight,
             "height": height,

@@ -17,6 +17,11 @@ from shared.models.schemas import (
     OnboardingStepUpdate, OnboardingDataRequest
 )
 from shared.models.schemas.user import DiseaseUpdate, AllergyUpdate
+from shared.models.schemas.constitution import (
+    ConstitutionQuizRequest, QuizAnswer,
+    QUIZ_QUESTIONS, CONSTITUTION_TYPES, CONSTITUTION_DIET_ADVICE,
+    ConstitutionTypeInfo
+)
 from shared.utils.auth import get_current_user
 from shared.models.user_models import User, UserProfile, HealthGoal, Disease, Allergy, WeightRecord
 from shared.config.redis_config import cache_service
@@ -959,10 +964,21 @@ async def complete_onboarding(
                 allergies_added += 1
         
         db.commit()
-        
+
+        # 自动创建默认提醒模板（仅当用户尚无提醒时）
+        reminders_created = 0
+        try:
+            from shared.services.reminder_service import create_default_reminders
+            result = create_default_reminders(db, current_user.id)
+            reminders_created = result["water"] + result["meal"]
+            db.commit()
+            logger.info(f"用户 {current_user.id} 引导完成后默认提醒模板创建: {result}")
+        except Exception as e:
+            logger.warning(f"用户 {current_user.id} 默认提醒模板创建失败 (非致命): {e}")
+
         # 清除缓存
         cache_service.clear_user_cache(current_user.id)
-        
+
         return BaseResponse(
             success=True,
             message="用户引导完成成功",
@@ -972,12 +988,114 @@ async def complete_onboarding(
                 "bmi": float(profile.bmi) if profile.bmi else None,
                 "health_goals_created": health_goals_created,
                 "medical_conditions_added": diseases_added,
-                "allergies_added": allergies_added
+                "allergies_added": allergies_added,
+                "reminders_created": reminders_created
             }
         )
     except Exception as e:
         db.rollback()
         raise handle_database_error(e, "完成用户引导")
+
+
+@router.post("/constitution-quiz", response_model=BaseResponse)
+async def submit_constitution_quiz(
+    quiz_data: ConstitutionQuizRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """体质自测接口：接收9题问卷答案，返回推荐体质标签及饮食建议"""
+    try:
+        # 为每种体质累计得分
+        scores: dict = {name: 0.0 for name in CONSTITUTION_TYPES}
+        question_count_answered = {name: 0 for name in CONSTITUTION_TYPES}
+
+        # 建立题目索引
+        question_map = {q["id"]: q for q in QUIZ_QUESTIONS}
+
+        for answer in quiz_data.answers:
+            q = question_map.get(answer.question_id)
+            if not q:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"无效的题目编号: {answer.question_id}"
+                )
+
+            # 将 1-5 分映射为 agree/neutral/disagree
+            if answer.score >= 4:
+                level = "agree"
+            elif answer.score == 3:
+                level = "neutral"
+            else:
+                level = "disagree"
+
+            for ctype, score_map in q["constitution_scores"].items():
+                if level in score_map:
+                    scores[ctype] += score_map[level]
+                    question_count_answered[ctype] += 1
+
+        # 归一化：将每个体质的分数除以其相关题目数，得到平均分
+        normalized = {}
+        for ctype in CONSTITUTION_TYPES:
+            count = question_count_answered[ctype]
+            if count > 0:
+                normalized[ctype] = scores[ctype] / count
+            else:
+                normalized[ctype] = 0.0
+
+        # 找出最高分的体质
+        max_score = max(normalized.values()) if normalized else 0
+        recommended = max(normalized, key=normalized.get)
+
+        # 计算置信度 (最高分与第二高分的差距)
+        sorted_scores = sorted(normalized.items(), key=lambda x: x[1], reverse=True)
+        if len(sorted_scores) >= 2 and sorted_scores[0][1] > 0:
+            confidence = min(1.0, (sorted_scores[0][1] - sorted_scores[1][1]) / sorted_scores[0][1])
+        else:
+            confidence = 0.5
+
+        # 如果最高分和最低分很接近，可能是平和质
+        if max_score < 1.5:
+            recommended = "平和质"
+            confidence = 0.3
+
+        # 构建所有体质得分详情
+        all_scores_info = [
+            {
+                "name": ctype,
+                "score": round(normalized[ctype], 1),
+                "description": CONSTITUTION_TYPES[ctype],
+            }
+            for ctype, _ in sorted(normalized.items(), key=lambda x: x[1], reverse=True)
+        ]
+
+        # 自动更新用户体质标签
+        try:
+            profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
+            if profile:
+                profile.constitution_type = recommended
+                profile.updated_at = datetime.utcnow()
+                db.commit()
+                cache_service.clear_user_cache(current_user.id)
+                logger.info(f"用户 {current_user.id} 体质已更新为: {recommended}")
+        except Exception as e:
+            logger.warning(f"自动更新体质标签失败 (非致命): {e}")
+
+        return BaseResponse(
+            success=True,
+            message=f"体质自测完成，推荐体质: {recommended}",
+            data={
+                "recommended_type": recommended,
+                "confidence": round(confidence, 2),
+                "all_scores": all_scores_info,
+                "diet_advice": CONSTITUTION_DIET_ADVICE.get(recommended, CONSTITUTION_DIET_ADVICE["平和质"]),
+                "characteristics": CONSTITUTION_TYPES.get(recommended, ""),
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise handle_database_error(e, "体质自测")
 
 
 @router.post("/onboarding/reset", response_model=BaseResponse)
