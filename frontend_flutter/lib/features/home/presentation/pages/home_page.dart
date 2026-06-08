@@ -17,6 +17,8 @@ import '../../../chat/presentation/pages/chat_page.dart';
 import '../../../health/presentation/pages/exercise_record_page.dart';
 import '../../../pet/presentation/providers/pet_provider.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
+import '../../../profile/domain/services/user_service.dart'
+    show UserService, UserStats;
 import 'meal_selection_page.dart';
 import 'text_describe_page.dart';
 
@@ -36,6 +38,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   bool _isLoading = true;
   DateTime _selectedDate = DateTime.now();
   double _targetCalories = 2000.0;
+  int _streakDays = 0;
 
   @override
   void initState() {
@@ -60,6 +63,15 @@ class _HomePageState extends ConsumerState<HomePage> {
         final summaryResult =
             await _foodService.getDailyNutritionSummary(dateStr);
         summary = summaryResult.data;
+      } catch (_) {}
+
+      // 加载连续打卡天数
+      try {
+        final userService = ref.read(userServiceProvider);
+        final statsResult = await userService.getUserStats();
+        if (statsResult.isSuccess && statsResult.data != null) {
+          _streakDays = statsResult.data!.streakDays;
+        }
       } catch (_) {}
 
       if (mounted) {
@@ -224,6 +236,31 @@ class _HomePageState extends ConsumerState<HomePage> {
         children: [
           Text(dateText, style: AppTextStyles.headlineSmall),
           const Spacer(),
+          if (_streakDays > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFA726), Color(0xFFFF7043)],
+                ),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(LucideIcons.flame, color: Colors.white, size: 14),
+                  const SizedBox(width: 4),
+                  Text(
+                    '连续 $_streakDays 天',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );

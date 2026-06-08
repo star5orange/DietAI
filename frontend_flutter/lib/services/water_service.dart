@@ -121,4 +121,122 @@ class WaterService {
       );
     }
   }
+
+  // ==================== 后端 API 方法 ====================
+
+  /// 向后端创建饮水记录
+  Future<ApiResponse<Map<String, dynamic>>> createRemoteWaterRecord({
+    required double amountMl,
+    String? recordedAt,
+    String? notes,
+  }) async {
+    try {
+      final data = {
+        'amount_ml': amountMl,
+        if (recordedAt != null) 'recorded_at': recordedAt,
+        if (notes != null) 'notes': notes,
+      };
+
+      final response = await _apiService.post('/water/records', data: data);
+
+      if (response.success && response.data != null) {
+        return ApiResponse<Map<String, dynamic>>.success(
+          message: response.message.isNotEmpty ? response.message : '创建饮水记录成功',
+          data: response.data as Map<String, dynamic>,
+        );
+      }
+      return ApiResponse<Map<String, dynamic>>.failure(
+        message: response.message.isNotEmpty ? response.message : '创建饮水记录失败',
+      );
+    } catch (e) {
+      return ApiResponse<Map<String, dynamic>>.failure(
+        message: '创建饮水记录失败: $e',
+      );
+    }
+  }
+
+  /// 从后端获取饮水记录列表
+  Future<ApiResponse<List<Map<String, dynamic>>>> getRemoteWaterRecords({
+    String? startDate,
+    String? endDate,
+    int skip = 0,
+    int limit = 20,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{
+        'skip': skip,
+        'limit': limit,
+      };
+      if (startDate != null) queryParams['start_date'] = startDate;
+      if (endDate != null) queryParams['end_date'] = endDate;
+
+      final response = await _apiService.get(
+        '/water/records',
+        queryParameters: queryParams,
+      );
+
+      if (response.success && response.data != null) {
+        final List<dynamic> dataList = response.data as List;
+        final records = dataList.map((e) => e as Map<String, dynamic>).toList();
+        return ApiResponse<List<Map<String, dynamic>>>.success(
+          message: response.message.isNotEmpty ? response.message : '获取饮水记录成功',
+          data: records,
+        );
+      }
+      return ApiResponse<List<Map<String, dynamic>>>.failure(
+        message: response.message.isNotEmpty ? response.message : '获取饮水记录失败',
+      );
+    } catch (e) {
+      return ApiResponse<List<Map<String, dynamic>>>.failure(
+        message: '获取饮水记录失败: $e',
+      );
+    }
+  }
+
+  /// 从后端获取每日饮水汇总
+  Future<ApiResponse<Map<String, dynamic>>> getRemoteDailySummary(String targetDate) async {
+    try {
+      final response = await _apiService.get('/water/daily-summary/$targetDate');
+
+      if (response.success && response.data != null) {
+        return ApiResponse<Map<String, dynamic>>.success(
+          message: response.message.isNotEmpty ? response.message : '获取每日饮水汇总成功',
+          data: response.data as Map<String, dynamic>,
+        );
+      }
+      return ApiResponse<Map<String, dynamic>>.failure(
+        message: response.message.isNotEmpty ? response.message : '获取每日饮水汇总失败',
+      );
+    } catch (e) {
+      return ApiResponse<Map<String, dynamic>>.failure(
+        message: '获取每日饮水汇总失败: $e',
+      );
+    }
+  }
+
+  /// 从后端获取饮水统计
+  Future<ApiResponse<Map<String, dynamic>>> getWaterStatistics({
+    String period = '7d',
+  }) async {
+    try {
+      final response = await _apiService.get(
+        '/water/statistics',
+        queryParameters: {'period': period},
+      );
+
+      if (response.success && response.data != null) {
+        return ApiResponse<Map<String, dynamic>>.success(
+          message: response.message.isNotEmpty ? response.message : '获取饮水统计成功',
+          data: response.data as Map<String, dynamic>,
+        );
+      }
+      return ApiResponse<Map<String, dynamic>>.failure(
+        message: response.message.isNotEmpty ? response.message : '获取饮水统计失败',
+      );
+    } catch (e) {
+      return ApiResponse<Map<String, dynamic>>.failure(
+        message: '获取饮水统计失败: $e',
+      );
+    }
+  }
 }
