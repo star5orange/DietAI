@@ -513,4 +513,85 @@ class UserService {
       return ApiResponse.failure(message: '重置引导状态失败: $e');
     }
   }
+
+  /// 获取用户统计数据（连续打卡天数、总记录次数、平均卡路里）
+  Future<ApiResponse<UserStats>> getUserStats() async {
+    try {
+      final response = await _apiService.get('/users/stats');
+
+      if (response.isSuccess && response.data != null) {
+        final userStats = UserStats.fromJson(response.data);
+        return ApiResponse.success(
+          message: response.message,
+          data: userStats,
+        );
+      }
+
+      return ApiResponse.failure(message: response.message);
+    } catch (e) {
+      return ApiResponse.failure(message: '获取用户统计失败: $e');
+    }
+  }
+
+  /// 提交体质自测问卷
+  Future<ApiResponse<Map<String, dynamic>>> submitConstitutionQuiz({
+    required List<QuizAnswerData> answers,
+  }) async {
+    try {
+      final response = await _apiService.post(
+        '/users/constitution-quiz',
+        data: {
+          'answers': answers.map((a) => a.toJson()).toList(),
+        },
+      );
+
+      if (response.isSuccess && response.data != null) {
+        return ApiResponse.success(
+          message: response.message,
+          data: response.data as Map<String, dynamic>,
+        );
+      }
+
+      return ApiResponse.failure(message: response.message);
+    } catch (e) {
+      return ApiResponse.failure(message: '提交体质自测失败: $e');
+    }
+  }
+}
+
+/// 用户统计数据模型
+class UserStats {
+  final int streakDays;
+  final int totalRecords;
+  final int avgCalories;
+
+  const UserStats({
+    required this.streakDays,
+    required this.totalRecords,
+    required this.avgCalories,
+  });
+
+  factory UserStats.fromJson(Map<String, dynamic> json) {
+    return UserStats(
+      streakDays: json['streak_days'] ?? 0,
+      totalRecords: json['total_records'] ?? 0,
+      avgCalories: json['avg_calories'] ?? 0,
+    );
+  }
+}
+
+/// 体质自测答案数据
+class QuizAnswerData {
+  final String questionId;
+  final int score;
+
+  const QuizAnswerData({
+    required this.questionId,
+    required this.score,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'question_id': questionId,
+    'score': score,
+  };
 }

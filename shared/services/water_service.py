@@ -1,23 +1,36 @@
+import logging
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from shared.models.water_models import WaterIntakeRecord
 from shared.models.user_models import UserProfile
+from shared.models.food_models import DailyNutritionSummary
 from shared.models.schemas.water import WaterIntakeCreate
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 
+logger = logging.getLogger(__name__)
 
-def create_water_record(db: Session, user_id: int, record: WaterIntakeCreate) -> WaterIntakeRecord:
-    """创建喝水记录"""
+
+def create_water_record(db: Session, user_id: int,
+                        record: WaterIntakeCreate) -> WaterIntakeRecord:
+    """创建喝水记录，并同步更新每日营养汇总中的饮水量"""
     db_record = WaterIntakeRecord(user_id=user_id, **record.dict())
     db.add(db_record)
+    # 先 flush 确保记录写入
+    db.flush()
+
+    # 同步到每日营养汇总
+    record_date = record.record_time.date() if isinstance(record.record_time, datetime) else date.today()
+    _recalc_daily_water(db, user_id, record_date)
+
     db.commit()
     db.refresh(db_record)
     return db_record
 
 
 def get_water_records(
-    db: Session, user_id: int, start_date: Optional[date] = None, end_date: Optional[date] = None,
+    db: Session, user_id: int,
+    start_date: Optional[date] = None, end_date: Optional[date] = None,
     skip: int = 0, limit: int = 20
 ) -> List[WaterIntakeRecord]:
     """查询喝水记录"""
@@ -26,25 +39,29 @@ def get_water_records(
         query = query.filter(func.date(WaterIntakeRecord.record_time) >= start_date)
     if end_date:
         query = query.filter(func.date(WaterIntakeRecord.record_time) <= end_date)
-    return query.order_by(WaterIntakeRecord.record_time.desc()).offset(skip).limit(limit).all()
+    return query.order_by(WaterIntakeRecord.record_time.desc())\
+                .offset(skip).limit(limit).all()
 
 
-def get_daily_water_summary(db: Session, user_id: int, target_date: Optional[date] = None) -> dict:
+def get_daily_water_summary(db: Session, user_id: int,
+                            target_date: Optional[date] = None) -> dict:
     """获取指定日期的喝水汇总"""
     if target_date is None:
         target_date = date.today()
     profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
     daily_goal = profile.daily_water_goal if profile else 2000
+
     records = db.query(WaterIntakeRecord).filter(
         WaterIntakeRecord.user_id == user_id,
         func.date(WaterIntakeRecord.record_time) == target_date
     ).all()
+
     total_ml = sum(r.amount_ml for r in records)
     return {
         "date": target_date,
         "total_intake_ml": total_ml,
         "daily_goal_ml": daily_goal,
-        "completion_rate": min(total_ml / daily_goal, 1.0) if daily_goal > 0 else 0.0,
+        "completion_rate": round(min(total_ml / daily_goal, 1.0), 2) if daily_goal > 0 else 0.0,
         "records_count": len(records),
         "records": records
     }
@@ -81,3 +98,52 @@ def get_water_statistics(db: Session, user_id: int, period: str = "7d") -> dict:
         "average_daily_ml": round(total_intake / total_days, 2) if total_days else 0,
         "daily_data": daily_data
     }
+
+
+# ==================== 内部辅助 ====================
+
+
+def _recalc_daily_water(db: Session, user_id: int, record_date: date):
+    """重新计算并更新指定日期的饮水量汇总。
+
+    基于 water_intake_records 表全量求和，而非逐个加减，保证数据一致性。
+    使用 SELECT ... FOR UPDATE 防竞态条件。
+    如果当天无汇总记录，自动创建。
+    """
+    # 1. 计算当天总饮水量 (ml)，转换为升 (L)
+    total_ml = db.query(func.coalesce(func.sum(WaterIntakeRecord.amount_ml), 0)).filter(
+        WaterIntakeRecord.user_id == user_id,
+        func.date(WaterIntakeRecord.record_time) == record_date
+    ).scalar()
+
+    total_liters = round(float(total_ml) / 1000.0, 2)
+
+    # 2. 获取或创建每日营养汇总行（带行锁防竞态）
+    summary = db.query(DailyNutritionSummary).filter(
+        DailyNutritionSummary.user_id == user_id,
+        DailyNutritionSummary.summary_date == record_date
+    ).with_for_update().first()
+
+    if summary:
+        summary.water_intake = total_liters
+    else:
+        # 自动创建
+        summary = DailyNutritionSummary(
+            user_id=user_id,
+            summary_date=record_date,
+            water_intake=total_liters,
+            total_calories=0,
+            total_protein=0,
+            total_fat=0,
+            total_carbohydrates=0,
+            total_fiber=0,
+            total_sodium=0,
+            exercise_calories=0,
+            meal_count=0,
+        )
+        db.add(summary)
+
+    logger.debug(
+        f"Recalculated daily water: user={user_id}, "
+        f"date={record_date}, total={total_liters}L ({total_ml}ml)"
+    )

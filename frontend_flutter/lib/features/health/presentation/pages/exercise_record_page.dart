@@ -1,4 +1,7 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/themes/app_colors.dart';
@@ -25,7 +28,7 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadData();
   }
 
@@ -112,6 +115,10 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
                   icon: Icon(LucideIcons.list, size: 18),
                   text: '历史记录',
                 ),
+                Tab(
+                  icon: Icon(LucideIcons.barChart3, size: 18),
+                  text: '统计图表',
+                ),
               ],
             ),
           ),
@@ -121,6 +128,7 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
               children: [
                 _buildTodayOverviewTab(),
                 _buildHistoryListTab(),
+                _buildStatisticsTab(),
               ],
             ),
           ),
@@ -524,6 +532,396 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
     }
   }
 
+  Widget _buildStatisticsTab() {
+    if (_records.isEmpty) {
+      return _buildEmptyState('还没有运动记录', '开始记录运动后即可查看统计图表');
+    }
+
+    // 按天汇总过去7天的运动数据
+    final now = DateTime.now();
+    final dayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    final dailyData = <_ExerciseDailyStat>[];
+    double maxCalories = 0;
+
+    for (int i = 6; i >= 0; i--) {
+      final date = now.subtract(Duration(days: i));
+      final dateStr = DateFormat('yyyy-MM-dd').format(date);
+      final dayRecords =
+          _records.where((r) => r.recordedAt.startsWith(dateStr)).toList();
+
+      final calories =
+          dayRecords.fold<double>(0, (sum, r) => sum + r.caloriesBurned);
+      final duration =
+          dayRecords.fold<int>(0, (sum, r) => sum + r.durationMinutes);
+      final count = dayRecords.length;
+
+      dailyData.add(_ExerciseDailyStat(
+        date: date,
+        label: dayNames[date.weekday - 1],
+        calories: calories,
+        duration: duration,
+        count: count,
+      ));
+
+      if (calories > maxCalories) maxCalories = calories;
+    }
+
+    // 本周汇总
+    final weekCal = dailyData.fold<double>(0, (sum, d) => sum + d.calories);
+    final weekDur = dailyData.fold<int>(0, (sum, d) => sum + d.duration);
+    final weekCnt = dailyData.fold<int>(0, (sum, d) => sum + d.count);
+    final activeDays = dailyData.where((d) => d.count > 0).length;
+
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 本周统计卡片
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFF6B6B), Color(0xFFFF8E8E)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                children: [
+                  const Row(
+                    children: [
+                      Icon(LucideIcons.trendingUp,
+                          color: Colors.white, size: 20),
+                      SizedBox(width: 8),
+                      Text('本周运动统计',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      _buildStatItem('总消耗', '${weekCal.toInt()}', 'kcal',
+                          LucideIcons.flame),
+                      _buildStatItem(
+                          '总时长', '$weekDur', '分钟', LucideIcons.clock),
+                      _buildStatItem(
+                          '运动次数', '$weekCnt', '次', LucideIcons.repeat),
+                      _buildStatItem('活跃天数', '$activeDays', '天',
+                          LucideIcons.calendarCheck),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // 每日消耗柱状图
+            _buildSectionTitle('每日消耗 (kcal)', LucideIcons.barChart3),
+            const SizedBox(height: 12),
+            Container(
+              height: 200,
+              padding: const EdgeInsets.fromLTRB(8, 16, 16, 8),
+              decoration: BoxDecoration(
+                color: AppColors.backgroundCard,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: AppColors.lightShadow,
+              ),
+              child: BarChart(
+                BarChartData(
+                  alignment: BarChartAlignment.spaceAround,
+                  maxY: maxCalories > 0 ? maxCalories * 1.3 : 300,
+                  barGroups: dailyData.asMap().entries.map((e) {
+                    return BarChartGroupData(
+                      x: e.key,
+                      barRods: [
+                        BarChartRodData(
+                          toY: e.value.calories,
+                          color: e.value.count > 0
+                              ? const Color(0xFFFF6B6B)
+                              : AppColors.borderLight,
+                          width: 16,
+                          borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(4)),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                  titlesData: FlTitlesData(
+                    leftTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          final idx = value.toInt();
+                          if (idx < 0 || idx >= dailyData.length)
+                            return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              dailyData[idx].label,
+                              style: const TextStyle(
+                                  fontSize: 10, color: AppColors.textTertiary),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  gridData: const FlGridData(show: false),
+                  borderData: FlBorderData(show: false),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // 运动类型分布
+            _buildSectionTitle('运动类型分布', LucideIcons.pieChart),
+            const SizedBox(height: 12),
+            _buildExerciseTypeDistribution(),
+            const SizedBox(height: 24),
+
+            // 周运动时长趋势
+            _buildSectionTitle('每日运动时长 (分钟)', LucideIcons.activity),
+            const SizedBox(height: 12),
+            Container(
+              height: 160,
+              padding: const EdgeInsets.fromLTRB(8, 16, 16, 8),
+              decoration: BoxDecoration(
+                color: AppColors.backgroundCard,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: AppColors.lightShadow,
+              ),
+              child: LineChart(
+                LineChartData(
+                  minY: 0,
+                  maxY:
+                      dailyData.map((d) => d.duration.toDouble()).reduce(max) *
+                          1.3,
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: dailyData
+                          .asMap()
+                          .entries
+                          .map((e) => FlSpot(
+                              e.key.toDouble(), e.value.duration.toDouble()))
+                          .toList(),
+                      isCurved: true,
+                      color: AppColors.primary,
+                      barWidth: 2.5,
+                      dotData: const FlDotData(show: true),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        color: AppColors.primary.withValues(alpha: 0.1),
+                      ),
+                    ),
+                  ],
+                  titlesData: FlTitlesData(
+                    leftTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          final idx = value.toInt();
+                          if (idx < 0 || idx >= dailyData.length)
+                            return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(dailyData[idx].label,
+                                style: const TextStyle(
+                                    fontSize: 10,
+                                    color: AppColors.textTertiary)),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    getDrawingHorizontalLine: (value) =>
+                        const FlLine(color: Color(0xFFF1F5F9), strokeWidth: 1),
+                  ),
+                  borderData: FlBorderData(show: false),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExerciseTypeDistribution() {
+    // 按类型汇总
+    final typeMap = <String, _ExerciseTypeStat>{};
+    for (final r in _records) {
+      final key = r.exerciseType;
+      if (typeMap.containsKey(key)) {
+        typeMap[key] = typeMap[key]!.addRecord(r);
+      } else {
+        typeMap[key] = _ExerciseTypeStat(
+            type: r.exerciseType,
+            count: 1,
+            calories: r.caloriesBurned,
+            duration: r.durationMinutes);
+      }
+    }
+
+    final typeList = typeMap.values.toList()
+      ..sort((a, b) => b.calories.compareTo(a.calories));
+
+    if (typeList.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.backgroundCard,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Center(
+            child: Text('暂无运动数据',
+                style: TextStyle(color: AppColors.textTertiary))),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundCard,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: AppColors.lightShadow,
+      ),
+      child: Column(
+        children: typeList.map((t) {
+          final total = typeList.fold<double>(0, (s, i) => s + i.calories);
+          final pct =
+              total > 0 ? (t.calories / total * 100).toStringAsFixed(0) : '0';
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: _getTypeColor(t.type).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(_getExerciseIcon(t.type),
+                      size: 18, color: _getTypeColor(t.type)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(ExerciseType.getLabel(t.type),
+                                style: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w500)),
+                          ),
+                          Text('${t.calories.toInt()} kcal',
+                              style: const TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: total > 0 ? t.calories / total : 0,
+                          backgroundColor:
+                              _getTypeColor(t.type).withValues(alpha: 0.1),
+                          valueColor:
+                              AlwaysStoppedAnimation(_getTypeColor(t.type)),
+                          minHeight: 4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildStatItem(
+      String label, String value, String unit, IconData icon) {
+    return Expanded(
+      child: Column(
+        children: [
+          Icon(icon, color: Colors.white70, size: 16),
+          const SizedBox(height: 6),
+          Text(value,
+              style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white)),
+          Text(label,
+              style: const TextStyle(fontSize: 10, color: Colors.white70)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: AppColors.primary),
+        const SizedBox(width: 8),
+        Text(title,
+            style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary)),
+      ],
+    );
+  }
+
+  Color _getTypeColor(String type) {
+    switch (type) {
+      case 'running':
+        return const Color(0xFFFF6B6B);
+      case 'walking':
+        return const Color(0xFF4ECDC4);
+      case 'cycling':
+        return const Color(0xFFFFA726);
+      case 'swimming':
+        return const Color(0xFF42A5F5);
+      case 'yoga':
+        return const Color(0xFFAB47BC);
+      case 'strength':
+        return const Color(0xFF66BB6A);
+      case 'hiit':
+        return const Color(0xFFEF5350);
+      case 'dance':
+        return const Color(0xFFEC4899);
+      default:
+        return AppColors.primary;
+    }
+  }
+
   Widget _buildEmptyState(String title, String subtitle) {
     return Center(
       child: Padding(
@@ -620,6 +1018,44 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
         ],
       ),
     );
+  }
+}
+
+// Helper models for statistics tab
+class _ExerciseDailyStat {
+  final DateTime date;
+  final String label;
+  final double calories;
+  final int duration;
+  final int count;
+
+  const _ExerciseDailyStat({
+    required this.date,
+    required this.label,
+    required this.calories,
+    required this.duration,
+    required this.count,
+  });
+}
+
+class _ExerciseTypeStat {
+  final String type;
+  int count;
+  double calories;
+  int duration;
+
+  _ExerciseTypeStat({
+    required this.type,
+    required this.count,
+    required this.calories,
+    required this.duration,
+  });
+
+  _ExerciseTypeStat addRecord(ExerciseRecord r) {
+    count++;
+    calories += r.caloriesBurned;
+    duration += r.durationMinutes;
+    return this;
   }
 }
 

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Text, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Text, ForeignKey, func, Index
 from .database import Base
 
 class ExerciseRecord(Base):
@@ -13,3 +13,7 @@ class ExerciseRecord(Base):
     record_date = Column(Date, nullable=False)
     notes = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index('idx_exercise_user_date', 'user_id', 'record_date'),
+    )

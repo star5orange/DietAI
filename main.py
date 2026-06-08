@@ -14,15 +14,10 @@ from shared.config.settings import get_settings
 from shared.models.database import create_tables, engine
 from shared.models import user_models, food_models, conversation_models, saved_meal_models, exercise_models, water_models, reminder_models, notification_models, wellness_models
 
-# 导入路由
+# 导入路由 - 核心路由
 from routers.auth_router import router as auth_router
 from routers.user_router import router as user_router
-from routers.food_router import router as food_router
 from routers.health_router import router as health_router
-from routers.chat_router import router as chat_router
-from routers.analysis_chat_router import router as analysis_chat_router
-from routers.goal_router import router as goal_router
-from routers.deep_router import router as deep_router
 from routers.saved_meals_router import router as saved_meals_router
 
 from routers.exercise_router import router as exercise_router
@@ -30,6 +25,43 @@ from routers.water_router import router as water_router
 from routers.reminder_router import router as reminder_router
 from routers.notification_router import router as notification_router
 from routers.wellness_router import router as wellness_router
+
+# AI 依赖路由器 — 无 AI 包时优雅降级
+_food_router = None
+_chat_router = None
+_analysis_chat_router = None
+_goal_router = None
+_deep_router = None
+
+try:
+    from routers.food_router import router as food_router
+    _food_router = food_router
+except ImportError:
+    pass
+
+try:
+    from routers.chat_router import router as chat_router
+    _chat_router = chat_router
+except ImportError:
+    pass
+
+try:
+    from routers.analysis_chat_router import router as analysis_chat_router
+    _analysis_chat_router = analysis_chat_router
+except ImportError:
+    pass
+
+try:
+    from routers.goal_router import router as goal_router
+    _goal_router = goal_router
+except ImportError:
+    pass
+
+try:
+    from routers.deep_router import router as deep_router
+    _deep_router = deep_router
+except ImportError:
+    pass
 
 settings = get_settings()
 
@@ -104,6 +136,10 @@ app.add_middleware(
     allow_headers=settings.cors_headers,
 )
 
+# 添加 API 限流中间件
+from shared.middleware.rate_limiter import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware)
+
 # 添加受信任主机中间件
 if not settings.debug:
     app.add_middleware(
@@ -177,14 +213,14 @@ async def general_exception_handler(request: Request, exc: Exception):
     logger.error(f"未处理的异常: {type(exc).__name__}: {str(exc)}")
     
     if settings.debug:
-        # 开发环境返回详细错误信息
+        # 开发环境仅返回异常类型名，不暴露内部细节（如 SQL、堆栈）
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "success": False,
                 "message": "服务器内部错误",
                 "error_code": "INTERNAL_ERROR",
-                "details": str(exc),
+                "error_type": type(exc).__name__,
                 "timestamp": datetime.now().isoformat()
             }
         )
@@ -233,15 +269,20 @@ async def health_check():
     }
 
 
-# 注册路由
+# 注册路由 - 核心
 app.include_router(auth_router, prefix="/api", tags=["认证"])
 app.include_router(user_router, prefix="/api", tags=["用户"])
-app.include_router(food_router, prefix="/api", tags=["食物"])
+if _food_router is not None:
+    app.include_router(_food_router, prefix="/api", tags=["食物"])
 app.include_router(health_router, prefix="/api", tags=["健康"])
-app.include_router(goal_router, prefix="/api", tags=["目标追踪"])
-app.include_router(chat_router, prefix="/api", tags=["AI对话"])
-app.include_router(analysis_chat_router, prefix="/api", tags=["分析页面聊天"])
-app.include_router(deep_router, prefix="/api", tags=["DietDeepAgent"])
+if _goal_router is not None:
+    app.include_router(_goal_router, prefix="/api", tags=["目标追踪"])
+if _chat_router is not None:
+    app.include_router(_chat_router, prefix="/api", tags=["AI对话"])
+if _analysis_chat_router is not None:
+    app.include_router(_analysis_chat_router, prefix="/api", tags=["分析页面聊天"])
+if _deep_router is not None:
+    app.include_router(_deep_router, prefix="/api", tags=["DietDeepAgent"])
 app.include_router(saved_meals_router, prefix="/api", tags=["保存菜品"])
 
 # Milestone 1 新增路由

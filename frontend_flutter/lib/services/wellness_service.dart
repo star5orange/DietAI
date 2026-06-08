@@ -4,6 +4,79 @@ import '../shared/domain/models/api_response.dart';
 class WellnessService {
   final ApiService _apiService = ApiService();
 
+  /// 获取养生知识
+  Future<ApiResponse<List<Map<String, dynamic>>>> getWellnessTips({
+    String? category,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (category != null) {
+        queryParams['category'] = category;
+      }
+
+      final response = await _apiService.dio.get(
+        '/wellness/tips',
+        queryParameters: queryParams,
+      );
+
+      return ApiResponse.fromJson(
+        response.data,
+        (json) => (json as List).map((e) => e as Map<String, dynamic>).toList(),
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: true,
+        data: _getDefaultTips(),
+        message: '使用本地养生知识数据',
+      );
+    }
+  }
+
+  /// 本地默认养生知识
+  List<Map<String, dynamic>> _getDefaultTips() {
+    return [
+      {
+        'title': '中医九种体质',
+        'icon': 'heart_pulse',
+        'color': '#EF5350',
+        'items': [
+          '平和质：最健康的体质，阴阳气血调和',
+          '气虚质：元气不足，容易疲劳感冒',
+          '阳虚质：阳气不足，畏寒怕冷',
+          '阴虚质：阴液亏少，口干手足心热',
+          '痰湿质：痰湿凝聚，形体肥胖',
+          '湿热质：湿热内蕴，面垢油光',
+          '血瘀质：血行不畅，肤色晦暗',
+          '气郁质：气机郁滞，情绪低落',
+          '特禀质：过敏体质，易过敏',
+        ],
+      },
+      {
+        'title': '四季养生原则',
+        'icon': 'sun',
+        'color': '#FFA726',
+        'items': [
+          '春养肝：早睡早起，舒展身体，宜食绿色蔬菜',
+          '夏养心：晚睡早起，适当午休，宜食苦味食物',
+          '秋养肺：早睡早起，润燥养阴，宜食白色食物',
+          '冬养肾：早睡晚起，保暖防寒，宜食黑色食物',
+        ],
+      },
+      {
+        'title': '饮食养生要点',
+        'icon': 'utensils',
+        'color': '#43A047',
+        'items': [
+          '饮食有节：定时定量，不暴饮暴食',
+          '五味调和：酸苦甘辛咸均衡摄入',
+          '因时制宜：根据季节调整饮食结构',
+          '因人制宜：根据体质选择适宜食物',
+          '药食同源：善用药膳调理身体',
+        ],
+      },
+    ];
+  }
+
   /// 获取每日养生推荐
   Future<ApiResponse<Map<String, dynamic>>> getDailyRecommendation({
     String? constitutionType,

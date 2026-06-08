@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
+import '../../../../shared/domain/models/api_response.dart';
 import '../../../../services/wellness_service.dart';
 import 'recipe_detail_page.dart';
 
@@ -18,6 +19,7 @@ class _WellnessPageState extends State<WellnessPage>
   final WellnessService _wellnessService = WellnessService();
   Map<String, dynamic>? _recommendation;
   List<Map<String, dynamic>> _solarTerms = [];
+  List<Map<String, dynamic>> _wellnessTips = [];
   bool _isLoading = true;
 
   @override
@@ -35,13 +37,22 @@ class _WellnessPageState extends State<WellnessPage>
 
   Future<void> _loadData() async {
     try {
-      final recRes = await _wellnessService.getDailyRecommendation();
-      final solarRes = await _wellnessService.getSolarTerms();
+      final results = await Future.wait([
+        _wellnessService.getDailyRecommendation(),
+        _wellnessService.getSolarTerms(),
+        _wellnessService.getWellnessTips(),
+      ]);
 
       if (mounted) {
         setState(() {
-          _recommendation = recRes.data;
-          _solarTerms = solarRes.data ?? [];
+          _recommendation =
+              (results[0] as ApiResponse<Map<String, dynamic>>).data;
+          _solarTerms =
+              (results[1] as ApiResponse<List<Map<String, dynamic>>>).data ??
+                  [];
+          _wellnessTips =
+              (results[2] as ApiResponse<List<Map<String, dynamic>>>).data ??
+                  [];
           _isLoading = false;
         });
       }
@@ -331,71 +342,135 @@ class _WellnessPageState extends State<WellnessPage>
       return const Center(child: Text('暂无节气数据'));
     }
 
+    // 按月份分组节气 (date格式 "MM-DD")
+    final monthNames = [
+      '',
+      '一月',
+      '二月',
+      '三月',
+      '四月',
+      '五月',
+      '六月',
+      '七月',
+      '八月',
+      '九月',
+      '十月',
+      '十一月',
+      '十二月'
+    ];
+    final termByMonth = <int, List<Map<String, dynamic>>>{};
+    for (final term in _solarTerms) {
+      final date = term['date'] ?? '';
+      final month = int.tryParse(date.split('-')[0]) ?? 0;
+      termByMonth.putIfAbsent(month, () => []).add(term);
+    }
+
+    // 找当前节气所在的月份
+    int? currentMonth;
+    for (final term in _solarTerms) {
+      if (term['is_current'] == true) {
+        final date = term['date'] ?? '';
+        currentMonth = int.tryParse(date.split('-')[0]);
+        break;
+      }
+    }
+
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: _solarTerms.length,
-      itemBuilder: (context, index) {
-        final term = _solarTerms[index];
-        final isCurrent = term['is_current'] == true;
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: isCurrent
-                  ? AppColors.primary.withValues(alpha: 0.08)
-                  : AppColors.backgroundCard,
-              borderRadius: BorderRadius.circular(12),
-              border: isCurrent
-                  ? Border.all(color: AppColors.primary, width: 1.5)
-                  : null,
-              boxShadow: AppColors.lightShadow,
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: isCurrent
-                        ? AppColors.primary.withValues(alpha: 0.15)
-                        : const Color(0xFF43A047).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
+      itemCount: 4, // 每季度一屏
+      itemBuilder: (context, quarterIdx) {
+        final startMonth = quarterIdx * 3 + 1;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 季度标题
+            Padding(
+              padding: EdgeInsets.only(bottom: 12, top: quarterIdx > 0 ? 8 : 0),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: _quarterGradient(startMonth),
                   ),
-                  child: Icon(
-                    LucideIcons.calendar,
-                    color:
-                        isCurrent ? AppColors.primary : const Color(0xFF43A047),
-                    size: 22,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _quarterName(startMonth),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+              ),
+            ),
+            // 该季度三个月
+            ...List.generate(3, (i) {
+              final month = startMonth + i;
+              final terms = termByMonth[month] ?? [];
+              if (terms.isEmpty) return const SizedBox.shrink();
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: currentMonth == month
+                      ? AppColors.primary.withValues(alpha: 0.04)
+                      : AppColors.backgroundCard,
+                  borderRadius: BorderRadius.circular(12),
+                  border: currentMonth == month
+                      ? Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.2),
+                          width: 1)
+                      : null,
+                  boxShadow: AppColors.lightShadow,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 月份头
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: currentMonth == month
+                            ? AppColors.primary.withValues(alpha: 0.06)
+                            : AppColors.backgroundGray.withValues(alpha: 0.5),
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(12)),
+                      ),
+                      child: Row(
                         children: [
-                          Text(term['name'] ?? '',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: isCurrent
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
-                                color: isCurrent
-                                    ? AppColors.primary
-                                    : AppColors.textPrimary,
-                              )),
-                          if (isCurrent) ...[
+                          Icon(
+                            _monthIcon(month),
+                            size: 16,
+                            color: currentMonth == month
+                                ? AppColors.primary
+                                : AppColors.textTertiary,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            monthNames[month],
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: currentMonth == month
+                                  ? AppColors.primary
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
+                          if (currentMonth == month) ...[
                             const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 6, vertical: 1),
                               decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.1),
+                                color:
+                                    AppColors.primary.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(4),
                               ),
-                              child: const Text('当前',
+                              child: const Text('本月',
                                   style: TextStyle(
                                       fontSize: 10,
                                       color: AppColors.primary,
@@ -404,68 +479,238 @@ class _WellnessPageState extends State<WellnessPage>
                           ],
                         ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                          '${term['date'] ?? ''} · ${term['description'] ?? ''}',
-                          style: const TextStyle(
-                              fontSize: 12, color: AppColors.textTertiary)),
-                    ],
+                    ),
+                    // 节气格子
+                    Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: terms.map((term) {
+                          final day = (term['date'] ?? '').split('-').last;
+                          final isCurrent = term['is_current'] == true;
+                          return GestureDetector(
+                            onTap: isCurrent
+                                ? null
+                                : () => _showTermDetailSheet(context, term),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isCurrent
+                                    ? AppColors.primary
+                                    : (isCurrent
+                                        ? AppColors.primary
+                                            .withValues(alpha: 0.08)
+                                        : AppColors.backgroundGray
+                                            .withValues(alpha: 0.5)),
+                                borderRadius: BorderRadius.circular(10),
+                                border: isCurrent
+                                    ? null
+                                    : Border.all(color: AppColors.borderLight),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    term['name'] ?? '',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: isCurrent
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                      color: isCurrent
+                                          ? Colors.white
+                                          : AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '$day日',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: isCurrent
+                                          ? Colors.white70
+                                          : AppColors.textTertiary,
+                                    ),
+                                  ),
+                                  if (term['description'] != null &&
+                                      term['description'].isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: Text(
+                                        term['description'],
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          color: isCurrent
+                                              ? Colors.white60
+                                              : AppColors.textTertiary,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showTermDetailSheet(BuildContext context, Map<String, dynamic> term) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF43A047).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(LucideIcons.calendar,
+                        color: Color(0xFF43A047), size: 24),
+                  ),
+                  const SizedBox(width: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(term['name'] ?? '',
+                          style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary)),
+                      Text('${term['date'] ?? ''}',
+                          style: const TextStyle(
+                              fontSize: 13, color: AppColors.textTertiary)),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (term['description'] != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.backgroundGray.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    term['description'],
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: AppColors.textSecondary,
+                      height: 1.6,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
+            ],
           ),
         );
       },
     );
   }
 
+  List<Color> _quarterGradient(int startMonth) {
+    if (startMonth <= 3)
+      return const [Color(0xFF66BB6A), Color(0xFF43A047)]; // 春
+    if (startMonth <= 6)
+      return const [Color(0xFFFF7043), Color(0xFFE64A19)]; // 夏
+    if (startMonth <= 9)
+      return const [Color(0xFFFFA726), Color(0xFFF57C00)]; // 秋
+    return const [Color(0xFF42A5F5), Color(0xFF1E88E5)]; // 冬
+  }
+
+  String _quarterName(int startMonth) {
+    if (startMonth <= 3) return '春季  ·  万物复苏';
+    if (startMonth <= 6) return '夏季  ·  生机勃勃';
+    if (startMonth <= 9) return '秋季  ·  硕果累累';
+    return '冬季  ·  养精蓄锐';
+  }
+
+  IconData _monthIcon(int month) {
+    switch (month) {
+      case 1:
+        return LucideIcons.snowflake;
+      case 2:
+        return LucideIcons.sunrise;
+      case 3:
+        return LucideIcons.flower2;
+      case 4:
+        return LucideIcons.sun;
+      case 5:
+        return LucideIcons.leaf;
+      case 6:
+        return LucideIcons.umbrella;
+      case 7:
+        return LucideIcons.sun;
+      case 8:
+        return LucideIcons.thermometer;
+      case 9:
+        return LucideIcons.wind;
+      case 10:
+        return LucideIcons.moon;
+      case 11:
+        return LucideIcons.cloudRain;
+      case 12:
+        return LucideIcons.snowflake;
+      default:
+        return LucideIcons.calendar;
+    }
+  }
+
   Widget _buildKnowledgeTab() {
-    final knowledgeList = [
-      {
-        'title': '中医九种体质',
-        'icon': LucideIcons.heartPulse,
-        'color': const Color(0xFFEF5350),
-        'items': [
-          '平和质：最健康的体质，阴阳气血调和',
-          '气虚质：元气不足，容易疲劳感冒',
-          '阳虚质：阳气不足，畏寒怕冷',
-          '阴虚质：阴液亏少，口干手足心热',
-          '痰湿质：痰湿凝聚，形体肥胖',
-          '湿热质：湿热内蕴，面垢油光',
-          '血瘀质：血行不畅，肤色晦暗',
-          '气郁质：气机郁滞，情绪低落',
-          '特禀质：过敏体质，易过敏',
-        ],
-      },
-      {
-        'title': '四季养生原则',
-        'icon': LucideIcons.sun,
-        'color': const Color(0xFFFFA726),
-        'items': [
-          '春养肝：早睡早起，舒展身体，宜食绿色蔬菜',
-          '夏养心：晚睡早起，适当午休，宜食苦味食物',
-          '秋养肺：早睡早起，润燥养阴，宜食白色食物',
-          '冬养肾：早睡晚起，保暖防寒，宜食黑色食物',
-        ],
-      },
-      {
-        'title': '饮食养生要点',
-        'icon': LucideIcons.utensils,
-        'color': const Color(0xFF43A047),
-        'items': [
-          '饮食有节：定时定量，不暴饮暴食',
-          '五味调和：酸苦甘辛咸均衡摄入',
-          '因时制宜：根据季节调整饮食结构',
-          '因人制宜：根据体质选择适宜食物',
-          '药食同源：善用药膳调理身体',
-        ],
-      },
-    ];
+    if (_wellnessTips.isEmpty) {
+      return const Center(
+        child: Text('暂无养生知识', style: TextStyle(color: AppColors.textTertiary)),
+      );
+    }
 
     return ListView(
       padding: const EdgeInsets.all(16),
-      children: knowledgeList.map((section) {
+      children: _wellnessTips.map((section) {
+        final icon = _parseIcon(section['icon']?.toString() ?? 'heart');
+        final color = _parseColor(section['color']?.toString() ?? '#43A047');
+        final title = section['title']?.toString() ?? '';
+        final items =
+            (section['items'] as List?)?.map((e) => e.toString()).toList() ??
+                [];
+
         return Padding(
           padding: const EdgeInsets.only(bottom: 16),
           child: Container(
@@ -485,15 +730,13 @@ class _WellnessPageState extends State<WellnessPage>
                         width: 36,
                         height: 36,
                         decoration: BoxDecoration(
-                          color: (section['color'] as Color)
-                              .withValues(alpha: 0.1),
+                          color: color.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(section['icon'] as IconData,
-                            color: section['color'] as Color, size: 20),
+                        child: Icon(icon, color: color, size: 20),
                       ),
                       const SizedBox(width: 10),
-                      Text(section['title'] as String,
+                      Text(title,
                           style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
@@ -506,7 +749,7 @@ class _WellnessPageState extends State<WellnessPage>
                     color: AppColors.textTertiary,
                     indent: 14,
                     endIndent: 14),
-                ...(section['items'] as List<String>).map((item) => Padding(
+                ...items.map((item) => Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 8),
                       child: Row(
@@ -517,7 +760,7 @@ class _WellnessPageState extends State<WellnessPage>
                             width: 5,
                             height: 5,
                             decoration: BoxDecoration(
-                              color: section['color'] as Color,
+                              color: color,
                               borderRadius: BorderRadius.circular(3),
                             ),
                           ),
@@ -539,6 +782,45 @@ class _WellnessPageState extends State<WellnessPage>
         );
       }).toList(),
     );
+  }
+
+  IconData _parseIcon(String name) {
+    switch (name) {
+      case 'heart_pulse':
+        return LucideIcons.heartPulse;
+      case 'heart':
+        return LucideIcons.heart;
+      case 'sun':
+        return LucideIcons.sun;
+      case 'utensils':
+        return LucideIcons.utensils;
+      case 'leaf':
+        return LucideIcons.leaf;
+      case 'apple':
+        return LucideIcons.apple;
+      case 'droplets':
+        return LucideIcons.droplets;
+      case 'moon':
+        return LucideIcons.moon;
+      case 'zap':
+        return LucideIcons.zap;
+      case 'flame':
+        return LucideIcons.flame;
+      case 'sprout':
+        return LucideIcons.sprout;
+      case 'dumbbell':
+        return LucideIcons.dumbbell;
+      case 'sparkles':
+        return LucideIcons.sparkles;
+      default:
+        return LucideIcons.heart;
+    }
+  }
+
+  Color _parseColor(String hex) {
+    hex = hex.replaceFirst('#', '');
+    if (hex.length == 6) hex = 'FF$hex';
+    return Color(int.parse(hex, radix: 16));
   }
 
   Widget _buildSectionTitle(IconData icon, String title, Color color) {
