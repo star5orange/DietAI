@@ -122,14 +122,33 @@ class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage> with Ti
         onPressed: () => _showAddWeightModal(),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
-        icon: const Icon(LucideIcons.scale),
-        label: const Text(
-          '记录体重',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-          ),
+        elevation: 4,
+        extendedPadding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        label: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '记录',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                height: 1.2,
+              ),
+            ),
+            Text(
+              '体重',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                height: 1.2,
+              ),
+            ),
+          ],
         ),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 

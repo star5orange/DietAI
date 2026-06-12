@@ -48,12 +48,12 @@ class _HealthPageState extends ConsumerState<HealthPage> {
       final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
       final summaryResult =
           await _foodService.getDailyNutritionSummary(dateStr);
-      final waterResult = await _waterService.getBackendWaterIntake(dateStr);
+      final waterResult = await _waterService.getDailySummary(dateStr);
 
       if (mounted) {
         setState(() {
           _dailySummary = summaryResult.data;
-          _waterIntake = waterResult.data ?? 0.0;
+          _waterIntake = (waterResult.data?.totalMl ?? 0).toDouble();
           _isLoading = false;
         });
       }
@@ -82,7 +82,9 @@ class _HealthPageState extends ConsumerState<HealthPage> {
             children: [
               _buildHealthSummaryCard(),
               const SizedBox(height: 24),
-              const WaterIntakeWidget(),
+              WaterIntakeWidget(
+                selectedDate: DateTime.now(),
+              ),
               const SizedBox(height: 24),
               _buildFeatureGrid(context),
               const SizedBox(height: 24),
@@ -96,17 +98,21 @@ class _HealthPageState extends ConsumerState<HealthPage> {
 
   Widget _buildHealthSummaryCard() {
     final calories = _dailySummary?.totalCalories ?? 0.0;
-    // 智能格式化水量
-    String fmtWater(double ml) {
-      if (ml < 1000) return '${ml.toInt()}';
-      final s = (ml / 1000).toStringAsFixed(2);
-      return s.replaceAll(RegExp(r'\.?0+$'), '');
+
+    // 统一单位显示水量：≥1000ml 用 L，否则用 ml，最多两位小数去尾部零
+    String _fmtLiter(double ml) {
+      final liters = ml / 1000;
+      return liters.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
     }
 
-    final waterDisplay = _waterIntake >= 1000
-        ? '${fmtWater(_waterIntake)} / ${fmtWater(_waterGoal)}'
-        : '${_waterIntake.toInt()} / ${fmtWater(_waterGoal)}';
-    final waterUnit = _waterIntake >= 1000 ? 'L' : 'ml / L';
+    final useLiter = _waterGoal >= 1000;
+    final waterIntakeDisplay =
+        useLiter ? _fmtLiter(_waterIntake) : _waterIntake.toInt().toString();
+    final waterGoalDisplay =
+        useLiter ? _fmtLiter(_waterGoal) : _waterGoal.toInt().toString();
+    final waterValue = '$waterIntakeDisplay / $waterGoalDisplay';
+    final waterUnit = useLiter ? 'L' : 'ml';
+
     final caloriesProgress = _targetCalories > 0
         ? (calories / _targetCalories).clamp(0.0, 1.0)
         : 0.0;
@@ -166,7 +172,7 @@ class _HealthPageState extends ConsumerState<HealthPage> {
               Expanded(
                 child: _buildSummaryItem(
                   '水分',
-                  waterDisplay,
+                  waterValue,
                   waterUnit,
                   waterProgress,
                 ),

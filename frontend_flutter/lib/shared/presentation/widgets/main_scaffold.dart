@@ -5,9 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/themes/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
-import '../../../features/home/presentation/widgets/food_record_modal.dart';
-import '../../../features/camera/presentation/pages/camera_page.dart';
-import '../../../features/home/presentation/pages/text_describe_page.dart';
 import '../../../features/pet/presentation/widgets/pet_widget.dart';
 import '../../../features/pet/presentation/providers/pet_provider.dart';
 
@@ -299,7 +296,6 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
                 route: AppConstants.historyRoute,
                 isActive: currentLocation == AppConstants.historyRoute,
               ),
-              _buildAddButton(context),
               _buildNavItem(
                 context,
                 icon: LucideIcons.activity,
@@ -374,114 +370,5 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
         ),
       ),
     );
-  }
-
-  /// 创建加号按钮
-  Widget _buildAddButton(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [AppColors.primary, AppColors.primaryLight],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.3),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => _showFoodRecordModal(context),
-              borderRadius: BorderRadius.circular(28),
-              child: const Icon(
-                LucideIcons.plus,
-                size: 28,
-                color: AppColors.textInverse,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          '记录',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: AppColors.primary,
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 显示食物记录模态框
-  void _showFoodRecordModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => FoodRecordModal(
-        mealName: '选择餐次',
-        onRecordMethod: (method) {
-          Navigator.pop(context);
-          _handleRecordMethod(context, method);
-        },
-      ),
-    );
-  }
-
-  /// 处理记录方法
-  void _handleRecordMethod(BuildContext context, String method) {
-    switch (method) {
-      case 'ai_scan':
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const CameraPage(
-              mealName: '食物记录',
-              mealType: 1,
-            ),
-          ),
-        );
-        break;
-      case 'text_describe':
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                const TextDescribePage(mealName: '加餐', mealType: 4),
-          ),
-        );
-        break;
-      case 'voice_record':
-        // TODO: 实现语音记录功能
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('语音记录功能开发中...')),
-        );
-        break;
-      case 'saved_meals':
-        // TODO: 实现保存餐食功能
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('保存餐食功能开发中...')),
-        );
-        break;
-      case 'barcode_scan':
-        // TODO: 实现条形码扫描功能
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('条形码扫描功能开发中...')),
-        );
-        break;
-    }
   }
 }

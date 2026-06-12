@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../services/food_service.dart';
+import '../../../../services/saved_meal_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/presentation/widgets/food_image_preview.dart';
 
@@ -32,16 +33,19 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     });
 
     try {
-      final dateString = '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+      final dateString =
+          '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
       print('📋 历史页面加载记录: date=$dateString');
       final result = await _foodService.getFoodRecordsByDay(dateString);
 
-      print('📋 加载结果: success=${result.success}, message=${result.message}, dataNull=${result.data == null}');
+      print(
+          '📋 加载结果: success=${result.success}, message=${result.message}, dataNull=${result.data == null}');
       if (result.success && result.data != null) {
         print('📋 记录数量: ${result.data!.length}');
         for (int i = 0; i < result.data!.length; i++) {
           final r = result.data![i];
-          print('📋 记录[$i]: id=${r.id}, foodName=${r.foodName}, nutritionDetail=${r.nutritionDetail != null}');
+          print(
+              '📋 记录[$i]: id=${r.id}, foodName=${r.foodName}, nutritionDetail=${r.nutritionDetail != null}');
         }
         setState(() {
           _records = result.data!;
@@ -95,7 +99,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
             GestureDetector(
               onTap: () => _selectDate(),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [AppColors.backgroundSecondary, Colors.white],
@@ -147,7 +152,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
               ),
             ),
             const SizedBox(height: 24),
-            
+
             // 记录列表
             Expanded(
               child: _isLoading
@@ -158,7 +163,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                           ? const Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
-                children: [
+                                children: [
                                   Icon(
                                     LucideIcons.calendar,
                                     size: 48,
@@ -178,7 +183,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                           : ListView(
                               children: _buildMealSections(),
                             ),
-              ),
+                    ),
             ),
           ],
         ),
@@ -195,8 +200,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   String _getDateDisplayText() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final selectedDay = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
-    
+    final selectedDay =
+        DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+
     if (selectedDay == today) {
       return '今天 - ${_selectedDate.year}年${_selectedDate.month}月${_selectedDate.day}日';
     } else if (selectedDay == today.subtract(const Duration(days: 1))) {
@@ -238,9 +244,11 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     for (final mealType in mealTypes) {
       if (mealGroups.containsKey(mealType)) {
         final records = mealGroups[mealType]!;
-        final widgets = records.map((record) => _buildFoodItemFromRecord(record)).toList();
-        
-        sections.add(_buildMealSection(_getMealName(mealType), _getMealColor(mealType), widgets));
+        final widgets =
+            records.map((record) => _buildFoodItemFromRecord(record)).toList();
+
+        sections.add(_buildMealSection(
+            _getMealName(mealType), _getMealColor(mealType), widgets));
         sections.add(const SizedBox(height: 16));
       }
     }
@@ -280,26 +288,27 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
 
   Widget _buildFoodItemFromRecord(FoodRecord record) {
     // 优先使用 analysisResult 中的卡路里数据，如果没有则使用 nutritionDetail
-    final calories = record.analysisResult?.nutritionFacts.totalCalories ?? 
-                    record.nutritionDetail?.calories ?? 0.0;
+    final calories = record.analysisResult?.nutritionFacts.totalCalories ??
+        record.nutritionDetail?.calories ??
+        0.0;
     String time = '';
-    
-    // 安全地提取时间部分
-    if (record.createdAt.isNotEmpty) {
+
+    // 优先使用 recordTime（用户选择的用餐时间），其次用 createdAt
+    final timeStr = record.recordTime ?? record.createdAt;
+    if (timeStr.isNotEmpty) {
       try {
-        // 尝试解析ISO8601格式的日期时间
-        final dateTime = DateTime.parse(record.createdAt);
-        time = '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+        final dateTime = DateTime.parse(timeStr);
+        time =
+            '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
       } catch (e) {
-        // 如果解析失败，尝试从字符串中提取时间
-        if (record.createdAt.length > 16) {
-          time = record.createdAt.substring(11, 16);
+        if (timeStr.length > 16) {
+          time = timeStr.substring(11, 16);
         } else {
-          time = record.createdAt;
+          time = timeStr;
         }
       }
     }
-    
+
     return _buildFoodItem(
       record.foodName ?? '未命名食物',
       record.description ?? '',
@@ -336,7 +345,10 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [color.withValues(alpha: 0.1), color.withValues(alpha: 0.05)],
+                colors: [
+                  color.withValues(alpha: 0.1),
+                  color.withValues(alpha: 0.05)
+                ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -390,7 +402,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
               ],
             ),
           ),
-          
+
           // 食物列表
           ...foods,
         ],
@@ -398,7 +410,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     );
   }
 
-  Widget _buildFoodItem(String name, String amount, String calories, String time, [String? imageUrl, FoodRecord? record]) {
+  Widget _buildFoodItem(
+      String name, String amount, String calories, String time,
+      [String? imageUrl, FoodRecord? record]) {
     return InkWell(
       onTap: record != null ? () => _showFoodDetailModal(record) : null,
       borderRadius: BorderRadius.circular(8),
@@ -452,7 +466,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                   size: 24,
                 ),
               ),
-            
+
             // 食物信息
             Expanded(
               child: Column(
@@ -481,13 +495,14 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                 ],
               ),
             ),
-            
+
             // 卡路里和时间
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
@@ -510,7 +525,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                 ),
               ],
             ),
-            
+
             // 更多操作
             if (record != null) ...[
               const SizedBox(width: 12),
@@ -678,10 +693,12 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                   // 基本信息
                   _buildDetailSection('基本信息', [
                     _buildDetailRow('食物名称', record.foodName ?? '未命名食物'),
-                    if (record.description != null && record.description!.isNotEmpty)
+                    if (record.description != null &&
+                        record.description!.isNotEmpty)
                       _buildDetailRow('描述', record.description!),
                     _buildDetailRow('餐次', record.mealTypeName),
-                    _buildDetailRow('记录时间', record.createdAt),
+                    _buildDetailRow(
+                        '记录时间', record.recordTime ?? record.createdAt),
                     _buildDetailRow('分析状态', record.analysisStatusName),
                   ]),
 
@@ -792,8 +809,10 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     final nutritionData = record.nutritionData;
     final analysisResult = record.analysisResult;
     final nutritionDetail = record.nutritionDetail;
-    
-    if (nutritionData == null && analysisResult == null && nutritionDetail == null) {
+
+    if (nutritionData == null &&
+        analysisResult == null &&
+        nutritionDetail == null) {
       return _buildDetailSection('营养信息', [
         _buildDetailRow('状态', '暂无营养分析数据'),
       ]);
@@ -804,55 +823,69 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     if (nutritionData != null) {
       // 使用 nutritionData 数据
       final data = nutritionData!;
-      
+
       // 宏量营养素
       if (data['calories'] != null) {
-        nutritionRows.add(_buildDetailRow('热量', '${(data['calories'] as num).round()} kcal'));
+        nutritionRows.add(
+            _buildDetailRow('热量', '${(data['calories'] as num).round()} kcal'));
       }
       if (data['protein'] != null) {
-        nutritionRows.add(_buildDetailRow('蛋白质', '${(data['protein'] as num).round()} g'));
+        nutritionRows.add(
+            _buildDetailRow('蛋白质', '${(data['protein'] as num).round()} g'));
       }
       if (data['fat'] != null) {
-        nutritionRows.add(_buildDetailRow('脂肪', '${(data['fat'] as num).round()} g'));
+        nutritionRows
+            .add(_buildDetailRow('脂肪', '${(data['fat'] as num).round()} g'));
       }
       if (data['carbohydrates'] != null) {
-        nutritionRows.add(_buildDetailRow('碳水化合物', '${(data['carbohydrates'] as num).round()} g'));
+        nutritionRows.add(_buildDetailRow(
+            '碳水化合物', '${(data['carbohydrates'] as num).round()} g'));
       }
       if (data['dietary_fiber'] != null) {
-        nutritionRows.add(_buildDetailRow('膳食纤维', '${(data['dietary_fiber'] as num).round()} g'));
+        nutritionRows.add(_buildDetailRow(
+            '膳食纤维', '${(data['dietary_fiber'] as num).round()} g'));
       }
       if (data['sugar'] != null) {
-        nutritionRows.add(_buildDetailRow('糖类', '${(data['sugar'] as num).round()} g'));
+        nutritionRows
+            .add(_buildDetailRow('糖类', '${(data['sugar'] as num).round()} g'));
       }
 
       // 微量营养素
       if (data['sodium'] != null) {
-        nutritionRows.add(_buildDetailRow('钠', '${(data['sodium'] as num).round()} mg'));
+        nutritionRows
+            .add(_buildDetailRow('钠', '${(data['sodium'] as num).round()} mg'));
       }
       if (data['cholesterol'] != null) {
-        nutritionRows.add(_buildDetailRow('胆固醇', '${(data['cholesterol'] as num).round()} mg'));
+        nutritionRows.add(_buildDetailRow(
+            '胆固醇', '${(data['cholesterol'] as num).round()} mg'));
       }
 
       // 维生素
       if (data['vitamin_a'] != null) {
-        nutritionRows.add(_buildDetailRow('维生素A', '${(data['vitamin_a'] as num).round()} μg'));
+        nutritionRows.add(_buildDetailRow(
+            '维生素A', '${(data['vitamin_a'] as num).round()} μg'));
       }
       if (data['vitamin_c'] != null) {
-        nutritionRows.add(_buildDetailRow('维生素C', '${(data['vitamin_c'] as num).round()} mg'));
+        nutritionRows.add(_buildDetailRow(
+            '维生素C', '${(data['vitamin_c'] as num).round()} mg'));
       }
       if (data['vitamin_d'] != null) {
-        nutritionRows.add(_buildDetailRow('维生素D', '${(data['vitamin_d'] as num).round()} μg'));
+        nutritionRows.add(_buildDetailRow(
+            '维生素D', '${(data['vitamin_d'] as num).round()} μg'));
       }
 
       // 矿物质
       if (data['calcium'] != null) {
-        nutritionRows.add(_buildDetailRow('钙', '${(data['calcium'] as num).round()} mg'));
+        nutritionRows.add(
+            _buildDetailRow('钙', '${(data['calcium'] as num).round()} mg'));
       }
       if (data['iron'] != null) {
-        nutritionRows.add(_buildDetailRow('铁', '${(data['iron'] as num).round()} mg'));
+        nutritionRows
+            .add(_buildDetailRow('铁', '${(data['iron'] as num).round()} mg'));
       }
       if (data['potassium'] != null) {
-        nutritionRows.add(_buildDetailRow('钾', '${(data['potassium'] as num).round()} mg'));
+        nutritionRows.add(
+            _buildDetailRow('钾', '${(data['potassium'] as num).round()} mg'));
       }
 
       // 置信度
@@ -878,28 +911,35 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       // 维生素和矿物质信息（如果有）
       if (vitamins != null) {
         if (vitamins.sodium != null) {
-          nutritionRows.add(_buildDetailRow('钠', '${vitamins.sodium!.round()} mg'));
+          nutritionRows
+              .add(_buildDetailRow('钠', '${vitamins.sodium!.round()} mg'));
         }
         if (vitamins.cholesterol != null) {
-          nutritionRows.add(_buildDetailRow('胆固醇', '${vitamins.cholesterol!.round()} mg'));
+          nutritionRows.add(
+              _buildDetailRow('胆固醇', '${vitamins.cholesterol!.round()} mg'));
         }
         if (vitamins.vitaminA != null) {
-          nutritionRows.add(_buildDetailRow('维生素A', '${vitamins.vitaminA!.round()} μg'));
+          nutritionRows
+              .add(_buildDetailRow('维生素A', '${vitamins.vitaminA!.round()} μg'));
         }
         if (vitamins.vitaminC != null) {
-          nutritionRows.add(_buildDetailRow('维生素C', '${vitamins.vitaminC!.round()} mg'));
+          nutritionRows
+              .add(_buildDetailRow('维生素C', '${vitamins.vitaminC!.round()} mg'));
         }
         if (vitamins.calcium != null) {
-          nutritionRows.add(_buildDetailRow('钙', '${vitamins.calcium!.round()} mg'));
+          nutritionRows
+              .add(_buildDetailRow('钙', '${vitamins.calcium!.round()} mg'));
         }
         if (vitamins.iron != null) {
-          nutritionRows.add(_buildDetailRow('铁', '${vitamins.iron!.round()} mg'));
+          nutritionRows
+              .add(_buildDetailRow('铁', '${vitamins.iron!.round()} mg'));
         }
       }
 
       // 健康等级
       if (nutrition.healthLevel != null) {
-        nutritionRows.add(_buildDetailRow('健康等级', '${nutrition.healthLevel}/10'));
+        nutritionRows
+            .add(_buildDetailRow('健康等级', '${nutrition.healthLevel}/10'));
       }
     } else if (nutritionDetail != null) {
       // 使用 nutritionDetail 数据
@@ -922,10 +962,12 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
 
       // 分析方法和置信度
       if (nutritionDetail.analysisMethod != null) {
-        nutritionRows.add(_buildDetailRow('分析方法', nutritionDetail.analysisMethod!));
+        nutritionRows
+            .add(_buildDetailRow('分析方法', nutritionDetail.analysisMethod!));
       }
       if (nutritionDetail.confidenceScore != null) {
-        nutritionRows.add(_buildDetailRow('置信度', '${(nutritionDetail.confidenceScore! * 100).round()}%'));
+        nutritionRows.add(_buildDetailRow(
+            '置信度', '${(nutritionDetail.confidenceScore! * 100).round()}%'));
       }
     }
 
@@ -990,15 +1032,30 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       text: record.description ?? '',
     );
     final TextEditingController categoryController = TextEditingController();
-    
+
     final List<String> availableCategories = [
-      '主食', '蔬菜', '肉类', '汤类', '小食', '饮品', '甜品', '其他'
+      '主食',
+      '蔬菜',
+      '肉类',
+      '汤类',
+      '小食',
+      '饮品',
+      '甜品',
+      '其他'
     ];
-    
+
     String? selectedCategory;
     List<String> selectedTags = [];
     final List<String> availableTags = [
-      '健康', '减脂', '增肌', '高蛋白', '低脂', '低糖', '高纤维', '素食', '快手菜'
+      '健康',
+      '减脂',
+      '增肌',
+      '高蛋白',
+      '低脂',
+      '低糖',
+      '高纤维',
+      '素食',
+      '快手菜'
     ];
 
     showDialog(
@@ -1023,7 +1080,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     maxLength: 100,
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // 描述
                   TextField(
                     controller: descController,
@@ -1035,9 +1092,10 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     maxLength: 500,
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // 分类选择
-                  const Text('分类', style: TextStyle(fontWeight: FontWeight.w500)),
+                  const Text('分类',
+                      style: TextStyle(fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
@@ -1051,12 +1109,17 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                           });
                         },
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
-                            color: isSelected ? AppColors.primary : Colors.grey[100],
+                            color: isSelected
+                                ? AppColors.primary
+                                : Colors.grey[100],
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: isSelected ? AppColors.primary : Colors.grey[300]!,
+                              color: isSelected
+                                  ? AppColors.primary
+                                  : Colors.grey[300]!,
                             ),
                           ),
                           child: Text(
@@ -1071,9 +1134,10 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     }).toList(),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // 标签选择
-                  const Text('标签', style: TextStyle(fontWeight: FontWeight.w500)),
+                  const Text('标签',
+                      style: TextStyle(fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
@@ -1091,18 +1155,25 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                           });
                         },
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
-                            color: isSelected ? AppColors.primary.withValues(alpha: 0.1) : Colors.grey[100],
+                            color: isSelected
+                                ? AppColors.primary.withValues(alpha: 0.1)
+                                : Colors.grey[100],
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: isSelected ? AppColors.primary : Colors.grey[300]!,
+                              color: isSelected
+                                  ? AppColors.primary
+                                  : Colors.grey[300]!,
                             ),
                           ),
                           child: Text(
                             tag,
                             style: TextStyle(
-                              color: isSelected ? AppColors.primary : Colors.black87,
+                              color: isSelected
+                                  ? AppColors.primary
+                                  : Colors.black87,
                               fontSize: 12,
                             ),
                           ),
@@ -1111,7 +1182,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     }).toList(),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // 营养信息预览
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -1180,7 +1251,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   Widget _buildNutritionPreview(FoodRecord record) {
     final analysisResult = record.analysisResult;
     final nutritionDetail = record.nutritionDetail;
-    
+
     if (analysisResult == null && nutritionDetail == null) {
       return const Text('暂无营养信息', style: TextStyle(color: Colors.grey));
     }
@@ -1251,20 +1322,48 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     List<String> tags,
   ) async {
     try {
-      // TODO: 调用保存为菜品的API
-      // 这里需要实现API调用逻辑
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('菜品"$mealName"保存成功！')),
+      final savedMealService = SavedMealService();
+      final result = await savedMealService.createSavedMealFromRecord(
+        foodRecordId: record.id,
+        mealName: mealName,
+        description: description.isNotEmpty ? description : null,
+        category: category,
+        tags: tags.isNotEmpty ? tags : null,
       );
+
+      if (mounted) {
+        if (result.success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('菜品"$mealName"保存成功！'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('保存失败: ${result.message}'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('保存菜品失败，请重试')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('保存菜品失败: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
+
   void _showEditFoodDialog(FoodRecord record) {
     final nameController = TextEditingController(text: record.foodName ?? '');
-    final descController = TextEditingController(text: record.description ?? '');
+    final descController =
+        TextEditingController(text: record.description ?? '');
     int selectedMealType = record.mealType;
 
     showDialog(
@@ -1321,14 +1420,18 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
               onPressed: () async {
                 final foodData = FoodRecordCreate(
                   recordDate: record.recordDate,
+                  recordTime: record.recordTime,
                   mealType: selectedMealType,
                   foodName: nameController.text.trim(),
-                  description: descController.text.trim().isEmpty ? null : descController.text.trim(),
+                  description: descController.text.trim().isEmpty
+                      ? null
+                      : descController.text.trim(),
                   imageUrl: record.imageUrl,
                   recordingMethod: record.recordingMethod,
                 );
 
-                final result = await _foodService.updateFoodRecord(record.id, foodData);
+                final result =
+                    await _foodService.updateFoodRecord(record.id, foodData);
                 if (context.mounted) {
                   Navigator.pop(context);
                   if (result.success) {
@@ -1356,13 +1459,15 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     try {
       final result = await _foodService.deleteFoodRecord(record.id);
       if (result.success || result.notFound) {
-        final dateString = '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+        final dateString =
+            '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
         await _foodService.invalidateRecordsCache(dateString);
         setState(() {
           _records.removeWhere((r) => r.id == record.id);
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result.notFound ? '记录已不存在，已从列表移除' : '食物记录已删除')),
+          SnackBar(
+              content: Text(result.notFound ? '记录已不存在，已从列表移除' : '食物记录已删除')),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1375,4 +1480,4 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       );
     }
   }
-} 
+}

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../services/food_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
+import '../../../../shared/domain/models/saved_meal_model.dart';
 import '../../../../shared/domain/models/api_response.dart';
 import '../../../../shared/presentation/widgets/error_handler.dart';
 import '../../../../shared/presentation/widgets/water_intake_widget.dart';
@@ -21,6 +22,7 @@ import '../../../profile/domain/services/user_service.dart'
     show UserService, UserStats;
 import 'meal_selection_page.dart';
 import 'text_describe_page.dart';
+import '../../../saved_meals/presentation/pages/saved_meals_page.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -101,7 +103,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Future<void> _refreshData() async {
-    await _loadTodayData();
+    await _loadDataForDate(_selectedDate);
     ref.read(petProvider.notifier).onFoodRecorded();
   }
 
@@ -199,7 +201,10 @@ class _HomePageState extends ConsumerState<HomePage> {
                               flex: 5,
                               child: SizedBox(
                                 height: 300,
-                                child: WaterIntakeWidget(onTapDetails: () {}),
+                                child: WaterIntakeWidget(
+                                  onTapDetails: () {},
+                                  selectedDate: _selectedDate,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -227,14 +232,39 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Widget _buildAppBar() {
     final isToday = _isSameDay(_selectedDate, DateTime.now());
+    final now = DateTime.now();
+    final showMonthYear = _selectedDate.year != now.year ||
+        _selectedDate.month != now.month ||
+        !isToday;
     final dateText = isToday ? '今天' : DateFormat('M月d日').format(_selectedDate);
+    final suffixText =
+        showMonthYear ? DateFormat('yyyy年M月').format(_selectedDate) : null;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       color: AppColors.backgroundCard,
       child: Row(
         children: [
-          Text(dateText, style: AppTextStyles.headlineSmall),
+          GestureDetector(
+            onTap: () => _showDatePicker(),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(dateText, style: AppTextStyles.headlineSmall),
+                const SizedBox(width: 4),
+                const Icon(LucideIcons.chevronDown,
+                    size: 18, color: AppColors.textSecondary),
+              ],
+            ),
+          ),
+          if (suffixText != null) ...[
+            const SizedBox(width: 8),
+            Text(
+              suffixText,
+              style: AppTextStyles.bodySmall
+                  .copyWith(color: AppColors.textTertiary),
+            ),
+          ],
           const Spacer(),
           if (_streakDays > 0)
             Container(
@@ -266,7 +296,30 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
+  Future<void> _showDatePicker() async {
+    final now = DateTime.now();
+    final selectedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: now,
+      helpText: '选择日期查看记录',
+      cancelText: '取消',
+      confirmText: '确定',
+    );
+
+    if (selectedDate != null && mounted) {
+      setState(() => _selectedDate = selectedDate);
+      _loadDataForDate(selectedDate);
+    }
+  }
+
   Widget _buildDateSelector() {
+    // 计算 _selectedDate 所在周的周一
+    final monday =
+        _selectedDate.subtract(Duration(days: _selectedDate.weekday - 1));
+    final now = DateTime.now();
+
     return Container(
       height: 80,
       color: AppColors.backgroundCard,
@@ -276,9 +329,6 @@ class _HomePageState extends ConsumerState<HomePage> {
         itemCount: 7,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemBuilder: (context, index) {
-          // 计算本周一的日期
-          final now = DateTime.now();
-          final monday = now.subtract(Duration(days: now.weekday - 1));
           final date = monday.add(Duration(days: index));
           final isSelected = _isSameDay(date, _selectedDate);
           final today = DateTime(now.year, now.month, now.day);
@@ -1180,49 +1230,191 @@ class _HomePageState extends ConsumerState<HomePage> {
         mealName == '晚餐' ||
         mealName == '加餐') {
       final mealType = _getMealTypeFromName(mealName);
-      _executeRecordMethod(method, mealName, mealType);
+      _showTimePicker(method, mealName, mealType);
     } else {
+      _showTimePickerForOther(method, mealName);
+    }
+  }
+
+  Future<void> _showTimePicker(
+      String method, String mealName, int mealType) async {
+    final now = DateTime.now();
+    final initialTime = TimeOfDay(hour: now.hour, minute: now.minute);
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+      helpText: '选择用餐时间',
+      cancelText: '取消',
+      confirmText: '确定',
+    );
+
+    if (picked != null && mounted) {
+      final selectedTime = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        picked.hour,
+        picked.minute,
+      );
+      _executeRecordMethod(
+          method, mealName, mealType, selectedTime.toIso8601String());
+    }
+  }
+
+  Future<void> _showTimePickerForOther(String method, String mealName) async {
+    final now = DateTime.now();
+    final initialTime = TimeOfDay(hour: now.hour, minute: now.minute);
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+      helpText: '选择用餐时间',
+      cancelText: '取消',
+      confirmText: '确定',
+    );
+
+    if (picked != null && mounted) {
+      final selectedTime = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        picked.hour,
+        picked.minute,
+      );
       Navigator.push(
         context,
         MaterialPageRoute(
             builder: (context) => MealSelectionPage(recordMethod: method)),
       ).then((result) {
         if (result != null) {
-          _executeRecordMethod(
-              method, result['mealName'] as String, result['mealType'] as int);
+          _executeRecordMethod(method, result['mealName'] as String,
+              result['mealType'] as int, selectedTime.toIso8601String());
         }
       });
     }
   }
 
-  void _executeRecordMethod(String method, String mealName, int mealType) {
+  Future<void> _executeRecordMethod(
+      String method, String mealName, int mealType,
+      [String? recordTime]) async {
+    final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
     switch (method) {
       case 'ai_scan':
         Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (context) =>
-                        CameraPage(mealName: mealName, mealType: mealType)))
-            .then((_) => _refreshData());
+            context,
+            MaterialPageRoute(
+                builder: (context) => CameraPage(
+                    mealName: mealName,
+                    mealType: mealType,
+                    recordDate: dateStr,
+                    recordTime: recordTime))).then((_) => _refreshData());
         break;
       case 'text_describe':
         Navigator.push(
             context,
             MaterialPageRoute(
                 builder: (context) => TextDescribePage(
-                    mealName: mealName, mealType: mealType))).then((result) {
+                    mealName: mealName,
+                    mealType: mealType,
+                    recordDate: dateStr,
+                    recordTime: recordTime))).then((result) {
           if (result == true) _refreshData();
         });
         break;
       case 'voice_record':
-        print('语音记录 - $mealName');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('语音记录功能即将推出，敬请期待'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
         break;
       case 'saved_meals':
-        Navigator.pushNamed(context, '/saved-meals');
+        await _navigateToSavedMeals(mealName, mealType, recordTime);
         break;
-      case 'barcode_scan':
-        print('条形码扫描 - $mealName');
-        break;
+    }
+  }
+
+  Future<void> _navigateToSavedMeals(String mealName, int mealType,
+      [String? recordTime]) async {
+    final meal =
+        await Navigator.of(context, rootNavigator: true).push<SavedMeal>(
+      MaterialPageRoute(builder: (_) => const SavedMealsPage()),
+    );
+    if (meal != null && mounted) {
+      _createFoodRecordFromSavedMeal(meal, mealName, mealType, recordTime);
+    }
+  }
+
+  Future<void> _createFoodRecordFromSavedMeal(
+      SavedMeal meal, String mealName, int mealType,
+      [String? recordTime]) async {
+    try {
+      final foodService = FoodService();
+      final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
+
+      final record = FoodRecordCreate(
+        recordDate: dateStr,
+        recordTime: recordTime ?? DateTime.now().toIso8601String(),
+        mealType: mealType,
+        foodName: meal.mealName,
+        description: meal.description,
+        imageUrl: meal.imageUrl,
+        recordingMethod: 4,
+      );
+
+      final result = await foodService.createFoodRecord(record);
+      if (result.success && result.data != null) {
+        if (meal.nutrition != null) {
+          try {
+            await foodService.addNutritionDetail(
+              result.data!.id,
+              NutritionDetailCreate(
+                calories: meal.nutrition!.calories,
+                protein: meal.nutrition!.protein,
+                fat: meal.nutrition!.fat,
+                carbohydrates: meal.nutrition!.carbohydrates,
+                dietaryFiber: meal.nutrition!.dietaryFiber,
+                sugar: meal.nutrition!.sugar,
+                sodium: meal.nutrition!.sodium,
+                cholesterol: meal.nutrition!.cholesterol,
+                analysisMethod: 'saved_meal',
+              ),
+            );
+          } catch (_) {
+            // 营养详情添加失败不影响主流程
+          }
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${meal.mealName} 已记录到$mealName'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        }
+        _refreshData();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('记录失败: ${result.message}'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('记录失败: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 

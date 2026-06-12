@@ -12,11 +12,15 @@ import 'food_analysis_page.dart';
 class CameraPage extends ConsumerStatefulWidget {
   final String? mealName;
   final int? mealType;
-  
+  final String recordDate;
+  final String? recordTime;
+
   const CameraPage({
     super.key,
     this.mealName,
     this.mealType,
+    required this.recordDate,
+    this.recordTime,
   });
 
   @override
@@ -67,7 +71,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       );
 
       await _cameraController!.initialize();
-      
+
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -94,7 +98,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
 
     try {
       setState(() => _isProcessing = true);
-      
+
       final image = await _cameraController!.takePicture();
       await _processImage(File(image.path));
     } catch (e) {
@@ -107,7 +111,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
   Future<void> _pickFromGallery() async {
     try {
       setState(() => _isProcessing = true);
-      
+
       final image = await _imagePicker.pickImage(source: ImageSource.gallery);
       if (image != null) {
         await _processImage(File(image.path));
@@ -122,21 +126,20 @@ class _CameraPageState extends ConsumerState<CameraPage> {
   Future<void> _processImage(File imageFile) async {
     try {
       // 立即跳转到分析页面，并传递流式数据
-      final today = DateTime.now();
-      final todayString = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-      
+      final recordDate = widget.recordDate;
+
       // 创建流式数据源
       final analysisStream = _foodService.createFoodRecordWithImageStream(
         imageFile: imageFile,
-        recordDate: todayString,
+        recordDate: recordDate,
         mealType: widget.mealType ?? 1,
         foodName: widget.mealName ?? '未知食物',
         description: '通过AI扫描识别',
+        recordTime: widget.recordTime,
       );
-      
+
       // 立即跳转到分析页面并传递流式数据
       _navigateToAnalysisPageWithStream(analysisStream, imageFile);
-      
     } catch (e) {
       NetworkErrorHandler.handleApiError(context, e);
     }
@@ -151,8 +154,8 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     );
   }
 
-
-  void _navigateToAnalysisPageWithStream(Stream<Map<String, dynamic>> analysisStream, File imageFile) {
+  void _navigateToAnalysisPageWithStream(
+      Stream<Map<String, dynamic>> analysisStream, File imageFile) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -362,33 +365,17 @@ class _CameraPageState extends ConsumerState<CameraPage> {
                 child: Column(
                   children: [
                     const SizedBox(height: 20),
-                    
-                    // 底部按钮行
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        // AI扫描器按钮
-                        _buildBottomButton(
-                          LucideIcons.scanLine,
-                          'AI扫描器',
-                          () => _takePicture(),
-                          isActive: true,
-                        ),
-                        
-                        // 条形码按钮
-                        _buildBottomButton(
-                          LucideIcons.qrCode,
-                          '条形码',
-                          () {
-                            // TODO: 实现条形码扫描
-                          },
-                          isActive: false,
-                        ),
-                      ],
+
+                    // AI扫描器按钮
+                    _buildBottomButton(
+                      LucideIcons.scanLine,
+                      'AI扫描器',
+                      () => _takePicture(),
+                      isActive: true,
                     ),
-                    
+
                     const SizedBox(height: 30),
-                    
+
                     // 拍照和相册按钮
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -402,7 +389,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
                             size: 24,
                           ),
                         ),
-                        
+
                         // 拍照按钮
                         GestureDetector(
                           onTap: _isProcessing ? null : _takePicture,
@@ -424,7 +411,8 @@ class _CameraPageState extends ConsumerState<CameraPage> {
                                       height: 24,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
                                           Color(0xFF3ECC7A),
                                         ),
                                       ),
@@ -437,7 +425,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
                                   ),
                           ),
                         ),
-                        
+
                         // 闪光灯按钮
                         IconButton(
                           onPressed: () {
@@ -497,4 +485,4 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       ),
     );
   }
-} 
+}

@@ -9,13 +9,15 @@ final weightRecordsServiceProvider = Provider<WeightRecordsService>((ref) {
 });
 
 /// Weight Records State Provider
-final weightRecordsProvider = StateNotifierProvider<WeightRecordsNotifier, AsyncValue<List<WeightRecord>>>((ref) {
+final weightRecordsProvider = StateNotifierProvider<WeightRecordsNotifier,
+    AsyncValue<List<WeightRecord>>>((ref) {
   final service = ref.watch(weightRecordsServiceProvider);
   return WeightRecordsNotifier(service);
 });
 
 /// Weight Records Notifier
-class WeightRecordsNotifier extends StateNotifier<AsyncValue<List<WeightRecord>>> {
+class WeightRecordsNotifier
+    extends StateNotifier<AsyncValue<List<WeightRecord>>> {
   final WeightRecordsService _service;
 
   WeightRecordsNotifier(this._service) : super(const AsyncValue.loading()) {
@@ -29,14 +31,14 @@ class WeightRecordsNotifier extends StateNotifier<AsyncValue<List<WeightRecord>>
     String? endDate,
   }) async {
     state = const AsyncValue.loading();
-    
+
     try {
       final result = await _service.getWeightRecords(
         limit: limit,
         startDate: startDate,
         endDate: endDate,
       );
-      
+
       if (result.success) {
         // 按时间倒序排列（最新的在前）
         final sortedRecords = result.data ?? [];
@@ -51,18 +53,21 @@ class WeightRecordsNotifier extends StateNotifier<AsyncValue<List<WeightRecord>>
   }
 
   /// 创建体重记录
-  Future<ApiResponse<WeightRecord>> createWeightRecord(CreateWeightRecordRequest request) async {
+  Future<ApiResponse<WeightRecord>> createWeightRecord(
+      CreateWeightRecordRequest request) async {
     try {
       final result = await _service.createWeightRecord(request);
-      
+
       if (result.success && result.data != null) {
-        // 更新本地状态
-        state.whenData((records) {
-          final updatedRecords = [result.data!, ...records];
-          state = AsyncValue.data(updatedRecords);
-        });
+        // 安全更新本地状态
+        state.mapOrNull(
+          data: (dataState) {
+            final updatedRecords = [result.data!, ...dataState.value];
+            state = AsyncValue.data(updatedRecords);
+          },
+        );
       }
-      
+
       return result;
     } catch (e) {
       return ApiResponse<WeightRecord>.failure(
@@ -72,20 +77,23 @@ class WeightRecordsNotifier extends StateNotifier<AsyncValue<List<WeightRecord>>
   }
 
   /// 更新体重记录
-  Future<ApiResponse<WeightRecord>> updateWeightRecord(int recordId, UpdateWeightRecordRequest request) async {
+  Future<ApiResponse<WeightRecord>> updateWeightRecord(
+      int recordId, UpdateWeightRecordRequest request) async {
     try {
       final result = await _service.updateWeightRecord(recordId, request);
-      
+
       if (result.success && result.data != null) {
-        // 更新本地状态
-        state.whenData((records) {
-          final updatedRecords = records.map((record) {
-            return record.id == recordId ? result.data! : record;
-          }).toList();
-          state = AsyncValue.data(updatedRecords);
-        });
+        // 安全更新本地状态
+        state.mapOrNull(
+          data: (dataState) {
+            final updatedRecords = dataState.value.map((record) {
+              return record.id == recordId ? result.data! : record;
+            }).toList();
+            state = AsyncValue.data(updatedRecords);
+          },
+        );
       }
-      
+
       return result;
     } catch (e) {
       return ApiResponse<WeightRecord>.failure(
@@ -98,15 +106,19 @@ class WeightRecordsNotifier extends StateNotifier<AsyncValue<List<WeightRecord>>
   Future<ApiResponse<void>> deleteWeightRecord(int recordId) async {
     try {
       final result = await _service.deleteWeightRecord(recordId);
-      
+
       if (result.success) {
-        // 更新本地状态
-        state.whenData((records) {
-          final updatedRecords = records.where((record) => record.id != recordId).toList();
-          state = AsyncValue.data(updatedRecords);
-        });
+        // 安全更新本地状态
+        state.mapOrNull(
+          data: (dataState) {
+            final updatedRecords = dataState.value
+                .where((record) => record.id != recordId)
+                .toList();
+            state = AsyncValue.data(updatedRecords);
+          },
+        );
       }
-      
+
       return result;
     } catch (e) {
       return ApiResponse<void>.failure(
@@ -125,22 +137,24 @@ class WeightRecordsNotifier extends StateNotifier<AsyncValue<List<WeightRecord>>
 final latestWeightRecordProvider = FutureProvider<WeightRecord?>((ref) async {
   final service = ref.watch(weightRecordsServiceProvider);
   final result = await service.getLatestWeightRecord();
-  
+
   return result.success ? result.data : null;
 });
 
 /// 体重趋势Provider
-final weightTrendProvider = FutureProvider.family<WeightTrend?, int>((ref, days) async {
+final weightTrendProvider =
+    FutureProvider.family<WeightTrend?, int>((ref, days) async {
   final service = ref.watch(weightRecordsServiceProvider);
   final result = await service.getWeightTrend(days: days);
-  
+
   return result.success ? result.data : null;
 });
 
 /// 近期体重记录Provider（用于图表显示）
-final recentWeightRecordsProvider = Provider<AsyncValue<List<WeightRecord>>>((ref) {
+final recentWeightRecordsProvider =
+    Provider<AsyncValue<List<WeightRecord>>>((ref) {
   final allRecordsAsync = ref.watch(weightRecordsProvider);
-  
+
   return allRecordsAsync.when(
     data: (records) {
       // 获取最近30条记录用于图表显示

@@ -9,11 +9,15 @@ import '../../../../shared/domain/models/food_model.dart';
 class TextDescribePage extends StatefulWidget {
   final String mealName;
   final int mealType;
+  final String recordDate;
+  final String? recordTime;
 
   const TextDescribePage({
     super.key,
     required this.mealName,
     required this.mealType,
+    required this.recordDate,
+    this.recordTime,
   });
 
   @override
@@ -24,7 +28,8 @@ class _TextDescribePageState extends State<TextDescribePage> {
   final FoodService _foodService = FoodService();
   final TextEditingController _foodNameController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
-  final TextEditingController _portionController = TextEditingController(text: '1');
+  final TextEditingController _portionController =
+      TextEditingController(text: '1');
   final TextEditingController _caloriesController = TextEditingController();
   final TextEditingController _proteinController = TextEditingController();
   final TextEditingController _fatController = TextEditingController();
@@ -68,7 +73,8 @@ class _TextDescribePageState extends State<TextDescribePage> {
     final foodName = _foodNameController.text.trim();
     if (foodName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入食物名称'), backgroundColor: AppColors.error),
+        const SnackBar(
+            content: Text('请输入食物名称'), backgroundColor: AppColors.error),
       );
       return;
     }
@@ -83,7 +89,8 @@ class _TextDescribePageState extends State<TextDescribePage> {
           : '$foodName ${portion}${_selectedPortionUnit}';
 
       final record = FoodRecordCreate(
-        recordDate: DateTime.now().toIso8601String().substring(0, 10),
+        recordDate: widget.recordDate,
+        recordTime: widget.recordTime ?? DateTime.now().toIso8601String(),
         mealType: widget.mealType,
         foodName: foodName,
         description: fullDescription,
@@ -98,16 +105,22 @@ class _TextDescribePageState extends State<TextDescribePage> {
           final fat = double.tryParse(_fatController.text);
           final carbs = double.tryParse(_carbsController.text);
 
-          print('📝 营养数据: calories=$calories, protein=$protein, fat=$fat, carbs=$carbs');
+          print(
+              '📝 营养数据: calories=$calories, protein=$protein, fat=$fat, carbs=$carbs');
 
-          if (calories != null || protein != null || fat != null || carbs != null) {
-            final nutritionResult = await _foodService.addNutritionDetail(result.data!.id, NutritionDetailCreate(
-              calories: calories,
-              protein: protein,
-              fat: fat,
-              carbohydrates: carbs,
-              analysisMethod: _isAutoEstimate ? 'auto_estimate' : 'manual',
-            ));
+          if (calories != null ||
+              protein != null ||
+              fat != null ||
+              carbs != null) {
+            final nutritionResult = await _foodService.addNutritionDetail(
+                result.data!.id,
+                NutritionDetailCreate(
+                  calories: calories,
+                  protein: protein,
+                  fat: fat,
+                  carbohydrates: carbs,
+                  analysisMethod: _isAutoEstimate ? 'auto_estimate' : 'manual',
+                ));
 
             if (!nutritionResult.success) {
               print('❌ 营养数据保存失败: ${nutritionResult.message}');
@@ -126,15 +139,17 @@ class _TextDescribePageState extends State<TextDescribePage> {
           }
 
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$foodName 已记录到${widget.mealName}'), backgroundColor: AppColors.success),
+            SnackBar(
+                content: Text('$foodName 已记录到${widget.mealName}'),
+                backgroundColor: AppColors.success),
           );
-          final today = DateTime.now();
-          final dateString = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-          await _foodService.invalidateRecordsCache(dateString);
+          await _foodService.invalidateRecordsCache(widget.recordDate);
           Navigator.pop(context, true);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('记录失败: ${result.message}'), backgroundColor: AppColors.error),
+            SnackBar(
+                content: Text('记录失败: ${result.message}'),
+                backgroundColor: AppColors.error),
           );
         }
       }
@@ -194,13 +209,18 @@ class _TextDescribePageState extends State<TextDescribePage> {
                     color: AppColors.warningLight,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(LucideIcons.flame, color: AppColors.warning, size: 18),
+                  child: const Icon(LucideIcons.flame,
+                      color: AppColors.warning, size: 18),
                 ),
                 const SizedBox(width: 10),
-                Text('营养信息', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+                Text('营养信息',
+                    style: AppTextStyles.bodyMedium
+                        .copyWith(fontWeight: FontWeight.w600)),
                 const Spacer(),
                 Icon(
-                  _showNutritionInput ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                  _showNutritionInput
+                      ? LucideIcons.chevronUp
+                      : LucideIcons.chevronDown,
                   color: AppColors.textSecondary,
                   size: 20,
                 ),
@@ -211,12 +231,15 @@ class _TextDescribePageState extends State<TextDescribePage> {
             const SizedBox(height: 12),
             Row(
               children: [
-                Text('自动估算', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+                Text('自动估算',
+                    style: AppTextStyles.bodySmall
+                        .copyWith(color: AppColors.textSecondary)),
                 const Spacer(),
                 Flexible(
                   child: Text(
                     _isAutoEstimate ? '根据食物数据库估算' : '手动输入',
-                    style: AppTextStyles.bodySmall.copyWith(color: AppColors.primary),
+                    style: AppTextStyles.bodySmall
+                        .copyWith(color: AppColors.primary),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -234,11 +257,13 @@ class _TextDescribePageState extends State<TextDescribePage> {
             Row(
               children: [
                 Expanded(
-                  child: _buildNutritionField('热量(kcal)', _caloriesController, LucideIcons.flame),
+                  child: _buildNutritionField(
+                      '热量(kcal)', _caloriesController, LucideIcons.flame),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: _buildNutritionField('蛋白质(g)', _proteinController, LucideIcons.dumbbell),
+                  child: _buildNutritionField(
+                      '蛋白质(g)', _proteinController, LucideIcons.dumbbell),
                 ),
               ],
             ),
@@ -246,11 +271,13 @@ class _TextDescribePageState extends State<TextDescribePage> {
             Row(
               children: [
                 Expanded(
-                  child: _buildNutritionField('脂肪(g)', _fatController, LucideIcons.droplets),
+                  child: _buildNutritionField(
+                      '脂肪(g)', _fatController, LucideIcons.droplets),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: _buildNutritionField('碳水(g)', _carbsController, LucideIcons.wheat),
+                  child: _buildNutritionField(
+                      '碳水(g)', _carbsController, LucideIcons.wheat),
                 ),
               ],
             ),
@@ -271,7 +298,8 @@ class _TextDescribePageState extends State<TextDescribePage> {
     );
   }
 
-  Widget _buildNutritionField(String label, TextEditingController controller, IconData icon) {
+  Widget _buildNutritionField(
+      String label, TextEditingController controller, IconData icon) {
     return TextField(
       controller: controller,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -279,12 +307,19 @@ class _TextDescribePageState extends State<TextDescribePage> {
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon, size: 16, color: AppColors.textSecondary),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.borderLight)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.borderLight)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: AppColors.borderLight)),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: AppColors.borderLight)),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
         filled: true,
         fillColor: AppColors.backgroundSecondary,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         isDense: true,
       ),
     );
@@ -311,11 +346,19 @@ class _TextDescribePageState extends State<TextDescribePage> {
           TextButton.icon(
             onPressed: _isSubmitting ? null : _submitRecord,
             icon: _isSubmitting
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
-                : const Icon(LucideIcons.check, size: 18, color: AppColors.primary),
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.primary))
+                : const Icon(LucideIcons.check,
+                    size: 18, color: AppColors.primary),
             label: Text(
               _isSubmitting ? '提交中' : '提交',
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.primary),
+              style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary),
             ),
           ),
         ],
@@ -362,12 +405,16 @@ class _TextDescribePageState extends State<TextDescribePage> {
                   color: AppColors.primaryWithOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(LucideIcons.edit2, color: AppColors.primary, size: 18),
+                child:
+                    Icon(LucideIcons.edit2, color: AppColors.primary, size: 18),
               ),
               const SizedBox(width: 10),
-              Text('食物名称', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+              Text('食物名称',
+                  style: AppTextStyles.bodyMedium
+                      .copyWith(fontWeight: FontWeight.w600)),
               const Spacer(),
-              Text('必填', style: TextStyle(fontSize: 12, color: AppColors.error)),
+              Text('必填',
+                  style: TextStyle(fontSize: 12, color: AppColors.error)),
             ],
           ),
           const SizedBox(height: 12),
@@ -377,12 +424,20 @@ class _TextDescribePageState extends State<TextDescribePage> {
             decoration: InputDecoration(
               hintText: '例如：鸡排、米饭 或 鸡排饭...',
               hintStyle: TextStyle(color: AppColors.textHint, fontSize: 14),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.borderLight)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.borderLight)),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppColors.borderLight)),
+              enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppColors.borderLight)),
+              focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide:
+                      const BorderSide(color: AppColors.primary, width: 1.5)),
               filled: true,
               fillColor: AppColors.backgroundSecondary,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             ),
             maxLines: 2,
             textInputAction: TextInputAction.next,
@@ -412,10 +467,13 @@ class _TextDescribePageState extends State<TextDescribePage> {
                   color: AppColors.infoLight,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(LucideIcons.scale, color: AppColors.info, size: 18),
+                child: const Icon(LucideIcons.scale,
+                    color: AppColors.info, size: 18),
               ),
               const SizedBox(width: 10),
-              Text('估算份量', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+              Text('估算份量',
+                  style: AppTextStyles.bodyMedium
+                      .copyWith(fontWeight: FontWeight.w600)),
             ],
           ),
           const SizedBox(height: 12),
@@ -425,17 +483,27 @@ class _TextDescribePageState extends State<TextDescribePage> {
                 width: 80,
                 child: TextField(
                   controller: _portionController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   onChanged: (_) => _updateAutoEstimate(),
                   decoration: InputDecoration(
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: AppColors.borderLight)),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: AppColors.borderLight)),
-                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: AppColors.borderLight)),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: AppColors.borderLight)),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(
+                            color: AppColors.primary, width: 1.5)),
                     filled: true,
                     fillColor: AppColors.backgroundSecondary,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                   ),
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ),
               const SizedBox(width: 10),
@@ -448,17 +516,24 @@ class _TextDescribePageState extends State<TextDescribePage> {
                     return GestureDetector(
                       onTap: () => setState(() => _selectedPortionUnit = unit),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 7),
                         decoration: BoxDecoration(
-                          color: isSelected ? AppColors.primary : AppColors.backgroundTertiary,
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.backgroundTertiary,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           unit,
                           style: TextStyle(
                             fontSize: 13,
-                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                            color: isSelected ? AppColors.textInverse : AppColors.textSecondary,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                            color: isSelected
+                                ? AppColors.textInverse
+                                : AppColors.textSecondary,
                           ),
                         ),
                       ),
@@ -493,12 +568,17 @@ class _TextDescribePageState extends State<TextDescribePage> {
                   color: AppColors.warningLight,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(LucideIcons.messageSquare, color: AppColors.warning, size: 18),
+                child: const Icon(LucideIcons.messageSquare,
+                    color: AppColors.warning, size: 18),
               ),
               const SizedBox(width: 10),
-              Text('补充描述', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+              Text('补充描述',
+                  style: AppTextStyles.bodyMedium
+                      .copyWith(fontWeight: FontWeight.w600)),
               const Spacer(),
-              Text('选填', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+              Text('选填',
+                  style:
+                      TextStyle(fontSize: 12, color: AppColors.textTertiary)),
             ],
           ),
           const SizedBox(height: 12),
@@ -507,12 +587,20 @@ class _TextDescribePageState extends State<TextDescribePage> {
             decoration: InputDecoration(
               hintText: '例如：少油少盐、加了辣椒、配了米饭...',
               hintStyle: TextStyle(color: AppColors.textHint, fontSize: 14),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.borderLight)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.borderLight)),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppColors.borderLight)),
+              enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppColors.borderLight)),
+              focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide:
+                      const BorderSide(color: AppColors.primary, width: 1.5)),
               filled: true,
               fillColor: AppColors.backgroundSecondary,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             ),
             maxLines: 3,
             textInputAction: TextInputAction.done,
@@ -542,10 +630,13 @@ class _TextDescribePageState extends State<TextDescribePage> {
                   color: AppColors.successLight,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(LucideIcons.sparkles, color: AppColors.success, size: 18),
+                child: const Icon(LucideIcons.sparkles,
+                    color: AppColors.success, size: 18),
               ),
               const SizedBox(width: 10),
-              Text('快速添加', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+              Text('快速添加',
+                  style: AppTextStyles.bodyMedium
+                      .copyWith(fontWeight: FontWeight.w600)),
             ],
           ),
           const SizedBox(height: 12),
@@ -556,7 +647,8 @@ class _TextDescribePageState extends State<TextDescribePage> {
               return GestureDetector(
                 onTap: () => _quickAddFood(food['name']!),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: AppColors.backgroundTertiary,
                     borderRadius: BorderRadius.circular(10),
@@ -567,7 +659,9 @@ class _TextDescribePageState extends State<TextDescribePage> {
                     children: [
                       Text(food['icon']!, style: const TextStyle(fontSize: 16)),
                       const SizedBox(width: 4),
-                      Text(food['name']!, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+                      Text(food['name']!,
+                          style: const TextStyle(
+                              fontSize: 13, color: AppColors.textPrimary)),
                     ],
                   ),
                 ),
@@ -589,17 +683,24 @@ class _TextDescribePageState extends State<TextDescribePage> {
           backgroundColor: AppColors.primary,
           foregroundColor: AppColors.textInverse,
           disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.5),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           elevation: 2,
         ),
         child: _isSubmitting
-            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textInverse))
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppColors.textInverse))
             : const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(LucideIcons.send, size: 18),
                   SizedBox(width: 8),
-                  Text('提交记录', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  Text('提交记录',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 ],
               ),
       ),

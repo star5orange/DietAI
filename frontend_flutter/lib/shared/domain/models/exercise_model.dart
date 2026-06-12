@@ -24,14 +24,15 @@ class ExerciseRecord {
 
   factory ExerciseRecord.fromJson(Map<String, dynamic> json) {
     return ExerciseRecord(
-      id: json['id'] as String,
-      exerciseName: json['exercise_name'] as String,
-      exerciseType: json['exercise_type'] as String,
-      durationMinutes: json['duration_minutes'] as int,
-      caloriesBurned: (json['calories_burned'] as num).toDouble(),
+      id: (json['id'] ?? '').toString(),
+      exerciseName:
+          (json['exercise_name'] ?? json['exercise_type'] ?? '').toString(),
+      exerciseType: (json['exercise_type'] ?? '').toString(),
+      durationMinutes: (json['duration_minutes'] as num?)?.toInt() ?? 0,
+      caloriesBurned: (json['calories_burned'] as num?)?.toDouble() ?? 0.0,
       notes: json['notes'] as String?,
-      recordedAt: json['recorded_at'] as String,
-      createdAt: json['created_at'] as String,
+      recordedAt: (json['recorded_at'] ?? json['record_date'] ?? '').toString(),
+      createdAt: (json['created_at'] ?? '').toString(),
     );
   }
 
@@ -51,7 +52,10 @@ class ExerciseRecord {
   String get formattedDate {
     try {
       final date = DateTime.parse(recordedAt);
-      return '${date.month}月${date.day}日 ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+      final dateStr = '${date.month}月${date.day}日';
+      // 如果是纯日期（无时间部分），只显示日期
+      if (recordedAt.length <= 10) return dateStr;
+      return '$dateStr ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
     } catch (e) {
       return recordedAt;
     }

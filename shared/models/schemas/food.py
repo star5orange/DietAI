@@ -7,11 +7,15 @@ from shared.models.schemas import DateRangeParams
 
 class FoodRecordCreate(BaseModel):
     record_date: date = Field(..., description="记录日期")
+    record_time: Optional[datetime] = Field(
+        default_factory=datetime.now,
+        description="用餐时间（不传则默认当前时间）"
+    )
     meal_type: int = Field(..., ge=1, le=5, description="餐次类型：1早餐2午餐3晚餐4加餐5夜宵")
     food_name: Optional[str] = Field(None, max_length=200, description="食物名称")
     description: Optional[str] = Field(None, description="描述")
     image_url: Optional[str] = Field(None, max_length=500, description="图片URL")
-    recording_method: Optional[int] = Field(1, ge=1, le=3, description="记录方式：1手动2拍照3语音")
+    recording_method: Optional[int] = Field(1, ge=1, le=4, description="记录方式：1手动2拍照3语音4已保存菜品")
     # Milestone 1 新增
     from_source: Optional[str] = Field("camera", description="记录来源：camera/manual/voice/barcode/saved_meal/suggestion")
 
@@ -20,6 +24,7 @@ class FoodRecordResponse(BaseModel):
     id: int
     user_id: int
     record_date: date
+    record_time: Optional[datetime] = None
     meal_type: int
     food_name: Optional[str]
     description: Optional[str]

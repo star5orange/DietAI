@@ -34,12 +34,6 @@ class _HealthGoalsPageState extends ConsumerState<HealthGoalsPage> {
           ),
         ),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(LucideIcons.plus),
-            onPressed: () => _showCreateGoalModal(),
-          ),
-        ],
       ),
       body: RefreshIndicator(
         onRefresh: () => ref.read(healthGoalsProvider.notifier).refresh(),

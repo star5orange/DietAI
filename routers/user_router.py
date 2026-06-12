@@ -276,7 +276,8 @@ async def create_health_goal(
                 "target_weight": float(health_goal.target_weight) if health_goal.target_weight else None,
                 "target_date": health_goal.target_date.isoformat() if health_goal.target_date else None,
                 "current_status": health_goal.current_status,
-                "created_at": health_goal.created_at.isoformat()
+                "created_at": health_goal.created_at.isoformat(),
+                "updated_at": health_goal.updated_at.isoformat() if health_goal.updated_at else None,
             }
         )
     except Exception as e:
@@ -360,6 +361,7 @@ async def update_health_goal(
                 "target_weight": float(goal.target_weight) if goal.target_weight else None,
                 "target_date": goal.target_date.isoformat() if goal.target_date else None,
                 "current_status": goal.current_status,
+                "created_at": goal.created_at.isoformat(),
                 "updated_at": goal.updated_at.isoformat()
             }
         )
@@ -368,6 +370,40 @@ async def update_health_goal(
     except Exception as e:
         db.rollback()
         raise handle_database_error(e, "更新健康目标")
+
+
+@router.delete("/health-goals/{goal_id}", response_model=BaseResponse)
+async def delete_health_goal(
+    goal_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """删除健康目标"""
+    try:
+        goal = db.query(HealthGoal).filter(
+            HealthGoal.id == goal_id,
+            HealthGoal.user_id == current_user.id
+        ).first()
+
+        if not goal:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=ErrorMessages.HEALTH_GOAL_NOT_FOUND
+            )
+
+        db.delete(goal)
+        db.commit()
+
+        return BaseResponse(
+            success=True,
+            message="健康目标已删除",
+            data={"deleted_id": goal_id}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise handle_database_error(e, "删除健康目标")
 
 
 @router.post("/diseases", response_model=BaseResponse)
@@ -774,13 +810,112 @@ async def get_weight_records(
         raise handle_database_error(e, "获取体重记录列表")
 
 
+@router.put("/weight-records/{record_id}", response_model=BaseResponse)
+async def update_weight_record(
+    record_id: int,
+    weight_data: WeightRecordCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """更新体重记录"""
+    try:
+        record = db.query(WeightRecord).filter(
+            WeightRecord.id == record_id,
+            WeightRecord.user_id == current_user.id
+        ).first()
+        
+        if not record:
+            raise HTTPException(status_code=404, detail="体重记录不存在")
+        
+        # 更新字段
+        record.weight = weight_data.weight
+        if weight_data.body_fat_percentage is not None:
+            record.body_fat_percentage = weight_data.body_fat_percentage
+        if weight_data.muscle_mass is not None:
+            record.muscle_mass = weight_data.muscle_mass
+        if weight_data.measured_at is not None:
+            record.measured_at = weight_data.measured_at
+        if weight_data.notes is not None:
+            record.notes = weight_data.notes
+        if weight_data.device_type is not None:
+            record.device_type = weight_data.device_type
+        
+        # 重新计算BMI
+        user_profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
+        bmi = calculate_bmi(user_profile.height if user_profile else None, weight_data.weight)
+        record.bmi = bmi
+        
+        db.commit()
+        db.refresh(record)
+        
+        # 更新用户资料中的体重
+        if user_profile:
+            user_profile.weight = weight_data.weight
+            user_profile.bmi = bmi
+            user_profile.updated_at = datetime.utcnow()
+            db.commit()
+            cache_service.clear_user_cache(current_user.id)
+        
+        return BaseResponse(
+            success=True,
+            message="体重记录更新成功",
+            data={
+                "id": record.id,
+                "user_id": record.user_id,
+                "weight": float(record.weight),
+                "body_fat_percentage": float(record.body_fat_percentage) if record.body_fat_percentage else None,
+                "muscle_mass": float(record.muscle_mass) if record.muscle_mass else None,
+                "bmi": float(record.bmi) if record.bmi else None,
+                "measured_at": record.measured_at.isoformat(),
+                "notes": record.notes,
+                "device_type": record.device_type,
+                "created_at": record.created_at.isoformat()
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise handle_database_error(e, "更新体重记录")
+
+
+@router.delete("/weight-records/{record_id}", response_model=BaseResponse)
+async def delete_weight_record(
+    record_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """删除体重记录"""
+    try:
+        record = db.query(WeightRecord).filter(
+            WeightRecord.id == record_id,
+            WeightRecord.user_id == current_user.id
+        ).first()
+        
+        if not record:
+            raise HTTPException(status_code=404, detail="体重记录不存在")
+        
+        db.delete(record)
+        db.commit()
+        
+        return BaseResponse(
+            success=True,
+            message="体重记录删除成功"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise handle_database_error(e, "删除体重记录")
+
+
 # 用户引导相关端点
 @router.get("/onboarding/status", response_model=BaseResponse)
 async def get_onboarding_status(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """获取用户引导状态 - 简化版本，因为引导字段不存在"""
+    """获取用户引导状态"""
     try:
         logger.info(f"开始获取用户 {current_user.id} 的引导状态")
         
@@ -797,12 +932,11 @@ async def get_onboarding_status(
             db.refresh(profile)
             logger.info(f"用户 {current_user.id} 的资料创建成功")
         
-        # 由于引导字段不存在，返回默认值
         data = {
-            "onboarding_completed": False,  # 默认未完成
-            "current_step": 0,  # 默认步骤
+            "onboarding_completed": profile.onboarding_completed or False,
+            "current_step": profile.onboarding_step or 0,
             "total_steps": 6,
-            "next_step": 1  # 默认下一步
+            "next_step": (profile.onboarding_step or 0) + 1 if not profile.onboarding_completed else 6,
         }
         
         logger.info(f"用户 {current_user.id} 的引导状态: {data}")
@@ -822,7 +956,7 @@ async def update_onboarding_step(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """更新用户引导步骤 - 简化版本"""
+    """更新用户引导步骤"""
     try:
         profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
         
@@ -833,13 +967,19 @@ async def update_onboarding_step(
             )
             db.add(profile)
         
+        # 更新引导步骤
+        profile.onboarding_step = step_data.step
+    
+        # 如果标记为完成，设置 onboarding_completed
+        if step_data.completed:
+            profile.onboarding_completed = True
+        
         # 处理步骤数据，只更新存在的字段
         if step_data.data:
             for key, value in step_data.data.items():
                 if hasattr(profile, key):
-                    # 跳过数据库中不存在的字段
-                    if key in ['dietary_preferences', 'food_dislikes', 'meal_times', 'wake_up_time', 'sleep_time', 'health_status', 'onboarding_step', 'onboarding_completed']:
-                        logger.warning(f"跳过不存在的字段: {key}")
+                    # 跳过引导元数据字段（已单独处理）
+                    if key in ('onboarding_step', 'onboarding_completed'):
                         continue
                     else:
                         setattr(profile, key, value)
@@ -914,6 +1054,10 @@ async def complete_onboarding(
         bmi = calculate_bmi(profile.height, profile.weight)
         if bmi:
             profile.bmi = bmi
+        
+        # 标记引导已完成
+        profile.onboarding_completed = True
+        profile.onboarding_step = 6
         
         profile.updated_at = datetime.utcnow()
         
@@ -1103,11 +1247,13 @@ async def reset_onboarding(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """重置用户引导状态 - 简化版本"""
+    """重置用户引导状态"""
     try:
         profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
         
         if profile:
+            profile.onboarding_completed = False
+            profile.onboarding_step = 0
             profile.updated_at = datetime.utcnow()
             db.commit()
             

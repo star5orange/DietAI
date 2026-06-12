@@ -41,14 +41,39 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final recordsResult = await _exerciseService.getExerciseRecords();
-      final todayStr = DateTime.now().toIso8601String().substring(0, 10);
-      final summaryResult = await _exerciseService.getDailySummary(todayStr);
+      final now = DateTime.now();
+      final startDate = DateFormat('yyyy-MM-dd')
+          .format(now.subtract(const Duration(days: 30)));
+      final endDate = DateFormat('yyyy-MM-dd').format(now);
+
+      // 从后端获取30天内的运动记录
+      final recordsResult = await _exerciseService.getRemoteExerciseRecords(
+        startDate: startDate,
+        endDate: endDate,
+        limit: 200,
+      );
 
       if (mounted) {
+        final records = (recordsResult.data ?? [])
+            .map((json) => ExerciseRecord.fromJson(json))
+            .toList();
+
+        // 计算今日汇总
+        final todayStr = DateFormat('yyyy-MM-dd').format(now);
+        final todayRecords =
+            records.where((r) => r.recordedAt.startsWith(todayStr)).toList();
+        final todaySummary = DailyExerciseSummary(
+          date: todayStr,
+          totalCaloriesBurned:
+              todayRecords.fold(0.0, (sum, r) => sum + r.caloriesBurned),
+          totalDurationMinutes:
+              todayRecords.fold(0, (sum, r) => sum + r.durationMinutes),
+          exerciseCount: todayRecords.length,
+        );
+
         setState(() {
-          _records = recordsResult.data ?? [];
-          _todaySummary = summaryResult.data;
+          _records = records;
+          _todaySummary = todaySummary;
           _isLoading = false;
         });
       }
@@ -319,7 +344,7 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
   }
 
   Widget _buildTodayRecordsList() {
-    final todayStr = DateTime.now().toIso8601String().substring(0, 10);
+    final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
     final todayRecords =
         _records.where((r) => r.recordedAt.startsWith(todayStr)).toList();
 
@@ -705,6 +730,8 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
               ),
               child: LineChart(
                 LineChartData(
+                  minX: 0,
+                  maxX: 6,
                   minY: 0,
                   maxY:
                       dailyData.map((d) => d.duration.toDouble()).reduce(max) *
@@ -737,6 +764,8 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
+                        reservedSize: 32,
+                        interval: 1,
                         getTitlesWidget: (value, meta) {
                           final idx = value.toInt();
                           if (idx < 0 || idx >= dailyData.length)
@@ -998,15 +1027,39 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              await _exerciseService.deleteExerciseRecord(record.id);
-              _loadData();
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('运动记录已删除'),
-                    backgroundColor: AppColors.success,
-                  ),
-                );
+              final recordId = int.tryParse(record.id);
+              if (recordId == null) {
+                if (mounted) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(
+                      content: Text('删除失败: 无效的记录ID'),
+                      backgroundColor: AppColors.error,
+                    ),
+                  );
+                }
+                return;
+              }
+              final result =
+                  await _exerciseService.deleteRemoteExerciseRecord(recordId);
+              if (result.success) {
+                _loadData();
+                if (mounted) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(
+                      content: Text('运动记录已删除'),
+                      backgroundColor: AppColors.success,
+                    ),
+                  );
+                }
+              } else {
+                if (mounted) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(
+                      content: Text('删除失败: ${result.message}'),
+                      backgroundColor: AppColors.error,
+                    ),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(
@@ -1153,15 +1206,13 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
               TextFormField(
                 controller: _nameController,
                 decoration: InputDecoration(
-                  labelText: '运动名称',
+                  labelText: '运动名称（可选）',
                   hintText: '例如：晨跑、游泳训练',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                   prefixIcon: const Icon(LucideIcons.tag, size: 20),
                 ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? '请输入运动名称' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -1334,16 +1385,16 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
     setState(() => _isSubmitting = true);
 
     try {
-      final result = await widget.exerciseService.createExerciseRecord(
-        CreateExerciseRecordRequest(
-          exerciseName: _nameController.text.trim(),
-          exerciseType: _selectedType,
-          durationMinutes: int.parse(_durationController.text),
-          caloriesBurned: double.parse(_caloriesController.text),
-          notes: _notesController.text.trim().isEmpty
-              ? null
-              : _notesController.text.trim(),
-        ),
+      final name = _nameController.text.trim();
+      final result = await widget.exerciseService.createRemoteExerciseRecord(
+        exerciseName:
+            name.isEmpty ? ExerciseType.getLabel(_selectedType) : name,
+        exerciseType: _selectedType,
+        durationMinutes: int.parse(_durationController.text),
+        caloriesBurned: double.parse(_caloriesController.text),
+        notes: _notesController.text.trim().isEmpty
+            ? null
+            : _notesController.text.trim(),
       );
 
       if (mounted) {

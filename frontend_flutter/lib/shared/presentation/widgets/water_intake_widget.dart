@@ -9,8 +9,13 @@ import '../../../services/water_service.dart';
 
 class WaterIntakeWidget extends StatefulWidget {
   final VoidCallback? onTapDetails;
+  final DateTime selectedDate;
 
-  const WaterIntakeWidget({super.key, this.onTapDetails});
+  const WaterIntakeWidget({
+    super.key,
+    this.onTapDetails,
+    required this.selectedDate,
+  });
 
   @override
   State<WaterIntakeWidget> createState() => _WaterIntakeWidgetState();
@@ -29,15 +34,24 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
     _loadData();
   }
 
+  @override
+  void didUpdateWidget(WaterIntakeWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedDate != widget.selectedDate) {
+      _loadData();
+    }
+  }
+
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final todayStr = DateTime.now().toIso8601String().substring(0, 10);
-      final summaryResult = await _waterService.getDailySummary(todayStr);
-      final recordsResult = await _waterService.getWaterRecords();
-      final todayRecords = (recordsResult.data ?? [])
-          .where((r) => r.recordedAt.startsWith(todayStr))
-          .toList();
+      final dateStr = widget.selectedDate.toIso8601String().substring(0, 10);
+      final summaryResult = await _waterService.getDailySummary(dateStr);
+      final recordsResult = await _waterService.getWaterRecords(
+        startDate: dateStr,
+        endDate: dateStr,
+      );
+      final todayRecords = recordsResult.data ?? [];
 
       if (mounted) {
         setState(() {
@@ -52,16 +66,30 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
   }
 
   Future<void> _quickAdd({int amountMl = 250}) async {
-    await _waterService.addWaterIntake(amountMl: amountMl);
-    _loadData();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已添加 ${amountMl}ml 饮水'),
-          backgroundColor: AppColors.info,
-          duration: const Duration(seconds: 1),
-        ),
-      );
+    final result = await _waterService.addWaterIntake(
+        amountMl: amountMl, recordedAt: widget.selectedDate);
+
+    if (result.success) {
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已添加 ${amountMl}ml 饮水'),
+            backgroundColor: AppColors.info,
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('添加失败: ${result.message}'),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -127,16 +155,28 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
     // _todayRecords 按存储顺序排列（最新在前），第一条才是最近添加的
     final lastRecord = _todayRecords.first;
     final amountMl = lastRecord.amountMl;
-    await _waterService.deleteWaterRecord(lastRecord.id);
-    _loadData();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已撤回 ${amountMl}ml 饮水记录'),
-          backgroundColor: AppColors.info,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+    final result = await _waterService.deleteWaterRecord(lastRecord.id);
+    if (result.success) {
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已撤回 ${amountMl}ml 饮水记录'),
+            backgroundColor: AppColors.info,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('撤回失败: ${result.message}'),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
@@ -495,14 +535,11 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
     );
   }
 
-  /// 智能格式化水量：不足1L用ml，1L以上去掉多余小数零
+  /// 智能格式化水量：不足1L用ml，1L以上最多两位小数去尾部零
   String _formatWater(int ml) {
     if (ml < 1000) return '$ml';
     final liters = ml / 1000;
-    final s = liters.toStringAsFixed(2);
-    // 去掉末尾多余的0，但至少保留整数部分
-    final trimmed = s.replaceAll(RegExp(r'\.?0+$'), '');
-    return trimmed.isEmpty ? '0' : trimmed;
+    return liters.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
   }
 
   /// 格式化水量带单位

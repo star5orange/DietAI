@@ -44,13 +44,16 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
         children: [
           // 头部
           _buildHeader(),
-          
+
           // 内容
           Expanded(
-            child: _isAddingRecord 
+            child: _isAddingRecord
                 ? _buildAddRecordForm()
                 : _buildRecordsList(weightRecordsAsync),
           ),
+
+          // 底部记录按钮（添加记录表单时不显示）
+          if (!_isAddingRecord) _buildBottomRecordButton(),
         ],
       ),
     );
@@ -83,7 +86,7 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
               textAlign: TextAlign.center,
             ),
           ),
-          if (!_isAddingRecord) ...[
+          if (!_isAddingRecord)
             IconButton(
               onPressed: () {
                 setState(() {
@@ -92,15 +95,6 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
               },
               icon: Icon(_showChart ? LucideIcons.list : LucideIcons.barChart3),
             ),
-            IconButton(
-              onPressed: () {
-                setState(() {
-                  _isAddingRecord = true;
-                });
-              },
-              icon: const Icon(LucideIcons.plus),
-            ),
-          ],
         ],
       ),
     );
@@ -167,16 +161,98 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
             style: AppTextStyles.bodyMedium,
           ),
           const SizedBox(height: 24),
-          ElevatedButton.icon(
+          ElevatedButton(
             onPressed: () {
               setState(() {
                 _isAddingRecord = true;
               });
             },
-            icon: const Icon(LucideIcons.plus),
-            label: const Text('添加记录'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 4,
+            ),
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '记录',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    height: 1.2,
+                  ),
+                ),
+                Text(
+                  '体重',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 底部记录体重按钮 — 与健康目标页「新建目标」FAB 风格一致
+  Widget _buildBottomRecordButton() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      decoration: const BoxDecoration(
+        color: AppColors.cardBackground,
+        border: Border(top: BorderSide(color: AppColors.divider)),
+      ),
+      child: SafeArea(
+        child: SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _isAddingRecord = true;
+              });
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              elevation: 4,
+            ),
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '记录',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    height: 1.2,
+                  ),
+                ),
+                Text(
+                  '体重',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def create_water_record(db: Session, user_id: int,
                         record: WaterIntakeCreate) -> WaterIntakeRecord:
     """创建喝水记录，并同步更新每日营养汇总中的饮水量"""
-    db_record = WaterIntakeRecord(user_id=user_id, **record.dict())
+    db_record = WaterIntakeRecord(user_id=user_id, **record.model_dump())
     db.add(db_record)
     # 先 flush 确保记录写入
     db.flush()
@@ -142,6 +142,13 @@ def _recalc_daily_water(db: Session, user_id: int, record_date: date):
             meal_count=0,
         )
         db.add(summary)
+
+    # 清除缓存，确保下次请求返回最新数据
+    try:
+        from shared.config.redis_config import cache_service
+        cache_service.redis.delete(f"nutrition:daily:{user_id}:{record_date}")
+    except Exception:
+        pass
 
     logger.debug(
         f"Recalculated daily water: user={user_id}, "

@@ -69,14 +69,19 @@ class DailyWaterSummary {
 
   int get remainingMl => totalMl >= goalMl ? 0 : goalMl - totalMl;
 
+String _fmtLiter(int ml) {
+    final liters = ml / 1000;
+    return liters.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
+  }
+
   String get formattedTotal => totalMl >= 1000
-      ? '${(totalMl / 1000).toStringAsFixed(1)} L'
+      ? '${_fmtLiter(totalMl)} L'
       : '$totalMl ml';
 
-  String get formattedGoal => '${(goalMl / 1000).toStringAsFixed(1)} L';
+  String get formattedGoal => '${_fmtLiter(goalMl)} L';
 
   String get formattedRemaining => remainingMl >= 1000
-      ? '${(remainingMl / 1000).toStringAsFixed(1)} L'
+      ? '${_fmtLiter(remainingMl)} L'
       : '$remainingMl ml';
 }
 

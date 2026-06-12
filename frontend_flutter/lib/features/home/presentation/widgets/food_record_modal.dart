@@ -40,9 +40,9 @@ class FoodRecordModal extends StatelessWidget {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            
+
             const SizedBox(height: 20),
-            
+
             // 标题
             const Text(
               '记录食物',
@@ -52,12 +52,12 @@ class FoodRecordModal extends StatelessWidget {
                 color: Colors.black,
               ),
             ),
-            
+
             const SizedBox(height: 24),
-            
+
             // 记录方式选项
             ..._buildRecordOptions(),
-            
+
             const SizedBox(height: 20),
           ],
         ),
@@ -70,20 +70,30 @@ class FoodRecordModal extends StatelessWidget {
       _RecordOption(
         icon: LucideIcons.scanLine,
         title: 'AI扫描器',
+        subtitle: '拍照识别食物营养',
         methodId: 'ai_scan',
         isNew: false,
       ),
       _RecordOption(
         icon: LucideIcons.messageSquare,
         title: '文字描述',
+        subtitle: '手动输入食物信息',
         methodId: 'text_describe',
         isNew: false,
       ),
       _RecordOption(
         icon: LucideIcons.bookmark,
         title: '已保存的菜品',
+        subtitle: '从收藏中选择',
         methodId: 'saved_meals',
         isNew: false,
+      ),
+      _RecordOption(
+        icon: LucideIcons.mic,
+        title: '语音记录',
+        subtitle: '即将推出',
+        methodId: 'voice_record',
+        isNew: true,
       ),
     ];
 
@@ -91,13 +101,14 @@ class FoodRecordModal extends StatelessWidget {
   }
 
   Widget _buildOptionTile(_RecordOption option) {
+    final isDisabled = option.methodId == 'voice_record';
     return GestureDetector(
-      onTap: () => onRecordMethod(option.methodId),
+      onTap: isDisabled ? null : () => onRecordMethod(option.methodId),
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDisabled ? Colors.grey[50] : Colors.white,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
@@ -113,8 +124,8 @@ class FoodRecordModal extends StatelessWidget {
             Container(
               width: 48,
               height: 48,
-              decoration: const BoxDecoration(
-                color: Color(0xFF3ECC7A),
+              decoration: BoxDecoration(
+                color: isDisabled ? Colors.grey[400] : const Color(0xFF3ECC7A),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -123,22 +134,35 @@ class FoodRecordModal extends StatelessWidget {
                 size: 24,
               ),
             ),
-            
+
             const SizedBox(width: 16),
-            
+
             // 标题
             Expanded(
-              child: Text(
-                option.title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.black,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    option.title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: isDisabled ? Colors.grey[500] : Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    option.subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDisabled ? Colors.grey[400] : Colors.grey[500],
+                    ),
+                  ),
+                ],
               ),
             ),
-            
-            // 新建标签
+
+            // 标签
             if (option.isNew)
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -146,13 +170,13 @@ class FoodRecordModal extends StatelessWidget {
                   vertical: 4,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF6F61),
+                  color: const Color(0xFFFF6F61).withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
-                  '新建',
+                  '即将推出',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.w500,
                     color: Colors.white,
                   ),
@@ -168,13 +192,15 @@ class FoodRecordModal extends StatelessWidget {
 class _RecordOption {
   final IconData icon;
   final String title;
+  final String subtitle;
   final String methodId;
   final bool isNew;
 
   const _RecordOption({
     required this.icon,
     required this.title,
+    required this.subtitle,
     required this.methodId,
     required this.isNew,
   });
-} 
+}

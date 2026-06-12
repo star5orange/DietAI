@@ -16,24 +16,25 @@ class FoodService {
   final CacheManager _cacheManager = CacheManager();
 
   /// 创建食物记录（流式输出）
-  Stream<Map<String, dynamic>> createFoodRecordStream(FoodRecordCreate foodData) async* {
+  Stream<Map<String, dynamic>> createFoodRecordStream(
+      FoodRecordCreate foodData) async* {
     try {
       print('📤 创建食物记录SSE请求: ${foodData.toJson()}');
-      
+
       // 构建请求URL
       final baseUrl = _apiService.dio.options.baseUrl;
       final url = '$baseUrl/foods/records';
-      
+
       // 获取认证token
       final token = await _apiService.getAccessToken();
-      
+
       // 创建HTTP客户端
       final client = HttpClient();
-      
+
       try {
         // 创建请求
         final request = await client.postUrl(Uri.parse(url));
-        
+
         // 设置请求头
         request.headers.set('Content-Type', 'application/json');
         request.headers.set('Accept', 'text/event-stream');
@@ -41,14 +42,14 @@ class FoodService {
         if (token != null) {
           request.headers.set('Authorization', 'Bearer $token');
         }
-        
+
         // 发送请求体
         final jsonData = json.encode(foodData.toJson());
         request.add(utf8.encode(jsonData));
-        
+
         // 获取响应
         final response = await request.close();
-        
+
         if (response.statusCode == 200) {
           // 处理SSE流
           yield* response
@@ -58,17 +59,17 @@ class FoodService {
               .map((line) => line.substring(6)) // 移除 'data: ' 前缀
               .where((data) => data.isNotEmpty)
               .map((data) {
-                try {
-                  return json.decode(data) as Map<String, dynamic>;
-                } catch (e) {
-                  print('❌ 解析SSE数据失败: $e, 数据: $data');
-                  return <String, dynamic>{
-                    'type': 'error',
-                    'success': false,
-                    'data': {'error': '数据解析失败'}
-                  };
-                }
-              });
+            try {
+              return json.decode(data) as Map<String, dynamic>;
+            } catch (e) {
+              print('❌ 解析SSE数据失败: $e, 数据: $data');
+              return <String, dynamic>{
+                'type': 'error',
+                'success': false,
+                'data': {'error': '数据解析失败'}
+              };
+            }
+          });
         } else {
           yield {
             'type': 'error',
@@ -79,7 +80,6 @@ class FoodService {
       } finally {
         client.close();
       }
-      
     } catch (e) {
       print('❌ 创建食物记录SSE异常: $e');
       yield {
@@ -94,7 +94,7 @@ class FoodService {
   Future<ApiResponse<FoodRecord>> confirmFoodRecord(int recordId) async {
     try {
       print('📤 确认食物记录请求: recordId=$recordId');
-      
+
       final response = await _apiService.post(
         '/foods/records/confirm/$recordId',
       );
@@ -137,10 +137,11 @@ class FoodService {
   }
 
   /// 创建食物记录（传统方法）
-  Future<ApiResponse<FoodRecord>> createFoodRecord(FoodRecordCreate foodData) async {
+  Future<ApiResponse<FoodRecord>> createFoodRecord(
+      FoodRecordCreate foodData) async {
     try {
       print('📤 创建食物记录请求: ${foodData.toJson()}');
-      
+
       final response = await _apiService.post(
         '/foods/records/traditional',
         data: foodData.toJson(),
@@ -184,9 +185,10 @@ class FoodService {
   }
 
   /// 获取食物记录图片数据（带缓存）
-  Future<ApiResponse<Map<String, dynamic>>> getFoodImageData(int recordId) async {
+  Future<ApiResponse<Map<String, dynamic>>> getFoodImageData(
+      int recordId) async {
     final cacheKey = 'food_image_$recordId';
-    
+
     try {
       // 1. 检查内存缓存
       final cachedData = _cacheManager.getMemoryCache(cacheKey);
@@ -213,7 +215,7 @@ class FoodService {
       }
 
       print('📤 从服务器获取食物记录图片数据: recordId=$recordId');
-      
+
       final response = await _apiService.get(
         '/foods/images/data/$recordId',
       );
@@ -223,11 +225,11 @@ class FoodService {
       if (response.success) {
         final dataMap = response.data as Map<String, dynamic>;
         print('✅ 获取食物记录图片数据成功: recordId=$recordId');
-        
+
         // 缓存数据
         _cacheManager.setMemoryCache(cacheKey, dataMap);
         await _cacheManager.setLocalCache(cacheKey, dataMap);
-        
+
         // 如果图片数据是base64格式，也缓存图片字节数据
         final imageBase64 = dataMap['image_base64'] as String?;
         if (imageBase64 != null) {
@@ -239,7 +241,7 @@ class FoodService {
             print('⚠️ 缓存图片字节数据失败: $e');
           }
         }
-        
+
         return ApiResponse<Map<String, dynamic>>(
           success: true,
           message: response.message,
@@ -286,7 +288,8 @@ class FoodService {
 
       if (response.success) {
         try {
-          final foodRecordsResponse = FoodRecordsResponse.fromJson(response.data as Map<String, dynamic>);
+          final foodRecordsResponse = FoodRecordsResponse.fromJson(
+              response.data as Map<String, dynamic>);
           return ApiResponse<FoodRecordsResponse>(
             success: true,
             message: response.message,
@@ -321,7 +324,8 @@ class FoodService {
       final response = await _apiService.get('/foods/records/$recordId');
 
       if (response.success) {
-        final foodRecord = FoodRecord.fromJson(response.data as Map<String, dynamic>);
+        final foodRecord =
+            FoodRecord.fromJson(response.data as Map<String, dynamic>);
         return ApiResponse<FoodRecord>(
           success: true,
           message: response.message,
@@ -355,11 +359,13 @@ class FoodService {
         data: requestBody,
       );
 
-      print('📥 添加营养详情响应: success=${response.success}, message=${response.message}');
+      print(
+          '📥 添加营养详情响应: success=${response.success}, message=${response.message}');
 
       if (response.success) {
         try {
-          final nutritionDetail = NutritionDetail.fromJson(response.data as Map<String, dynamic>);
+          final nutritionDetail =
+              NutritionDetail.fromJson(response.data as Map<String, dynamic>);
           print('✅ 营养详情解析成功: id=${nutritionDetail.id}');
           return ApiResponse<NutritionDetail>(
             success: true,
@@ -390,12 +396,15 @@ class FoodService {
   }
 
   /// 获取每日营养汇总
-  Future<ApiResponse<DailyNutritionSummary>> getDailyNutritionSummary(String summaryDate) async {
+  Future<ApiResponse<DailyNutritionSummary>> getDailyNutritionSummary(
+      String summaryDate) async {
     try {
-      final response = await _apiService.get('/foods/daily-summary/$summaryDate');
+      final response =
+          await _apiService.get('/foods/daily-summary/$summaryDate');
 
       if (response.success) {
-        final summary = DailyNutritionSummary.fromJson(response.data as Map<String, dynamic>);
+        final summary = DailyNutritionSummary.fromJson(
+            response.data as Map<String, dynamic>);
         return ApiResponse<DailyNutritionSummary>(
           success: true,
           message: response.message,
@@ -435,7 +444,8 @@ class FoodService {
       );
 
       if (response.success) {
-        final trends = NutritionTrends.fromJson(response.data as Map<String, dynamic>);
+        final trends =
+            NutritionTrends.fromJson(response.data as Map<String, dynamic>);
         return ApiResponse<NutritionTrends>(
           success: true,
           message: response.message,
@@ -456,16 +466,17 @@ class FoodService {
   }
 
   /// 上传食物图片
-  Future<ApiResponse<FileUploadResponse>> uploadFoodImage(File imageFile) async {
+  Future<ApiResponse<FileUploadResponse>> uploadFoodImage(
+      File imageFile) async {
     try {
       print('📤 开始上传图片: ${imageFile.path}');
-      
+
       // 获取文件名和扩展名
       final fileName = imageFile.path.split('/').last;
       final extension = fileName.split('.').last.toLowerCase();
-      
+
       print('📄 文件信息: name=$fileName, ext=$extension');
-      
+
       // 确定MIME类型
       MediaType mediaType;
       switch (extension) {
@@ -508,20 +519,29 @@ class FoodService {
           print('📄 尝试解析响应数据...');
           print('📄 数据类型: ${response.data.runtimeType}');
           print('📄 数据内容: ${response.data}');
-          
+
           final dataMap = response.data as Map<String, dynamic>;
           print('📄 转换后的Map: $dataMap');
-          
+
           // 验证必需字段
-          final requiredFields = ['file_id', 'file_name', 'file_url', 'object_name', 'file_size', 'content_type', 'upload_time'];
+          final requiredFields = [
+            'file_id',
+            'file_name',
+            'file_url',
+            'object_name',
+            'file_size',
+            'content_type',
+            'upload_time'
+          ];
           for (String field in requiredFields) {
             if (!dataMap.containsKey(field)) {
               print('❌ 缺少必需字段: $field');
             } else {
-              print('✅ 字段 $field: ${dataMap[field]} (${dataMap[field].runtimeType})');
+              print(
+                  '✅ 字段 $field: ${dataMap[field]} (${dataMap[field].runtimeType})');
             }
           }
-          
+
           final uploadResponse = FileUploadResponse.fromJson(dataMap);
           print('✅ 图片上传成功: ${uploadResponse.objectName}');
           return ApiResponse<FileUploadResponse>(
@@ -569,8 +589,9 @@ class FoodService {
       );
 
       if (response.success) {
-        final imageUrlResponse = ImageUrlResponse.fromJson(response.data as Map<String, dynamic>);
-        
+        final imageUrlResponse =
+            ImageUrlResponse.fromJson(response.data as Map<String, dynamic>);
+
         // 修复localhost URL问题 - 替换为实际的服务器IP
         String fixedUrl = imageUrlResponse.fileUrl;
         if (fixedUrl.contains('localhost:9000')) {
@@ -578,13 +599,13 @@ class FoodService {
           final apiBaseUrl = _apiService.dio.options.baseUrl;
           final uri = Uri.parse(apiBaseUrl);
           final serverIp = uri.host;
-          
+
           // 将localhost替换为实际的服务器IP
           fixedUrl = fixedUrl.replaceAll('localhost:9000', '$serverIp:9000');
           print('🔧 图片URL修复: localhost -> $serverIp');
           print('📷 修复后URL: $fixedUrl');
         }
-        
+
         // 创建修复后的响应对象
         final fixedResponse = ImageUrlResponse(
           objectName: imageUrlResponse.objectName,
@@ -592,7 +613,7 @@ class FoodService {
           expiresIn: imageUrlResponse.expiresIn,
           expiresAt: imageUrlResponse.expiresAt,
         );
-        
+
         return ApiResponse<ImageUrlResponse>(
           success: true,
           message: response.message,
@@ -619,11 +640,12 @@ class FoodService {
     required int mealType,
     required String foodName,
     String? description,
+    String? recordTime,
   }) async* {
     try {
       print('🚀 开始创建带图片的食物记录（流式）');
       print('📋 请求参数: date=$recordDate, meal=$mealType, food=$foodName');
-      
+
       // 1. 首先上传图片
       print('📤 步骤1: 上传图片');
       yield {
@@ -631,7 +653,7 @@ class FoodService {
         'success': true,
         'data': {'status': 'uploading', 'message': '正在上传图片...'}
       };
-      
+
       final uploadResult = await uploadFoodImage(imageFile);
       if (!uploadResult.success || uploadResult.data == null) {
         print('❌ 图片上传失败: ${uploadResult.message}');
@@ -647,12 +669,16 @@ class FoodService {
       yield {
         'type': 'upload_complete',
         'success': true,
-        'data': {'object_name': uploadResult.data!.objectName, 'message': '图片上传成功'}
+        'data': {
+          'object_name': uploadResult.data!.objectName,
+          'message': '图片上传成功'
+        }
       };
 
       // 2. 创建食物记录，包含图片URL
       final foodRecordData = FoodRecordCreate(
         recordDate: recordDate,
+        recordTime: recordTime ?? DateTime.now().toIso8601String(),
         mealType: mealType,
         foodName: foodName,
         description: description,
@@ -663,7 +689,6 @@ class FoodService {
       print('📤 步骤2: 创建食物记录（流式）');
       // 3. 创建食物记录（流式输出）
       yield* createFoodRecordStream(foodRecordData);
-      
     } catch (e) {
       print('❌ 创建带图片的食物记录异常: $e');
       yield {
@@ -681,11 +706,12 @@ class FoodService {
     required int mealType,
     required String foodName,
     String? description,
+    String? recordTime,
   }) async {
     try {
       print('🚀 开始创建带图片的食物记录');
       print('📋 请求参数: date=$recordDate, meal=$mealType, food=$foodName');
-      
+
       // 1. 首先上传图片
       print('📤 步骤1: 上传图片');
       final uploadResult = await uploadFoodImage(imageFile);
@@ -702,6 +728,7 @@ class FoodService {
       // 2. 创建食物记录，包含图片URL
       final foodRecordData = FoodRecordCreate(
         recordDate: recordDate,
+        recordTime: recordTime ?? DateTime.now().toIso8601String(),
         mealType: mealType,
         foodName: foodName,
         description: description,
@@ -710,25 +737,26 @@ class FoodService {
       );
 
       print('📤 步骤2: 创建食物记录');
-      
+
       // 这里使用原有的创建方法等待分析完成
       FoodRecord? finalRecord;
       await for (final event in createFoodRecordStream(foodRecordData)) {
         if (event['type'] == 'stream_complete' && event['success'] == true) {
           break; // 流程完成
-        } else if (event['type'] == 'record_created' && event['data']['record'] != null) {
+        } else if (event['type'] == 'record_created' &&
+            event['data']['record'] != null) {
           finalRecord = FoodRecord.fromJson(event['data']['record']);
         }
       }
-      
+
       if (finalRecord != null) {
         // 等待分析完成或超时
         int attempts = 0;
         const maxAttempts = 60; // 最多等待60秒
-        
+
         while (attempts < maxAttempts) {
           await Future.delayed(const Duration(seconds: 1));
-          
+
           final result = await getFoodRecord(finalRecord.id);
           if (result.success && result.data != null) {
             final updatedRecord = result.data!;
@@ -752,7 +780,7 @@ class FoodService {
           }
           attempts++;
         }
-        
+
         // 超时但记录已创建
         print('⚠️ 分析超时但记录已创建: 记录ID=${finalRecord.id}');
         return ApiResponse<FoodRecord>(
@@ -766,7 +794,6 @@ class FoodService {
           message: '创建食物记录失败',
         );
       }
-      
     } catch (e) {
       print('❌ 创建带图片的食物记录异常: $e');
       return ApiResponse<FoodRecord>(
@@ -779,7 +806,8 @@ class FoodService {
   /// 获取今日营养汇总
   Future<ApiResponse<DailyNutritionSummary>> getTodayNutritionSummary() async {
     final today = DateTime.now();
-    final todayString = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+    final todayString =
+        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
     return await getDailyNutritionSummary(todayString);
   }
 
@@ -791,14 +819,16 @@ class FoodService {
   /// 获取指定日期的食物记录列表（带缓存）
   Future<ApiResponse<List<FoodRecord>>> getFoodRecordsByDay(String date) async {
     final cacheKey = 'food_records_$date';
-    
+
     try {
       // 1. 检查内存缓存
       final cachedData = _cacheManager.getMemoryCache(cacheKey);
       if (cachedData != null && (cachedData as List).isNotEmpty) {
         print('✅ 从内存缓存获取食物记录: date=$date');
         try {
-          final records = (cachedData as List).map((item) => FoodRecord.fromJson(item as Map<String, dynamic>)).toList();
+          final records = (cachedData as List)
+              .map((item) => FoodRecord.fromJson(item as Map<String, dynamic>))
+              .toList();
           if (records.isNotEmpty) {
             return ApiResponse<List<FoodRecord>>(
               success: true,
@@ -807,8 +837,8 @@ class FoodService {
             );
           }
         } catch (e) {
-           print('⚠️ 内存缓存解析失败，跳过缓存: $e');
-         }
+          print('⚠️ 内存缓存解析失败，跳过缓存: $e');
+        }
       }
 
       // 2. 检查本地缓存
@@ -816,7 +846,9 @@ class FoodService {
       if (localCachedData != null && (localCachedData as List).isNotEmpty) {
         print('✅ 从本地缓存获取食物记录: date=$date');
         try {
-          final records = (localCachedData as List).map((item) => FoodRecord.fromJson(item as Map<String, dynamic>)).toList();
+          final records = (localCachedData as List)
+              .map((item) => FoodRecord.fromJson(item as Map<String, dynamic>))
+              .toList();
           if (records.isNotEmpty) {
             _cacheManager.setMemoryCache(cacheKey, localCachedData);
             return ApiResponse<List<FoodRecord>>(
@@ -826,12 +858,12 @@ class FoodService {
             );
           }
         } catch (e) {
-           print('⚠️ 本地缓存解析失败，跳过缓存: $e');
-         }
+          print('⚠️ 本地缓存解析失败，跳过缓存: $e');
+        }
       }
 
       print('📤 从服务器获取食物记录: date=$date');
-      
+
       final result = await getFoodRecords(
         startDate: date,
         endDate: date,
@@ -843,13 +875,13 @@ class FoodService {
       if (result.success && result.data != null) {
         final records = result.data!.records;
         print('📤 服务器返回记录数: ${records.length}');
-        
+
         final recordsJson = records.map((record) => record.toJson()).toList();
         _cacheManager.setMemoryCache(cacheKey, recordsJson);
         await _cacheManager.setLocalCache(cacheKey, recordsJson);
-        
+
         print('✅ 食物记录获取成功并已缓存: date=$date, count=${records.length}');
-        
+
         return ApiResponse<List<FoodRecord>>(
           success: true,
           message: result.message,
@@ -873,8 +905,10 @@ class FoodService {
   }
 
   /// 获取指定日期的食物记录
-  Future<ApiResponse<FoodRecordsResponse>> getFoodRecordsByDate(DateTime date) async {
-    final dateString = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  Future<ApiResponse<FoodRecordsResponse>> getFoodRecordsByDate(
+      DateTime date) async {
+    final dateString =
+        '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
     return await getFoodRecords(
       startDate: dateString,
       endDate: dateString,
@@ -885,10 +919,12 @@ class FoodService {
   /// 获取最近一周的营养趋势
   Future<ApiResponse<NutritionTrends>> getWeeklyNutritionTrends() async {
     final now = DateTime.now();
-    final endDate = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final endDate =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     final startDate = now.subtract(const Duration(days: 6));
-    final startDateString = '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
-    
+    final startDateString =
+        '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
+
     return await getNutritionTrends(
       startDate: startDateString,
       endDate: endDate,
@@ -898,17 +934,20 @@ class FoodService {
   /// 获取最近一个月的营养趋势
   Future<ApiResponse<NutritionTrends>> getMonthlyNutritionTrends() async {
     final now = DateTime.now();
-    final endDate = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final endDate =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     final startDate = now.subtract(const Duration(days: 29));
-    final startDateString = '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
-    
+    final startDateString =
+        '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
+
     return await getNutritionTrends(
       startDate: startDateString,
       endDate: endDate,
     );
   }
 
-  Future<ApiResponse<FoodRecord>> updateFoodRecord(int recordId, FoodRecordCreate foodData) async {
+  Future<ApiResponse<FoodRecord>> updateFoodRecord(
+      int recordId, FoodRecordCreate foodData) async {
     try {
       final response = await _apiService.put(
         '/foods/records/$recordId',
@@ -916,7 +955,8 @@ class FoodService {
       );
 
       if (response.success && response.data != null) {
-        final foodRecord = FoodRecord.fromJson(response.data as Map<String, dynamic>);
+        final foodRecord =
+            FoodRecord.fromJson(response.data as Map<String, dynamic>);
         return ApiResponse<FoodRecord>(
           success: true,
           message: response.message.isNotEmpty ? response.message : '更新成功',
@@ -1076,13 +1116,18 @@ class FoodService {
     final delimiters = ['、', '，', ',', '和', '加', '配', '搭', '跟', '与'];
     for (final d in delimiters) {
       if (foodName.contains(d)) {
-        return foodName.split(d).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        return foodName
+            .split(d)
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
       }
     }
     return [foodName];
   }
 
-  Map<String, double?> _estimateMultipleFoods(List<String> tokens, double portion) {
+  Map<String, double?> _estimateMultipleFoods(
+      List<String> tokens, double portion) {
     double totalCalories = 0, totalProtein = 0, totalFat = 0, totalCarbs = 0;
     for (final token in tokens) {
       final est = _estimateSingleFood(token, 1.0);

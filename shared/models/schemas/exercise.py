@@ -5,10 +5,11 @@ from typing import Optional
 
 class ExerciseRecordCreate(BaseModel):
     exercise_type: str = Field(..., max_length=50, description="运动类型：跑步/游泳/力量训练等")
+    exercise_name: Optional[str] = Field(None, max_length=100, description="运动名称（自定义）")
     duration_minutes: int = Field(..., gt=0, le=1440, description="运动时长（分钟），最大24小时")
-    intensity: int = Field(..., ge=1, le=3, description="强度：1=低，2=中，3=高")
+    intensity: int = Field(2, ge=1, le=3, description="强度：1=低，2=中，3=高")
     calories_burned: Optional[float] = Field(None, ge=0, le=10000, description="消耗热量，不传则自动计算")
-    record_date: date = Field(..., description="运动日期")
+    record_date: date = Field(default_factory=date.today, description="运动日期")
     notes: Optional[str] = Field(None, max_length=500, description="备注")
 
 
@@ -16,6 +17,7 @@ class ExerciseRecordOut(BaseModel):
     id: int
     user_id: int
     exercise_type: str
+    exercise_name: Optional[str] = None
     duration_minutes: int
     intensity: int
     calories_burned: float

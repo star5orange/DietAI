@@ -22,20 +22,20 @@ class SavedMealsPage extends StatefulWidget {
 class _SavedMealsPageState extends State<SavedMealsPage>
     with TickerProviderStateMixin {
   final SavedMealService _savedMealService = SavedMealService();
-  
+
   // 状态管理
   bool _isLoading = true;
   List<SavedMeal> _savedMeals = [];
   String _searchQuery = '';
   String? _selectedCategory;
   bool? _filterIsPublic;
-  
+
   // 分页
   int _currentPage = 1;
   final int _pageSize = 20;
   bool _hasMore = true;
   bool _isLoadingMore = false;
-  
+
   // 控制器
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
@@ -60,7 +60,7 @@ class _SavedMealsPageState extends State<SavedMealsPage>
 
   void _onTabChanged() {
     if (_tabController.indexIsChanging) return;
-    
+
     setState(() {
       switch (_tabController.index) {
         case 0: // 我的菜品
@@ -81,7 +81,7 @@ class _SavedMealsPageState extends State<SavedMealsPage>
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >= 
+    if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
       _loadMoreMeals();
     }
@@ -128,7 +128,8 @@ class _SavedMealsPageState extends State<SavedMealsPage>
       }
     } catch (e) {
       if (mounted) {
-        NetworkErrorHandler.handleApiError(context, e, onRetry: () => _loadSavedMeals());
+        NetworkErrorHandler.handleApiError(context, e,
+            onRetry: () => _loadSavedMeals());
       }
       setState(() {
         _isLoading = false;
@@ -228,18 +229,16 @@ class _SavedMealsPageState extends State<SavedMealsPage>
   }
 
   Future<void> _useMeal(SavedMeal meal) async {
+    // 先返回结果到根 Navigator（与 push 端保持一致）
+    if (mounted) {
+      Navigator.of(context, rootNavigator: true).pop(meal);
+    }
+
+    // 后端 use 计数异步更新，失败不影响核心流程
     try {
-      final result = await _savedMealService.useSavedMeal(meal.id);
-      if (result.success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result.message)),
-        );
-        // TODO: 这里可以跳转到添加食物记录页面，预填充菜品信息
-      } else {
-        NetworkErrorHandler.showError(context, result.message);
-      }
-    } catch (e) {
-      NetworkErrorHandler.handleApiError(context, e);
+      await _savedMealService.useSavedMeal(meal.id);
+    } catch (_) {
+      // 静默忽略
     }
   }
 
