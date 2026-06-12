@@ -57,16 +57,8 @@ class UserProfile(Base):
     crowd_tag = Column(String(50))  # 减脂/健身/普通日常
     constitution_type = Column(String(50))  # 九种体质之一
     daily_water_goal = Column(Integer, default=2000)
-
-    # 以下字段在当前数据库中不存在，如果需要需要通过数据库迁移添加：
-    # - dietary_preferences (Text, JSON格式存储饮食偏好)
-    # - food_dislikes (Text, JSON格式存储不喜欢的食物)  
-    # - wake_up_time (String(10), 起床时间 HH:MM)
-    # - sleep_time (String(10), 睡觉时间 HH:MM)
-    # - meal_times (Text, JSON格式存储用餐时间)
-    # - health_status (Integer, 健康状态)
-    # - onboarding_completed (Boolean, 引导完成状态)
-    # - onboarding_step (Integer, 当前引导步骤)
+    onboarding_completed = Column(Boolean, default=False)  # 引导是否完成
+    onboarding_step = Column(Integer, default=0)  # 当前引导步骤
 
 
 class HealthGoal(Base):

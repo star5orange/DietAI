@@ -44,7 +44,7 @@ def create_exercise_record(db: Session, user_id: int,
         record.calories_burned = calculate_calories(
             db, user_id, record.exercise_type, record.duration_minutes, record.intensity
         )
-    db_record = ExerciseRecord(user_id=user_id, **record.dict())
+    db_record = ExerciseRecord(user_id=user_id, **record.model_dump())
     db.add(db_record)
     # 先 flush 确保记录写入，然后更新汇总
     db.flush()
@@ -79,7 +79,7 @@ def update_exercise_record(db: Session, record_id: int, user_id: int,
         raise ValueError("运动记录不存在")
 
     old_date = db_record.record_date
-    update_data = record.dict(exclude_unset=True)
+    update_data = record.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_record, key, value)
     db.flush()
@@ -135,13 +135,22 @@ def get_exercise_statistics(db: Session, user_id: int,
         daily_breakdown[key]["calories"] += r.calories_burned
         daily_breakdown[key]["duration"] += r.duration_minutes
 
+    # 转为列表格式 (兼容 ExerciseStatistics schema)
+    daily_list = []
+    for date_key, values in sorted(daily_breakdown.items()):
+        daily_list.append({
+            "date": date_key,
+            "calories": round(values["calories"], 2),
+            "duration": values["duration"],
+        })
+
     return {
-        "total_calories": total_calories,
+        "total_calories": round(total_calories, 2),
         "total_duration": total_duration,
         "total_sessions": total_sessions,
         "average_calories_per_session": round(total_calories / total_sessions, 2)
         if total_sessions else 0,
-        "daily_breakdown": daily_breakdown
+        "daily_breakdown": daily_list
     }
 
 
@@ -184,6 +193,13 @@ def _recalc_daily_exercise(db: Session, user_id: int, record_date: date):
             meal_count=0,
         )
         db.add(summary)
+
+    # 清除缓存，确保下次请求返回最新数据
+    try:
+        from shared.config.redis_config import cache_service
+        cache_service.redis.delete(f"nutrition:daily:{user_id}:{record_date}")
+    except Exception:
+        pass
 
     logger.debug(
         f"Recalculated daily exercise: user={user_id}, "

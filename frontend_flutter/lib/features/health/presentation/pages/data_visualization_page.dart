@@ -13,6 +13,7 @@ import '../../../../services/wellness_service.dart';
 import '../../../../shared/domain/models/api_response.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
+import 'constitution_quiz_page.dart';
 import '../../../profile/domain/services/user_service.dart';
 
 class DataVisualizationPage extends ConsumerStatefulWidget {
@@ -195,6 +196,10 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
     final totalExercise =
         _weeklySummaries.fold<double>(0, (sum, s) => sum + s.exerciseCalories);
 
+    // 格式化水量：后端 water_intake 单位已经是升(L)，最多两位小数去尾部零
+    final waterDisplay =
+        totalWater.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -225,8 +230,8 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
             _buildStatCard('碳水', '${totalCarbs.toStringAsFixed(0)}g', '本周',
                 AppColors.carbsColor, LucideIcons.wheat),
             const SizedBox(width: 10),
-            _buildStatCard('饮水量', '${(totalWater / 1000).toStringAsFixed(1)}L',
-                '本周', AppColors.info, LucideIcons.glassWater),
+            _buildStatCard('饮水量', '${waterDisplay}L', '本周', AppColors.info,
+                LucideIcons.glassWater),
           ],
         ),
         const SizedBox(height: 10),
@@ -517,7 +522,12 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
                     const Spacer(),
                     GestureDetector(
                       onTap: () {
-                        Navigator.pushNamed(context, '/constitution-quiz');
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) =>
+                                  const ConstitutionQuizPage()),
+                        ).then((_) => _loadAllData());
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(

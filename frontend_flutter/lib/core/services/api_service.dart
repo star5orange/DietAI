@@ -12,11 +12,14 @@ class ApiService {
   factory ApiService() => _instance;
   ApiService._internal();
 
-  late final Dio _dio;
+  Dio? _dio;
   static const _storage = FlutterSecureStorage();
 
-  /// 获取Dio实例
-  Dio get dio => _dio;
+  /// 获取Dio实例（使用前必须调用initialize()）
+  Dio get dio =>
+      _dio ??
+      (throw StateError(
+          'ApiService not initialized. Call initialize() first.'));
 
   /// 初始化API服务
   void initialize() {
@@ -31,7 +34,7 @@ class ApiService {
     ));
 
     // 添加日志拦截器（仅在调试模式下）
-    _dio.interceptors.add(PrettyDioLogger(
+    dio.interceptors.add(PrettyDioLogger(
       requestHeader: true,
       requestBody: true,
       responseBody: true,
@@ -41,7 +44,7 @@ class ApiService {
     ));
 
     // 添加认证拦截器
-    _dio.interceptors.add(InterceptorsWrapper(
+    dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
         // 只对需要认证的端点添加令牌
         if (!_isAuthEndpoint(options.path)) {
@@ -57,14 +60,15 @@ class ApiService {
       },
       onError: (error, handler) async {
         // 只对需要认证的端点处理401错误，避免对登录/注册等端点处理
-        if (error.response?.statusCode == 401 && !_isAuthEndpoint(error.requestOptions.path)) {
+        if (error.response?.statusCode == 401 &&
+            !_isAuthEndpoint(error.requestOptions.path)) {
           // 避免递归刷新令牌
           if (error.requestOptions.path.contains('/auth/refresh-token')) {
             await _clearTokens();
             handler.next(error);
             return;
           }
-          
+
           // 尝试刷新令牌
           final refreshed = await _refreshToken();
           if (refreshed) {
@@ -74,20 +78,20 @@ class ApiService {
             if (token != null) {
               request.headers['Authorization'] = 'Bearer $token';
             }
-            
+
             try {
-              final response = await _dio.fetch(request);
+              final response = await dio.fetch(request);
               handler.resolve(response);
               return;
             } catch (e) {
               // 刷新后仍然失败，继续原错误处理
             }
           }
-          
+
           // 刷新失败，清除令牌
           await _clearTokens();
         }
-        
+
         handler.next(error);
       },
     ));
@@ -114,7 +118,8 @@ class ApiService {
     required String refreshToken,
   }) async {
     await _storage.write(key: AppConstants.accessTokenKey, value: accessToken);
-    await _storage.write(key: AppConstants.refreshTokenKey, value: refreshToken);
+    await _storage.write(
+        key: AppConstants.refreshTokenKey, value: refreshToken);
   }
 
   /// 清除令牌（私有方法）
@@ -132,7 +137,7 @@ class ApiService {
   bool _isAuthEndpoint(String path) {
     final authPaths = [
       '/auth/login',
-      '/auth/register', 
+      '/auth/register',
       '/auth/refresh-token',
     ];
     return authPaths.any((authPath) => path.contains(authPath));
@@ -169,7 +174,7 @@ class ApiService {
     } catch (e) {
       // 刷新失败
     }
-    
+
     return false;
   }
 
@@ -181,7 +186,7 @@ class ApiService {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    return await _dio.request(
+    return await dio.request(
       path,
       data: data,
       queryParameters: queryParameters,
@@ -196,11 +201,11 @@ class ApiService {
     Options? options,
   }) async {
     try {
-      final response = await _dio.get(
-      path,
-      queryParameters: queryParameters,
-      options: options,
-    );
+      final response = await dio.get(
+        path,
+        queryParameters: queryParameters,
+        options: options,
+      );
 
       return ApiResponse<dynamic>(
         success: response.data['success'] ?? false,
@@ -209,9 +214,15 @@ class ApiService {
       );
     } catch (e) {
       if (e is DioException) {
+        final errorData = e.response?.data;
+        String? errorMessage;
+        if (errorData is Map<String, dynamic>) {
+          errorMessage =
+              (errorData['message'] ?? errorData['detail'])?.toString();
+        }
         return ApiResponse<dynamic>(
           success: false,
-          message: e.response?.data?['message'] ?? e.message ?? '请求失败',
+          message: errorMessage ?? e.message ?? '请求失败',
         );
       }
       return ApiResponse<dynamic>(
@@ -229,12 +240,12 @@ class ApiService {
     Options? options,
   }) async {
     try {
-      final response = await _dio.post(
-      path,
-      data: data,
-      queryParameters: queryParameters,
-      options: options,
-    );
+      final response = await dio.post(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+        options: options,
+      );
 
       return ApiResponse<dynamic>(
         success: response.data['success'] ?? false,
@@ -243,9 +254,15 @@ class ApiService {
       );
     } catch (e) {
       if (e is DioException) {
+        final errorData = e.response?.data;
+        String? errorMessage;
+        if (errorData is Map<String, dynamic>) {
+          errorMessage =
+              (errorData['message'] ?? errorData['detail'])?.toString();
+        }
         return ApiResponse<dynamic>(
           success: false,
-          message: e.response?.data?['message'] ?? e.message ?? '请求失败',
+          message: errorMessage ?? e.message ?? '请求失败',
         );
       }
       return ApiResponse<dynamic>(
@@ -262,7 +279,7 @@ class ApiService {
     Map<String, dynamic>? queryParameters,
   }) async* {
     try {
-      final response = await _dio.post<ResponseBody>(
+      final response = await dio.post<ResponseBody>(
         path,
         data: data,
         queryParameters: queryParameters,
@@ -277,11 +294,11 @@ class ApiService {
 
       if (response.data != null) {
         final stream = response.data!.stream;
-        
+
         await for (final data in stream) {
           final string = utf8.decode(data);
           final lines = string.split('\n');
-          
+
           for (final line in lines) {
             if (line.trim().isNotEmpty) {
               yield line;
@@ -302,12 +319,12 @@ class ApiService {
     Options? options,
   }) async {
     try {
-      final response = await _dio.put(
-      path,
-      data: data,
-      queryParameters: queryParameters,
-      options: options,
-    );
+      final response = await dio.put(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+        options: options,
+      );
 
       return ApiResponse<dynamic>(
         success: response.data['success'] ?? false,
@@ -316,9 +333,15 @@ class ApiService {
       );
     } catch (e) {
       if (e is DioException) {
+        final errorData = e.response?.data;
+        String? errorMessage;
+        if (errorData is Map<String, dynamic>) {
+          errorMessage =
+              (errorData['message'] ?? errorData['detail'])?.toString();
+        }
         return ApiResponse<dynamic>(
           success: false,
-          message: e.response?.data?['message'] ?? e.message ?? '请求失败',
+          message: errorMessage ?? e.message ?? '请求失败',
         );
       }
       return ApiResponse<dynamic>(
@@ -336,12 +359,12 @@ class ApiService {
     Options? options,
   }) async {
     try {
-      final response = await _dio.delete(
-      path,
-      data: data,
-      queryParameters: queryParameters,
-      options: options,
-    );
+      final response = await dio.delete(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+        options: options,
+      );
 
       return ApiResponse<dynamic>(
         success: response.data['success'] ?? false,
@@ -350,10 +373,16 @@ class ApiService {
       );
     } catch (e) {
       if (e is DioException) {
+        final errorData = e.response?.data;
+        String? errorMessage;
+        if (errorData is Map<String, dynamic>) {
+          errorMessage =
+              (errorData['message'] ?? errorData['detail'])?.toString();
+        }
         final isNotFound = e.response?.statusCode == 404;
         return ApiResponse<dynamic>(
           success: false,
-          message: e.response?.data?['message'] ?? e.message ?? '请求失败',
+          message: errorMessage ?? e.message ?? '请求失败',
           notFound: isNotFound,
         );
       }
@@ -371,7 +400,7 @@ class ApiService {
     ProgressCallback? onSendProgress,
     Options? options,
   }) async {
-    return await _dio.post<T>(
+    return await dio.post<T>(
       path,
       data: formData,
       options: options,
@@ -387,7 +416,7 @@ class ApiService {
     Options? options,
   }) async {
     try {
-      final response = await _dio.post(
+      final response = await dio.post(
         path,
         data: data,
         options: options,
@@ -412,4 +441,4 @@ class ApiService {
       );
     }
   }
-} 
+}

@@ -15,7 +15,6 @@ import '../../features/health/presentation/pages/main_health_page.dart';
 import '../../features/health/presentation/pages/reminder_settings_page.dart';
 import '../../features/health/presentation/pages/constitution_quiz_page.dart';
 import '../../features/health/presentation/pages/wellness_page.dart';
-import '../../features/saved_meals/presentation/pages/saved_meals_page.dart';
 import '../../features/onboarding/presentation/pages/onboarding_welcome_page.dart';
 import '../../features/onboarding/presentation/pages/onboarding_basic_info_page.dart';
 import '../../features/onboarding/presentation/pages/onboarding_physical_data_page.dart';
@@ -197,12 +196,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const ProfilePage(),
           ),
 
-          // 保存菜品页面
-          GoRoute(
-            path: '/saved-meals',
-            name: 'saved_meals',
-            builder: (context, state) => const SavedMealsPage(),
-          ),
+          // 保存菜品页面 — 不再注册为 GoRouter 路由，只通过 Navigator.push 直接打开
+          // 避免 ShellRoute nested Navigator 冲突导致返回值丢失
 
           // 提醒设置页面
           GoRoute(
@@ -231,7 +226,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/camera',
         name: 'camera',
-        builder: (context, state) => const CameraPage(),
+        builder: (context, state) => CameraPage(
+          recordDate: DateTime.now().toIso8601String().substring(0, 10),
+        ),
       ),
     ],
 

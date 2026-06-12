@@ -701,6 +701,18 @@ class _WellnessPageState extends State<WellnessPage>
       );
     }
 
+    // 判断数据格式：有 items 字段是前端分组格式，有 category+content 是后端扁平格式
+    final firstItem = _wellnessTips.first;
+    final isGrouped = firstItem.containsKey('items');
+
+    if (isGrouped) {
+      return _buildGroupedKnowledge();
+    }
+    return _buildFlatKnowledge();
+  }
+
+  /// 前端 fallback 分组格式：{title, icon, color, items: [...]}
+  Widget _buildGroupedKnowledge() {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: _wellnessTips.map((section) {
@@ -782,6 +794,179 @@ class _WellnessPageState extends State<WellnessPage>
         );
       }).toList(),
     );
+  }
+
+  /// 后端扁平格式：{category, title, content, recommended_foods, ...}
+  /// 按 category 分组展示
+  Widget _buildFlatKnowledge() {
+    // 按 category 分组
+    final grouped = <String, List<Map<String, dynamic>>>{};
+    for (final tip in _wellnessTips) {
+      final cat = tip['category']?.toString() ?? '其他';
+      grouped.putIfAbsent(cat, () => []);
+      grouped[cat]!.add(tip);
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: grouped.entries.map((entry) {
+        final category = entry.key;
+        final tips = entry.value;
+        final config = _categoryConfig(category);
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 分类标题
+              Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: config['color'] as Color,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(config['icon'] as IconData,
+                        color: Colors.white, size: 18),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    category,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              // 该分类下的每条知识点
+              ...tips.map((tip) {
+                final title = tip['title']?.toString() ?? '';
+                final content = tip['content']?.toString() ?? '';
+                final foods =
+                    (tip['recommended_foods'] as List?)?.cast<String>() ?? [];
+                final avoid =
+                    (tip['avoid_foods'] as List?)?.cast<String>() ?? [];
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.backgroundCard,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: (config['color'] as Color)
+                              .withValues(alpha: 0.15)),
+                      boxShadow: AppColors.lightShadow,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title,
+                            style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary)),
+                        if (content.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(content,
+                              style: const TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textSecondary,
+                                  height: 1.5)),
+                        ],
+                        if (foods.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: foods.map((f) {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color:
+                                      AppColors.success.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text('推荐: $f',
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.success)),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                        if (avoid.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: avoid.map((a) {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color:
+                                      AppColors.error.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text('少食: $a',
+                                    style: const TextStyle(
+                                        fontSize: 11, color: AppColors.error)),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  /// 根据 category 返回对应的图标和颜色
+  Map<String, dynamic> _categoryConfig(String category) {
+    switch (category) {
+      case '体质':
+        return {
+          'icon': LucideIcons.heartPulse,
+          'color': const Color(0xFFEF5350),
+        };
+      case '季节':
+      case '四季':
+        return {
+          'icon': LucideIcons.sun,
+          'color': const Color(0xFFFFA726),
+        };
+      case '饮食':
+        return {
+          'icon': LucideIcons.utensils,
+          'color': const Color(0xFF43A047),
+        };
+      case '节气':
+        return {
+          'icon': LucideIcons.calendar,
+          'color': const Color(0xFF42A5F5),
+        };
+      default:
+        return {
+          'icon': LucideIcons.leaf,
+          'color': AppColors.primary,
+        };
+    }
   }
 
   IconData _parseIcon(String name) {

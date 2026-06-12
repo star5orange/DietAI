@@ -43,6 +43,7 @@ async def generate_sse_stream(
         food_record = FoodRecord(
             user_id=current_user.id,
             record_date=food_data.record_date,
+            record_time=food_data.record_time or datetime.now(),
             meal_type=food_data.meal_type,
             food_name=food_data.food_name,
             description=food_data.description,
@@ -85,6 +86,7 @@ async def generate_sse_stream(
             "id": food_record.id,
             "user_id": food_record.user_id,
             "record_date": food_record.record_date.isoformat(),
+            "record_time": food_record.record_time.isoformat() if food_record.record_time else None,
             "meal_type": food_record.meal_type,
             "food_name": food_record.food_name,
             "description": food_record.description,
@@ -194,6 +196,7 @@ async def create_food_record_traditional(
         food_record = FoodRecord(
             user_id=current_user.id,
             record_date=food_data.record_date,
+            record_time=food_data.record_time or datetime.now(),
             meal_type=food_data.meal_type,
             food_name=food_data.food_name,
             description=food_data.description,
@@ -230,6 +233,7 @@ async def create_food_record_traditional(
             "id": food_record.id,
             "user_id": food_record.user_id,
             "record_date": food_record.record_date.isoformat(),
+            "record_time": food_record.record_time.isoformat() if food_record.record_time else None,
             "meal_type": food_record.meal_type,
             "food_name": food_record.food_name,
             "description": food_record.description,
@@ -290,6 +294,7 @@ async def update_food_record(
             "id": food_record.id,
             "user_id": food_record.user_id,
             "record_date": food_record.record_date.isoformat(),
+            "record_time": food_record.record_time.isoformat() if food_record.record_time else None,
             "meal_type": food_record.meal_type,
             "food_name": food_record.food_name,
             "description": food_record.description,
@@ -443,6 +448,7 @@ async def confirm_food_record(
             "id": record.id,
             "user_id": record.user_id,
             "record_date": record.record_date.isoformat(),
+            "record_time": record.record_time.isoformat() if record.record_time else None,
             "meal_type": record.meal_type,
             "food_name": record.food_name,
             "description": record.description,
@@ -756,6 +762,7 @@ async def get_food_records(
                 "id": record.id,
                 "user_id": record.user_id,
                 "record_date": record.record_date.isoformat(),
+                "record_time": record.record_time.isoformat() if record.record_time else None,
                 "meal_type": record.meal_type,
                 "food_name": record.food_name,
                 "description": record.description,
@@ -1271,9 +1278,9 @@ async def create_daily_nutrition_summary(user_id: int, summary_date: date, db: S
         total_fiber=nutrition_stats.total_fiber or 0,
         total_sodium=nutrition_stats.total_sodium or 0,
         meal_count=nutrition_stats.meal_count or 0,
-        water_intake=0,  # 默认值，后续可以从其他地方获取
-        exercise_calories=0,  # 默认值，后续可以从运动记录获取
-        health_level=None  # 后续计算健康评分
+        water_intake=_get_daily_water_intake(db, user_id, summary_date),
+        exercise_calories=_get_daily_exercise_calories(db, user_id, summary_date),
+        health_level=None
     )
 
     db.add(summary)
@@ -1322,6 +1329,8 @@ async def update_daily_nutrition_summary(user_id: int, summary_date: date, db: S
     summary.total_fiber = nutrition_stats.total_fiber or 0
     summary.total_sodium = nutrition_stats.total_sodium or 0
     summary.meal_count = nutrition_stats.meal_count or 0
+    summary.water_intake = _get_daily_water_intake(db, user_id, summary_date)
+    summary.exercise_calories = _get_daily_exercise_calories(db, user_id, summary_date)
     summary.updated_at = datetime.utcnow()
 
     db.commit()
@@ -1329,3 +1338,23 @@ async def update_daily_nutrition_summary(user_id: int, summary_date: date, db: S
     # 清除相关缓存
     cache_key = f"nutrition:daily:{user_id}:{summary_date}"
     cache_service.redis.delete(cache_key)
+
+
+def _get_daily_water_intake(db: Session, user_id: int, summary_date: date) -> float:
+    """查询指定日期的饮水总量(L)，从 water_intake_records 表汇总"""
+    from shared.models.water_models import WaterIntakeRecord
+    total_ml = db.query(func.coalesce(func.sum(WaterIntakeRecord.amount_ml), 0)).filter(
+        WaterIntakeRecord.user_id == user_id,
+        func.date(WaterIntakeRecord.record_time) == summary_date
+    ).scalar()
+    return round(float(total_ml) / 1000.0, 2)
+
+
+def _get_daily_exercise_calories(db: Session, user_id: int, summary_date: date) -> float:
+    """查询指定日期的运动消耗总热量(kcal)，从 exercise_records 表汇总"""
+    from shared.models.exercise_models import ExerciseRecord
+    total = db.query(func.coalesce(func.sum(ExerciseRecord.calories_burned), 0)).filter(
+        ExerciseRecord.user_id == user_id,
+        ExerciseRecord.record_date == summary_date
+    ).scalar()
+    return round(float(total), 2)

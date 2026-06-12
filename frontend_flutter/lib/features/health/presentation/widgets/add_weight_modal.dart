@@ -461,7 +461,10 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
   }
 
   Future<void> _handleSubmit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      debugPrint('[AddWeightModal] 表单验证失败');
+      return;
+    }
     
     setState(() => _isLoading = true);
     
@@ -476,6 +479,8 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
       final notes = _notesController.text.isNotEmpty ? _notesController.text : null;
       final measuredAtString = _measuredAt.toIso8601String();
       
+      debugPrint('[AddWeightModal] 提交数据: weight=$weight, measuredAt=$measuredAtString');
+      
       if (widget.existingRecord != null) {
         // 更新记录
         final request = UpdateWeightRecordRequest(
@@ -486,8 +491,11 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
           notes: notes,
         );
         
+        debugPrint('[AddWeightModal] 更新记录 id=${widget.existingRecord!.id}');
         final result = await ref.read(weightRecordsProvider.notifier)
           .updateWeightRecord(widget.existingRecord!.id, request);
+        
+        debugPrint('[AddWeightModal] 更新结果: success=${result.success}, message=${result.message}');
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -512,8 +520,11 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
           notes: notes,
         );
         
+        debugPrint('[AddWeightModal] 创建新记录');
         final result = await ref.read(weightRecordsProvider.notifier)
           .createWeightRecord(request);
+        
+        debugPrint('[AddWeightModal] 创建结果: success=${result.success}, message=${result.message}, data=${result.data}');
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -524,17 +535,21 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
           );
           
           if (result.success) {
+            debugPrint('[AddWeightModal] 创建成功，关闭弹窗并刷新');
             Navigator.pop(context);
             widget.onRecordAdded?.call();
           }
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('[AddWeightModal] 异常: $e');
+      debugPrint('[AddWeightModal] 堆栈: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('操作失败: $e'),
             backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 4),
           ),
         );
       }

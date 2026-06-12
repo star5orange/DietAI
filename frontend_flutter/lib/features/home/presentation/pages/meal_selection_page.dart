@@ -189,8 +189,7 @@ class MealSelectionPage extends StatelessWidget {
         return '语音记录';
       case 'saved_meals':
         return '已保存菜品';
-      case 'barcode_scan':
-        return '条形码扫描';
+
       default:
         return '记录食物';
     }

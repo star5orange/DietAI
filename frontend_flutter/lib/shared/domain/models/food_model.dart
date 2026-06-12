@@ -187,6 +187,8 @@ class FoodRecord {
   final int userId;
   @JsonKey(name: 'record_date')
   final String recordDate;
+  @JsonKey(name: 'record_time')
+  final String? recordTime;
   @JsonKey(name: 'meal_type')
   final int mealType;
   @JsonKey(name: 'food_name')
@@ -213,6 +215,7 @@ class FoodRecord {
     required this.id,
     required this.userId,
     required this.recordDate,
+    this.recordTime,
     required this.mealType,
     this.foodName,
     this.description,
@@ -244,7 +247,7 @@ class FoodRecord {
       default:
         return '未知';
     }
-}
+  }
 
   /// 获取分析状态名称
   String get analysisStatusName {
@@ -268,6 +271,8 @@ class FoodRecord {
 class FoodRecordCreate {
   @JsonKey(name: 'record_date')
   final String recordDate;
+  @JsonKey(name: 'record_time')
+  final String? recordTime;
   @JsonKey(name: 'meal_type')
   final int mealType;
   @JsonKey(name: 'food_name')
@@ -280,6 +285,7 @@ class FoodRecordCreate {
 
   const FoodRecordCreate({
     required this.recordDate,
+    this.recordTime,
     required this.mealType,
     required this.foodName,
     this.description,
@@ -547,4 +553,4 @@ class ImageUrlResponse {
 }
 
 /// 每日汇总的类型别名
-typedef DailySummary = DailyNutritionSummary; 
+typedef DailySummary = DailyNutritionSummary;

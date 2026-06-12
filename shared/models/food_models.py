@@ -12,6 +12,7 @@ class FoodRecord(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     record_date = Column(Date, nullable=False)
+    record_time = Column(DateTime, nullable=True, comment="餐食的实际用餐时间（用户选择或默认当前时间）")
     meal_type = Column(Integer, nullable=False)  # 1:早餐 2:午餐 3:晚餐 4:加餐 5:夜宵
     food_name = Column(String(200), nullable=True)
     description = Column(Text, nullable=True)

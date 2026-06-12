@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lottie/lottie.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../shared/presentation/widgets/app_button.dart';
+import '../providers/onboarding_provider.dart';
 
-class OnboardingWelcomePage extends StatefulWidget {
+class OnboardingWelcomePage extends ConsumerStatefulWidget {
   const OnboardingWelcomePage({super.key});
 
   @override
-  State<OnboardingWelcomePage> createState() => _OnboardingWelcomePageState();
+  ConsumerState<OnboardingWelcomePage> createState() => _OnboardingWelcomePageState();
 }
 
-class _OnboardingWelcomePageState extends State<OnboardingWelcomePage>
+class _OnboardingWelcomePageState extends ConsumerState<OnboardingWelcomePage>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -51,9 +53,20 @@ class _OnboardingWelcomePageState extends State<OnboardingWelcomePage>
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
-                    onPressed: () {
+                    onPressed: () async {
                       print('📝 用户点击了跳过按钮');
-                      context.go('/home');
+                      // 调用后端API记录用户已跳过引导，避免下次登录再次弹出
+                      try {
+                        final service = ref.read(onboardingServiceProvider);
+                        await service.updateOnboardingStep(step: 1, completed: true);
+                      } catch (e) {
+                        print('⚠️ 更新引导步骤失败: $e');
+                      }
+                      // 同时更新本地状态，避免当前会话中再次弹出
+                      ref.read(onboardingProvider.notifier).updateStep(6);
+                      if (mounted) {
+                        context.go('/');
+                      }
                     },
                     child: Text(
                       '跳过',

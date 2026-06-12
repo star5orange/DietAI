@@ -160,6 +160,7 @@ FoodRecord _$FoodRecordFromJson(Map<String, dynamic> json) => FoodRecord(
       id: (json['id'] as num).toInt(),
       userId: (json['user_id'] as num).toInt(),
       recordDate: json['record_date'] as String,
+      recordTime: json['record_time'] as String?,
       mealType: (json['meal_type'] as num).toInt(),
       foodName: json['food_name'] as String?,
       description: json['description'] as String?,
@@ -184,6 +185,7 @@ Map<String, dynamic> _$FoodRecordToJson(FoodRecord instance) =>
       'id': instance.id,
       'user_id': instance.userId,
       'record_date': instance.recordDate,
+      'record_time': instance.recordTime,
       'meal_type': instance.mealType,
       'food_name': instance.foodName,
       'description': instance.description,
@@ -200,6 +202,7 @@ Map<String, dynamic> _$FoodRecordToJson(FoodRecord instance) =>
 FoodRecordCreate _$FoodRecordCreateFromJson(Map<String, dynamic> json) =>
     FoodRecordCreate(
       recordDate: json['record_date'] as String,
+      recordTime: json['record_time'] as String?,
       mealType: (json['meal_type'] as num).toInt(),
       foodName: json['food_name'] as String,
       description: json['description'] as String?,
@@ -210,6 +213,7 @@ FoodRecordCreate _$FoodRecordCreateFromJson(Map<String, dynamic> json) =>
 Map<String, dynamic> _$FoodRecordCreateToJson(FoodRecordCreate instance) =>
     <String, dynamic>{
       'record_date': instance.recordDate,
+      'record_time': instance.recordTime,
       'meal_type': instance.mealType,
       'food_name': instance.foodName,
       'description': instance.description,

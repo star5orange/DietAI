@@ -19,10 +19,21 @@ class WellnessService {
         queryParameters: queryParams,
       );
 
-      return ApiResponse.fromJson(
+      final result = ApiResponse.fromJson(
         response.data,
         (json) => (json as List).map((e) => e as Map<String, dynamic>).toList(),
       );
+
+      // 如果后端返回空数据（DB 表为空），fallback 到本地默认数据
+      if (result.data == null || result.data!.isEmpty) {
+        return ApiResponse(
+          success: true,
+          data: _getDefaultTips(),
+          message: '使用本地养生知识数据',
+        );
+      }
+
+      return result;
     } catch (e) {
       return ApiResponse(
         success: true,

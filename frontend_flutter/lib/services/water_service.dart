@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../../core/services/api_service.dart';
 import '../../shared/domain/models/api_response.dart';
 import '../../shared/domain/models/water_intake_model.dart';
@@ -5,167 +6,14 @@ import '../../shared/domain/models/water_intake_model.dart';
 class WaterService {
   final ApiService _apiService = ApiService();
 
-  Future<ApiResponse<List<WaterIntakeRecord>>> getWaterRecords() async {
-    try {
-      final records = await WaterIntakeStorage.loadAll();
-      return ApiResponse<List<WaterIntakeRecord>>.success(
-        message: '获取饮水记录成功',
-        data: records,
-      );
-    } catch (e) {
-      return ApiResponse<List<WaterIntakeRecord>>.failure(
-        message: '获取饮水记录失败: $e',
-      );
-    }
-  }
-
-  Future<ApiResponse<WaterIntakeRecord>> addWaterIntake({
-    required int amountMl,
-    String? notes,
-  }) async {
-    try {
-      final now = DateTime.now();
-      final record = WaterIntakeRecord(
-        id: now.millisecondsSinceEpoch.toString(),
-        amountMl: amountMl,
-        notes: notes,
-        recordedAt: now.toIso8601String(),
-        createdAt: now.toIso8601String(),
-      );
-
-      await WaterIntakeStorage.add(record);
-
-      return ApiResponse<WaterIntakeRecord>.success(
-        message: '添加饮水记录成功',
-        data: record,
-      );
-    } catch (e) {
-      return ApiResponse<WaterIntakeRecord>.failure(
-        message: '添加饮水记录失败: $e',
-      );
-    }
-  }
-
-  Future<ApiResponse<void>> deleteWaterRecord(String id) async {
-    try {
-      await WaterIntakeStorage.delete(id);
-      return ApiResponse<void>.success(
-        message: '删除饮水记录成功',
-      );
-    } catch (e) {
-      return ApiResponse<void>.failure(
-        message: '删除饮水记录失败: $e',
-      );
-    }
-  }
-
-  Future<ApiResponse<DailyWaterSummary>> getDailySummary(String dateStr) async {
-    try {
-      final summary = await WaterIntakeStorage.getDailySummary(dateStr);
-      return ApiResponse<DailyWaterSummary>.success(
-        message: '获取每日饮水汇总成功',
-        data: summary,
-      );
-    } catch (e) {
-      return ApiResponse<DailyWaterSummary>.failure(
-        message: '获取每日饮水汇总失败: $e',
-      );
-    }
-  }
-
-  Future<ApiResponse<double>> getBackendWaterIntake(String dateStr) async {
-    try {
-      final response = await _apiService.get('/foods/daily-summary/$dateStr');
-      if (response.success && response.data != null) {
-        final waterIntake =
-            (response.data['water_intake'] as num?)?.toDouble() ?? 0.0;
-        return ApiResponse<double>.success(
-          message: '获取后端饮水数据成功',
-          data: waterIntake,
-        );
-      }
-      return ApiResponse<double>.success(
-        message: '暂无后端饮水数据',
-        data: 0.0,
-      );
-    } catch (e) {
-      return ApiResponse<double>.failure(
-        message: '获取后端饮水数据失败: $e',
-      );
-    }
-  }
-
-  Future<ApiResponse<int>> getGoal() async {
-    try {
-      final goal = await WaterIntakeStorage.getGoal();
-      return ApiResponse<int>.success(
-        message: '获取饮水目标成功',
-        data: goal,
-      );
-    } catch (e) {
-      return ApiResponse<int>.failure(
-        message: '获取饮水目标失败: $e',
-      );
-    }
-  }
-
-  Future<ApiResponse<void>> setGoal(int goalMl) async {
-    try {
-      await WaterIntakeStorage.setGoal(goalMl);
-      return ApiResponse<void>.success(
-        message: '设置饮水目标成功',
-      );
-    } catch (e) {
-      return ApiResponse<void>.failure(
-        message: '设置饮水目标失败: $e',
-      );
-    }
-  }
-
-  // ==================== 后端 API 方法 ====================
-
-  /// 向后端创建饮水记录
-  Future<ApiResponse<Map<String, dynamic>>> createRemoteWaterRecord({
-    required double amountMl,
-    String? recordedAt,
-    String? notes,
-  }) async {
-    try {
-      final data = {
-        'amount_ml': amountMl,
-        if (recordedAt != null) 'recorded_at': recordedAt,
-        if (notes != null) 'notes': notes,
-      };
-
-      final response = await _apiService.post('/water/records', data: data);
-
-      if (response.success && response.data != null) {
-        return ApiResponse<Map<String, dynamic>>.success(
-          message: response.message.isNotEmpty ? response.message : '创建饮水记录成功',
-          data: response.data as Map<String, dynamic>,
-        );
-      }
-      return ApiResponse<Map<String, dynamic>>.failure(
-        message: response.message.isNotEmpty ? response.message : '创建饮水记录失败',
-      );
-    } catch (e) {
-      return ApiResponse<Map<String, dynamic>>.failure(
-        message: '创建饮水记录失败: $e',
-      );
-    }
-  }
-
-  /// 从后端获取饮水记录列表
-  Future<ApiResponse<List<Map<String, dynamic>>>> getRemoteWaterRecords({
+  /// 获取指定日期范围的饮水记录
+  Future<ApiResponse<List<WaterIntakeRecord>>> getWaterRecords({
     String? startDate,
     String? endDate,
-    int skip = 0,
-    int limit = 20,
   }) async {
     try {
       final queryParams = <String, dynamic>{
-        'skip': skip,
-        'limit': limit,
+        'limit': 50,
       };
       if (startDate != null) queryParams['start_date'] = startDate;
       if (endDate != null) queryParams['end_date'] = endDate;
@@ -177,44 +25,153 @@ class WaterService {
 
       if (response.success && response.data != null) {
         final List<dynamic> dataList = response.data as List;
-        final records = dataList.map((e) => e as Map<String, dynamic>).toList();
-        return ApiResponse<List<Map<String, dynamic>>>.success(
-          message: response.message.isNotEmpty ? response.message : '获取饮水记录成功',
+        final records = dataList
+            .map((e) => WaterIntakeRecord(
+                  id: (e['id'] as int).toString(),
+                  amountMl: e['amount_ml'] as int,
+                  notes: e['drink_type'] as String?,
+                  recordedAt: e['record_time'] as String,
+                  createdAt: e['created_at'] as String,
+                ))
+            .toList();
+        return ApiResponse<List<WaterIntakeRecord>>.success(
+          message: '获取饮水记录成功',
           data: records,
         );
       }
-      return ApiResponse<List<Map<String, dynamic>>>.failure(
+      return ApiResponse<List<WaterIntakeRecord>>.failure(
         message: response.message.isNotEmpty ? response.message : '获取饮水记录失败',
       );
     } catch (e) {
-      return ApiResponse<List<Map<String, dynamic>>>.failure(
+      return ApiResponse<List<WaterIntakeRecord>>.failure(
         message: '获取饮水记录失败: $e',
       );
     }
   }
 
-  /// 从后端获取每日饮水汇总
-  Future<ApiResponse<Map<String, dynamic>>> getRemoteDailySummary(String targetDate) async {
+  /// 添加饮水记录（持久化到后端数据库）
+  Future<ApiResponse<WaterIntakeRecord>> addWaterIntake({
+    required int amountMl,
+    String? notes,
+    DateTime? recordedAt,
+  }) async {
     try {
-      final response = await _apiService.get('/water/daily-summary/$targetDate');
+      final recordTime = recordedAt ?? DateTime.now();
+      final data = <String, dynamic>{
+        'amount_ml': amountMl,
+        'record_time': recordTime.toIso8601String(),
+        'drink_type': notes ?? '水',
+      };
+
+      debugPrint('[WaterService] POST /water/records data=$data');
+      final response = await _apiService.post('/water/records', data: data);
+      debugPrint(
+          '[WaterService] POST result: success=${response.success}, message=${response.message}');
 
       if (response.success && response.data != null) {
-        return ApiResponse<Map<String, dynamic>>.success(
-          message: response.message.isNotEmpty ? response.message : '获取每日饮水汇总成功',
-          data: response.data as Map<String, dynamic>,
+        final d = response.data as Map<String, dynamic>;
+        final record = WaterIntakeRecord(
+          id: (d['id'] as int).toString(),
+          amountMl: d['amount_ml'] as int,
+          notes: d['drink_type'] as String?,
+          recordedAt: d['record_time'] as String,
+          createdAt: d['created_at'] as String,
+        );
+        return ApiResponse<WaterIntakeRecord>.success(
+          message: '添加饮水记录成功',
+          data: record,
         );
       }
-      return ApiResponse<Map<String, dynamic>>.failure(
+      return ApiResponse<WaterIntakeRecord>.failure(
+        message: response.message.isNotEmpty ? response.message : '添加饮水记录失败',
+      );
+    } catch (e) {
+      return ApiResponse<WaterIntakeRecord>.failure(
+        message: '添加饮水记录失败: $e',
+      );
+    }
+  }
+
+  /// 删除饮水记录
+  Future<ApiResponse<void>> deleteWaterRecord(String id) async {
+    try {
+      final response = await _apiService.delete('/water/records/$id');
+      if (response.success) {
+        return ApiResponse<void>.success(message: '饮水记录已删除');
+      }
+      return ApiResponse<void>.failure(
+        message: response.message.isNotEmpty ? response.message : '删除失败',
+      );
+    } catch (e) {
+      return ApiResponse<void>.failure(
+        message: '删除饮水记录失败: $e',
+      );
+    }
+  }
+
+  /// 获取每日饮水汇总
+  Future<ApiResponse<DailyWaterSummary>> getDailySummary(String dateStr) async {
+    try {
+      final response = await _apiService.get('/water/daily-summary/$dateStr');
+
+      if (response.success && response.data != null) {
+        final d = response.data as Map<String, dynamic>;
+        final summary = DailyWaterSummary(
+          date: d['date'] as String,
+          totalMl: (d['total_intake_ml'] as num).toInt(),
+          goalMl: (d['daily_goal_ml'] as num).toInt(),
+          recordCount: d['records_count'] as int,
+        );
+        return ApiResponse<DailyWaterSummary>.success(
+          message: '获取每日饮水汇总成功',
+          data: summary,
+        );
+      }
+      return ApiResponse<DailyWaterSummary>.failure(
         message: response.message.isNotEmpty ? response.message : '获取每日饮水汇总失败',
       );
     } catch (e) {
-      return ApiResponse<Map<String, dynamic>>.failure(
+      return ApiResponse<DailyWaterSummary>.failure(
         message: '获取每日饮水汇总失败: $e',
       );
     }
   }
 
-  /// 从后端获取饮水统计
+  /// 获取饮水目标（优先从后端 summary 读取，兜底 2000）
+  Future<ApiResponse<int>> getGoal() async {
+    try {
+      final dateStr = DateTime.now().toIso8601String().substring(0, 10);
+      final response = await _apiService.get('/water/daily-summary/$dateStr');
+      if (response.success && response.data != null) {
+        final d = response.data as Map<String, dynamic>;
+        return ApiResponse<int>.success(
+          message: '获取饮水目标成功',
+          data: (d['daily_goal_ml'] as num?)?.toInt() ?? 2000,
+        );
+      }
+      return ApiResponse<int>.success(
+        message: '使用默认目标',
+        data: 2000,
+      );
+    } catch (e) {
+      return ApiResponse<int>.success(
+        message: '使用默认目标',
+        data: 2000,
+      );
+    }
+  }
+
+  /// 设置饮水目标（暂不影响后端，仅本地使用）
+  Future<ApiResponse<void>> setGoal(int goalMl) async {
+    try {
+      await WaterIntakeStorage.setGoal(goalMl);
+      return ApiResponse<void>.success(message: '设置饮水目标成功');
+    } catch (e) {
+      return ApiResponse<void>.failure(message: '设置饮水目标失败: $e');
+    }
+  }
+
+  /// 获取饮水统计
   Future<ApiResponse<Map<String, dynamic>>> getWaterStatistics({
     String period = '7d',
   }) async {
@@ -226,7 +183,7 @@ class WaterService {
 
       if (response.success && response.data != null) {
         return ApiResponse<Map<String, dynamic>>.success(
-          message: response.message.isNotEmpty ? response.message : '获取饮水统计成功',
+          message: '获取饮水统计成功',
           data: response.data as Map<String, dynamic>,
         );
       }

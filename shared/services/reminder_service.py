@@ -25,7 +25,7 @@ DEFAULT_MEAL_REMINDERS = [
 
 def create_reminder(db: Session, user_id: int, reminder: ReminderCreate) -> Reminder:
     """创建提醒"""
-    db_reminder = Reminder(user_id=user_id, **reminder.dict())
+    db_reminder = Reminder(user_id=user_id, **reminder.model_dump())
     db.add(db_reminder)
     db.commit()
     db.refresh(db_reminder)
@@ -107,7 +107,7 @@ def update_reminder(db: Session, reminder_id: int, user_id: int, reminder: Remin
     db_reminder = get_reminder(db, reminder_id, user_id)
     if not db_reminder:
         raise ValueError("提醒不存在")
-    update_data = reminder.dict(exclude_unset=True)
+    update_data = reminder.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_reminder, key, value)
     db.commit()

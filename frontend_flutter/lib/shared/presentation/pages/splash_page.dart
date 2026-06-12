@@ -6,6 +6,7 @@ import '../../../core/themes/app_colors.dart';
 import '../../../core/themes/app_text_styles.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../features/auth/presentation/providers/auth_provider.dart';
+import '../../../features/onboarding/presentation/providers/onboarding_provider.dart';
 
 /// 启动页面
 class SplashPage extends ConsumerStatefulWidget {
@@ -72,14 +73,13 @@ class _SplashPageState extends ConsumerState<SplashPage>
 
   void _handleAuthStateChange() {
     final authState = ref.read(authStateProvider);
-    
+
     authState.when(
       data: (user) {
         if (!mounted) return;
         if (user != null) {
-          // 已登录，跳转到首页
-          print('🔄 用户已登录，跳转到首页');
-          context.go('/');
+          // 检查引导状态，决定跳转到首页还是引导欢迎页
+          _checkOnboardingAndNavigate();
         } else {
           // 未登录，跳转到登录页面
           print('🔄 用户未登录，跳转到登录页面');
@@ -102,6 +102,31 @@ class _SplashPageState extends ConsumerState<SplashPage>
         context.go('/login');
       },
     );
+  }
+
+  /// 检查用户是否已完成引导，决定跳转目标
+  Future<void> _checkOnboardingAndNavigate() async {
+    try {
+      // 调用后端API检查引导状态
+      await ref.read(onboardingProvider.notifier).checkOnboardingStatus();
+      if (!mounted) return;
+
+      final onboardingState = ref.read(onboardingProvider);
+      if (!onboardingState.isCompleted) {
+        // 用户从未完成引导，跳转到引导欢迎页
+        print('🔄 引导未完成，跳转到引导欢迎页');
+        context.go('/onboarding');
+        return;
+      }
+    } catch (e) {
+      print('⚠️ 检查引导状态失败: $e');
+      // 检查失败时默认跳转到首页，避免阻塞用户
+    }
+
+    if (mounted) {
+      print('🔄 用户已登录且引导已完成，跳转到首页');
+      context.go('/');
+    }
   }
 
   @override

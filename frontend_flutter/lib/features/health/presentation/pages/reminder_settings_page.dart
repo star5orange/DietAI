@@ -175,11 +175,32 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddReminderModal,
         backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.textInverse,
+        foregroundColor: Colors.white,
         elevation: 4,
-        icon: const Icon(LucideIcons.bellPlus, size: 20),
-        label:
-            const Text('添加提醒', style: TextStyle(fontWeight: FontWeight.w600)),
+        extendedPadding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        label: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '添加',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                height: 1.2,
+              ),
+            ),
+            Text(
+              '提醒',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                height: 1.2,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

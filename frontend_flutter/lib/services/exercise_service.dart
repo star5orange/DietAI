@@ -61,7 +61,8 @@ class ExerciseService {
     }
   }
 
-  Future<ApiResponse<DailyExerciseSummary>> getDailySummary(String dateStr) async {
+  Future<ApiResponse<DailyExerciseSummary>> getDailySummary(
+      String dateStr) async {
     try {
       final summary = await ExerciseRecordStorage.getDailySummary(dateStr);
       return ApiResponse<DailyExerciseSummary>.success(
@@ -79,7 +80,8 @@ class ExerciseService {
     try {
       final response = await _apiService.get('/foods/daily-summary/$dateStr');
       if (response.success && response.data != null) {
-        final calories = (response.data['exercise_calories'] as num?)?.toDouble() ?? 0.0;
+        final calories =
+            (response.data['exercise_calories'] as num?)?.toDouble() ?? 0.0;
         return ApiResponse<double>.success(
           message: '获取后端运动消耗成功',
           data: calories,
@@ -96,7 +98,8 @@ class ExerciseService {
     }
   }
 
-  double estimateCalories(String exerciseType, int durationMinutes, {double? userWeight}) {
+  double estimateCalories(String exerciseType, int durationMinutes,
+      {double? userWeight}) {
     final weight = userWeight ?? 70.0;
     final metValues = {
       'running': 9.8,
@@ -165,7 +168,7 @@ class ExerciseService {
     required int durationMinutes,
     required double caloriesBurned,
     String? notes,
-    String? recordedAt,
+    String? recordDate,
   }) async {
     try {
       final data = {
@@ -173,8 +176,9 @@ class ExerciseService {
         'exercise_type': exerciseType,
         'duration_minutes': durationMinutes,
         'calories_burned': caloriesBurned,
-        if (notes != null) 'notes': notes,
-        if (recordedAt != null) 'recorded_at': recordedAt,
+        'record_date':
+            recordDate ?? DateTime.now().toIso8601String().substring(0, 10),
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
       };
 
       final response = await _apiService.post('/exercises/records', data: data);
@@ -203,7 +207,7 @@ class ExerciseService {
     required int durationMinutes,
     required double caloriesBurned,
     String? notes,
-    String? recordedAt,
+    String? recordDate,
   }) async {
     try {
       final data = {
@@ -211,11 +215,13 @@ class ExerciseService {
         'exercise_type': exerciseType,
         'duration_minutes': durationMinutes,
         'calories_burned': caloriesBurned,
-        if (notes != null) 'notes': notes,
-        if (recordedAt != null) 'recorded_at': recordedAt,
+        'record_date':
+            recordDate ?? DateTime.now().toIso8601String().substring(0, 10),
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
       };
 
-      final response = await _apiService.put('/exercises/records/$recordId', data: data);
+      final response =
+          await _apiService.put('/exercises/records/$recordId', data: data);
 
       if (response.success && response.data != null) {
         return ApiResponse<Map<String, dynamic>>.success(

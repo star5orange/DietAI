@@ -114,6 +114,24 @@ class HealthGoalsNotifier extends StateNotifier<AsyncValue<List<HealthGoal>>> {
     }
   }
 
+  /// 删除健康目标
+  Future<bool> deleteHealthGoal(int goalId) async {
+    try {
+      final response = await _userService.deleteHealthGoal(goalId);
+      if (response.isSuccess) {
+        // 重新加载列表
+        await loadHealthGoals();
+        return true;
+      } else {
+        state = AsyncValue.error(response.message, StackTrace.current);
+        return false;
+      }
+    } catch (error, stackTrace) {
+      state = AsyncValue.error(error, stackTrace);
+      return false;
+    }
+  }
+
   /// 获取进行中的健康目标
   List<HealthGoal> get activeGoals {
     return state.value?.where((goal) => goal.currentStatus == 1).toList() ?? [];

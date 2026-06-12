@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc
 from typing import List, Optional
@@ -133,11 +133,11 @@ async def create_saved_meal(
 @router.post("/from-food-record/{food_record_id}", response_model=BaseResponse[SavedMealResponse])
 async def create_saved_meal_from_record(
     food_record_id: int,
-    meal_name: str,
-    description: Optional[str] = None,
-    category: Optional[str] = None,
-    tags: Optional[List[str]] = None,
-    is_public: bool = False,
+    meal_name: str = Body(..., embed=True),
+    description: Optional[str] = Body(None, embed=True),
+    category: Optional[str] = Body(None, embed=True),
+    tags: Optional[List[str]] = Body(None, embed=True),
+    is_public: bool = Body(False, embed=True),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -155,10 +155,8 @@ async def create_saved_meal_from_record(
         nutrition_source = None
         if food_record.nutrition_detail:
             nutrition_source = food_record.nutrition_detail
-        elif food_record.analysis_result:
-            nutrition_source = food_record.analysis_result.nutrition_facts
         else:
-            raise HTTPException(status_code=400, detail="食物记录缺少营养信息")
+            raise HTTPException(status_code=400, detail="食物记录缺少营养信息，请等待分析完成后再保存")
         
         # 创建保存的菜品
         saved_meal = SavedMeal(

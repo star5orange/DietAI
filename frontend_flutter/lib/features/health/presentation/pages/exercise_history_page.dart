@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/themes/app_colors.dart';
@@ -32,10 +33,19 @@ class _ExerciseHistoryPageState extends State<ExerciseHistoryPage> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final result = await _exerciseService.getExerciseRecords();
+      final startStr = DateFormat('yyyy-MM-dd').format(_startDate);
+      final endStr = DateFormat('yyyy-MM-dd').format(_endDate);
+      final result = await _exerciseService.getRemoteExerciseRecords(
+        startDate: startStr,
+        endDate: endStr,
+        limit: 500,
+      );
       if (mounted) {
+        final records = (result.data ?? [])
+            .map((json) => ExerciseRecord.fromJson(json))
+            .toList();
         setState(() {
-          _allRecords = result.data ?? [];
+          _allRecords = records;
           _applyFilters();
           _isLoading = false;
         });
@@ -138,7 +148,7 @@ class _ExerciseHistoryPageState extends State<ExerciseHistoryPage> {
         _startDate = picked.start;
         _endDate = picked.end;
       });
-      _applyFilters();
+      _loadData();
     }
   }
 
@@ -243,15 +253,39 @@ class _ExerciseHistoryPageState extends State<ExerciseHistoryPage> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              await _exerciseService.deleteExerciseRecord(record.id);
-              _loadData();
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('运动记录已删除'),
-                    backgroundColor: AppColors.success,
-                  ),
-                );
+              final recordId = int.tryParse(record.id);
+              if (recordId == null) {
+                if (mounted) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(
+                      content: Text('删除失败: 无效的记录ID'),
+                      backgroundColor: AppColors.error,
+                    ),
+                  );
+                }
+                return;
+              }
+              final result =
+                  await _exerciseService.deleteRemoteExerciseRecord(recordId);
+              if (result.success) {
+                _loadData();
+                if (mounted) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(
+                      content: Text('运动记录已删除'),
+                      backgroundColor: AppColors.success,
+                    ),
+                  );
+                }
+              } else {
+                if (mounted) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(
+                      content: Text('删除失败: ${result.message}'),
+                      backgroundColor: AppColors.error,
+                    ),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(
