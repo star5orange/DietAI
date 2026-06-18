@@ -65,16 +65,21 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
     }
   }
 
-  Future<void> _quickAdd({int amountMl = 250}) async {
+  Future<void> _quickAdd({int amountMl = 250, String? drinkType, String? timeSlot}) async {
     final result = await _waterService.addWaterIntake(
-        amountMl: amountMl, recordedAt: widget.selectedDate);
+        amountMl: amountMl,
+        recordedAt: widget.selectedDate,
+        drinkType: drinkType);
 
     if (result.success) {
       await _loadData();
       if (mounted) {
+        final msg = drinkType != null && drinkType != '水'
+            ? '已添加 ${amountMl}ml $drinkType'
+            : '已添加 ${amountMl}ml 饮水';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('已添加 ${amountMl}ml 饮水'),
+            content: Text(msg),
             backgroundColor: AppColors.info,
             duration: const Duration(seconds: 1),
           ),
@@ -95,59 +100,139 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
 
   void _showCustomAmountDialog() {
     final controller = TextEditingController(text: '250');
+    String selectedTimeSlot = _getCurrentTimeSlot();
+    String selectedDrinkType = '水';
+
+    const timeSlots = [
+      ('早餐时段', '6:00-9:00'),
+      ('上午', '9:00-11:30'),
+      ('午餐时段', '11:30-13:00'),
+      ('下午', '13:00-17:30'),
+      ('晚餐时段', '17:30-19:30'),
+      ('晚间', '19:30-23:00'),
+    ];
+
+    const drinkTypes = ['水', '茶', '咖啡', '果汁', '牛奶', '其他'];
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('自定义饮水量', style: AppTextStyles.h4),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: '饮水量 (ml)',
-                hintText: '请输入饮水量',
-                suffixText: 'ml',
-                border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                filled: true,
-                fillColor: AppColors.backgroundSecondary,
-              ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('记录饮水', style: AppTextStyles.h4),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 饮水量
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: '饮水量 (ml)',
+                    hintText: '请输入饮水量',
+                    suffixText: 'ml',
+                    border:
+                        OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    filled: true,
+                    fillColor: AppColors.backgroundSecondary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [100, 200, 250, 500, 750].map((v) {
+                    return ActionChip(
+                      label: Text('${v}ml'),
+                      onPressed: () => controller.text = v.toString(),
+                      backgroundColor: AppColors.infoLight,
+                      labelStyle: const TextStyle(color: AppColors.info),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+                // 饮品类型
+                Text('饮品类型', style: AppTextStyles.labelLarge),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: drinkTypes.map((type) {
+                    final isSelected = selectedDrinkType == type;
+                    return ChoiceChip(
+                      label: Text(type),
+                      selected: isSelected,
+                      onSelected: (_) {
+                        setDialogState(() => selectedDrinkType = type);
+                      },
+                      selectedColor: AppColors.info,
+                      labelStyle: TextStyle(
+                        color: isSelected ? AppColors.textInverse : AppColors.textSecondary,
+                        fontSize: 13,
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+                // 时间段
+                Text('时间段', style: AppTextStyles.labelLarge),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: timeSlots.map((slot) {
+                    final isSelected = selectedTimeSlot == slot.$1;
+                    return ChoiceChip(
+                      label: Text('${slot.$1} ${slot.$2}'),
+                      selected: isSelected,
+                      onSelected: (_) {
+                        setDialogState(() => selectedTimeSlot = slot.$1);
+                      },
+                      selectedColor: AppColors.info,
+                      labelStyle: TextStyle(
+                        color: isSelected ? AppColors.textInverse : AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              children: [100, 200, 250, 500, 750].map((v) {
-                return ActionChip(
-                  label: Text('${v}ml'),
-                  onPressed: () => controller.text = v.toString(),
-                  backgroundColor: AppColors.infoLight,
-                  labelStyle: const TextStyle(color: AppColors.info),
-                );
-              }).toList(),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context), child: const Text('取消')),
+            ElevatedButton(
+              onPressed: () {
+                final amount = int.tryParse(controller.text);
+                if (amount != null && amount > 0) {
+                  Navigator.pop(context);
+                  _quickAdd(
+                    amountMl: amount,
+                    drinkType: selectedDrinkType,
+                    timeSlot: selectedTimeSlot,
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.info,
+                  foregroundColor: AppColors.textInverse),
+              child: const Text('添加'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          ElevatedButton(
-            onPressed: () {
-              final amount = int.tryParse(controller.text);
-              if (amount != null && amount > 0) {
-                Navigator.pop(context);
-                _quickAdd(amountMl: amount);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.info,
-                foregroundColor: AppColors.textInverse),
-            child: const Text('添加'),
-          ),
-        ],
       ),
     );
+  }
+
+  String _getCurrentTimeSlot() {
+    final hour = DateTime.now().hour;
+    if (hour >= 6 && hour < 9) return '早餐时段';
+    if (hour >= 9 && hour < 11) return '上午';
+    if (hour >= 11 && hour < 13) return '午餐时段';
+    if (hour >= 13 && hour < 17) return '下午';
+    if (hour >= 17 && hour < 19) return '晚餐时段';
+    return '晚间';
   }
 
   Future<void> _undoLastRecord() async {
@@ -475,9 +560,11 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildQuickAddButton('250ml', 250),
-              _buildQuickAddButton('500ml', 500),
-              _buildCustomAddButton(),
+              Expanded(child: _buildQuickAddButton('250ml', 250)),
+              const SizedBox(width: 8),
+              Expanded(child: _buildQuickAddButton('500ml', 500)),
+              const SizedBox(width: 8),
+              Expanded(child: _buildCustomAddButton()),
             ],
           ),
         ],

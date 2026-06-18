@@ -231,6 +231,11 @@ coverage/
 *.tar.gz
 *.zip
 *.7z
+
+# ==========================================
+# AI Agent User Memory (用户隐私数据)
+# ==========================================
+agent/UserMemory/
 nul
 .claude/
 .mcp.json

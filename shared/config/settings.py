@@ -41,16 +41,16 @@ class Settings(BaseSettings):
     DOC_PATH: str = Field(default="./docs", description="文件路径")
 
     # MinIO配置
-    minio_endpoint: str = Field(default="localhost:9090", description="MinIO端点")
-    minio_access_key: str = Field(default="admin", description="MinIO访问密钥")
-    minio_secret_key: str = Field(default="admin123456", description="MinIO秘密密钥")
+    minio_endpoint: str = Field(default="localhost:9000", description="MinIO端点")
+    minio_access_key: str = Field(default="minioadmin", description="MinIO访问密钥")
+    minio_secret_key: str = Field(default="minioadmin", description="MinIO秘密密钥")
     minio_secure: bool = Field(default=False, description="是否使用HTTPS")
     minio_bucket: str = Field(default="dietai-bucket", description="MinIO存储桶")
 
     # JWT配置
     jwt_secret_key: str = Field(
-        default="your-super-secret-jwt-key-change-this-in-production",
-        description="JWT密钥"
+        default="CHANGE-ME-generate-with-secrets-token-urlsafe-64",
+        description="JWT密钥（生产环境必须通过环境变量 DIETAI_JWT_SECRET_KEY 设置强随机密钥）"
     )
     jwt_algorithm: str = Field(default="HS256", description="JWT算法")
     jwt_access_token_expire_minutes: int = Field(default=30, description="访问令牌过期时间(分钟)")
@@ -60,30 +60,41 @@ class Settings(BaseSettings):
     password_min_length: int = Field(default=8, description="密码最小长度")
     password_hash_rounds: int = Field(default=12, description="密码哈希轮次")
 
+    # 字段加密配置
+    field_encryption_key: str = Field(
+        default="",
+        description="数据库字段加密密钥（Base64编码的32字节密钥，生产环境必须设置）"
+    )
+
     # CORS配置
     cors_origins: List[str] = Field(
         default=[
             "http://localhost:3000",
             "http://localhost:8080",
             "http://127.0.0.1:3000",
-            "http://localhost:19006",  # Expo Web默认端口
+            "http://localhost:19006",
             "http://127.0.0.1:19006",
-            "http://localhost:8081",   # Expo开发服务器端口
+            "http://localhost:8081",
             "http://127.0.0.1:8081",
-            "exp://10.20.132.173:8081",  # 手机Expo客户端
-            "http://10.20.132.173:8081", # 手机Web访问
-            "http://10.20.132.173:8000", # 手机直接访问后端
-            "*"  # 开发阶段允许所有源（生产环境需要限制）
+            "exp://10.20.132.173:8081",
+            "http://10.20.132.173:8081",
+            "http://10.20.132.173:8000",
         ],
-        description="允许的CORS源"
+        description="允许的CORS源（生产环境通过 DIETAI_CORS_ORIGINS 环境变量设置，不可使用 *）"
     )
     cors_methods: List[str] = Field(
         default=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         description="允许的HTTP方法"
     )
     cors_headers: List[str] = Field(
-        default=["*"],
+        default=["Authorization", "Content-Type", "Accept"],
         description="允许的HTTP头"
+    )
+
+    # 受信任主机配置（生产环境必须设置）
+    allowed_hosts: List[str] = Field(
+        default=[],
+        description="允许的主机名（生产环境通过 DIETAI_ALLOWED_HOSTS 设置，例如: yourdomain.com,api.yourdomain.com）"
     )
 
     # 文件上传配置
@@ -153,16 +164,53 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env.dev"
+        # 如果 .env.dev 不存在，回退到 .env
+        if not os.path.exists(os.path.join(os.path.dirname(__file__), "..", "..", ".env.dev")):
+            env_file = ".env"
         env_file_encoding = "utf-8"
         env_prefix = "DIETAI_"
         case_sensitive = False
         extra = "ignore"  # 忽略额外字段
 
 
+_INSECURE_JWT_KEYS = {
+    "CHANGE-ME-generate-with-secrets-token-urlsafe-64",
+    "your-super-secret-jwt-key-change-this-in-production",
+}
+
+
 @lru_cache()
 def get_settings() -> Settings:
     """获取应用配置（带缓存）"""
-    return Settings()
+    s = Settings()
+    # 生产环境（debug=False）拒绝不安全的 JWT 密钥
+    if not s.debug and s.jwt_secret_key in _INSECURE_JWT_KEYS:
+        raise ValueError(
+            "生产环境必须设置 DIETAI_JWT_SECRET_KEY 环境变量为强随机密钥！"
+            "生成方式: python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+        )
+    if s.jwt_secret_key in _INSECURE_JWT_KEYS:
+        import warnings
+        warnings.warn(
+            "JWT 密钥使用默认值，上线前必须通过 DIETAI_JWT_SECRET_KEY 环境变量设置强随机密钥",
+            UserWarning,
+            stacklevel=2,
+        )
+    # 生产环境拒绝 CORS *
+    if not s.debug and "*" in s.cors_origins:
+        raise ValueError(
+            "生产环境 CORS 不允许使用 *！"
+            "请通过 DIETAI_CORS_ORIGINS 环境变量设置允许的域名，"
+            "例如: DIETAI_CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com"
+        )
+    if "*" in s.cors_origins:
+        import warnings
+        warnings.warn(
+            "CORS 允许 *，上线前必须通过 DIETAI_CORS_ORIGINS 环境变量限制允许的域名",
+            UserWarning,
+            stacklevel=2,
+        )
+    return s
 
 
 # 导出常用配置

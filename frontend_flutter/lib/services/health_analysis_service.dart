@@ -4,6 +4,35 @@ import '../shared/domain/models/api_response.dart';
 class HealthAnalysisService {
   final ApiService _apiService = ApiService();
 
+  /// 获取每周摘要报告
+  Future<ApiResponse<Map<String, dynamic>>> getWeeklySummary({
+    String? targetDate,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (targetDate != null) queryParams['target_date'] = targetDate;
+
+      final response = await _apiService.get(
+        '/health/weekly-summary',
+        queryParameters: queryParams,
+      );
+
+      if (response.success && response.data != null) {
+        return ApiResponse<Map<String, dynamic>>.success(
+          message: response.message.isNotEmpty ? response.message : '获取周报成功',
+          data: response.data as Map<String, dynamic>,
+        );
+      }
+      return ApiResponse<Map<String, dynamic>>.failure(
+        message: response.message.isNotEmpty ? response.message : '获取周报失败',
+      );
+    } catch (e) {
+      return ApiResponse<Map<String, dynamic>>.failure(
+        message: '获取周报失败: $e',
+      );
+    }
+  }
+
   /// 获取基础代谢率(BMR)
   Future<ApiResponse<BMRResult>> getBMR() async {
     try {

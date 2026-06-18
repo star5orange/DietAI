@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/themes/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/services/modal_tracker.dart';
 import '../../../features/pet/presentation/widgets/pet_widget.dart';
 import '../../../features/pet/presentation/providers/pet_provider.dart';
 
@@ -26,11 +27,28 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
   bool _positionLoaded = false;
   bool _showRecycleBin = false;
   bool _isDragging = false;
+  bool _modalOpen = false;
 
   @override
   void initState() {
     super.initState();
     _initPetPosition();
+    ModalTrackerObserver.modalCount.addListener(_onModalCountChanged);
+  }
+
+  @override
+  void dispose() {
+    ModalTrackerObserver.modalCount.removeListener(_onModalCountChanged);
+    super.dispose();
+  }
+
+  void _onModalCountChanged() {
+    final isOpen = ModalTrackerObserver.hasOpenModal;
+    if (isOpen != _modalOpen) {
+      setState(() {
+        _modalOpen = isOpen;
+      });
+    }
   }
 
   Future<void> _initPetPosition() async {
@@ -166,7 +184,7 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     final petState = ref.watch(petProvider);
-    final showPet = _positionLoaded && petState.visible;
+    final showPet = _positionLoaded && petState.visible && !_modalOpen;
 
     if (_positionLoaded) {
       final storage = ref.read(petProvider.notifier).storage;

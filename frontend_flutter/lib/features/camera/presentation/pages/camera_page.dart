@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:camera/camera.dart';
@@ -6,8 +7,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../../services/food_service.dart';
+import '../../../../core/themes/app_colors.dart';
 import '../../../../shared/presentation/widgets/error_handler.dart';
 import 'food_analysis_page.dart';
+
+/// 是否为不支持 camera 插件的桌面平台
+bool get _isDesktop => !kIsWeb && (Platform.isWindows || Platform.isLinux);
 
 class CameraPage extends ConsumerStatefulWidget {
   final String? mealName;
@@ -48,6 +53,12 @@ class _CameraPageState extends ConsumerState<CameraPage> {
   }
 
   Future<void> _initializeCamera() async {
+    // 桌面平台不支持 camera 插件，直接跳过
+    if (_isDesktop) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
     try {
       // 请求相机权限
       final status = await Permission.camera.request();
@@ -178,6 +189,11 @@ class _CameraPageState extends ConsumerState<CameraPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 桌面平台：显示图片选择界面
+    if (_isDesktop) {
+      return _buildDesktopView();
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -481,6 +497,91 @@ class _CameraPageState extends ConsumerState<CameraPage> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// 桌面平台视图：不支持相机，显示图片选择界面
+  Widget _buildDesktopView() {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FA),
+      appBar: AppBar(
+        title: const Text('AI 食物识别'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  LucideIcons.imagePlus,
+                  size: 48,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                '桌面端暂不支持相机',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '请从本地选择食物图片进行 AI 识别',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: 240,
+                height: 52,
+                child: ElevatedButton.icon(
+                  onPressed: _isProcessing ? null : _pickFromGallery,
+                  icon: _isProcessing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Icon(LucideIcons.upload, size: 20),
+                  label: Text(
+                    _isProcessing ? '识别中...' : '选择图片',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

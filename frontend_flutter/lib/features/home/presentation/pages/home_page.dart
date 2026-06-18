@@ -3,13 +3,19 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../services/food_service.dart';
+import '../../../../services/exercise_service.dart';
+import '../../../../services/saved_meal_service.dart';
+import '../../../../services/goal_tracking_service.dart';
+import '../../../../services/wellness_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/domain/models/saved_meal_model.dart';
-import '../../../../shared/domain/models/api_response.dart';
 import '../../../../shared/presentation/widgets/error_handler.dart';
 import '../../../../shared/presentation/widgets/water_intake_widget.dart';
+import '../../../../shared/presentation/widgets/exercise_quick_add.dart';
+import '../../../../shared/presentation/widgets/solar_term_today_widget.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../widgets/food_record_modal.dart';
@@ -18,8 +24,6 @@ import '../../../chat/presentation/pages/chat_page.dart';
 import '../../../health/presentation/pages/exercise_record_page.dart';
 import '../../../pet/presentation/providers/pet_provider.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
-import '../../../profile/domain/services/user_service.dart'
-    show UserService, UserStats;
 import 'meal_selection_page.dart';
 import 'text_describe_page.dart';
 import '../../../saved_meals/presentation/pages/saved_meals_page.dart';
@@ -40,7 +44,20 @@ class _HomePageState extends ConsumerState<HomePage> {
   bool _isLoading = true;
   DateTime _selectedDate = DateTime.now();
   double _targetCalories = 2000.0;
+  double _targetProtein = 150.0;
+  double _targetCarbs = 250.0;
+  double _targetFat = 65.0;
+  final GoalTrackingService _goalTrackingService = GoalTrackingService();
   int _streakDays = 0;
+  final WellnessService _wellnessService = WellnessService();
+  String? _solarTermChanged; // 节气切换时显示新节气名，null表示无切换
+  String? _solarTermWellness; // 新节气养生要点
+  Map<String, dynamic>? _upcomingSolarTerm; // 即将到来的节气（3天内）
+  final ExerciseService _exerciseService = ExerciseService();
+  final SavedMealService _savedMealService = SavedMealService();
+  double _todayExerciseCalories = 0.0;
+  int _todayExerciseDuration = 0;
+  List<SavedMeal> _favoriteMeals = [];
 
   @override
   void initState() {
@@ -50,6 +67,47 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Future<void> _loadTodayData() async {
     await _loadDataForDate(DateTime.now());
+    _checkSolarTermChange();
+  }
+
+  /// 检测节气是否切换，如果切换则显示通知横幅
+  Future<void> _checkSolarTermChange() async {
+    try {
+      final result = await _wellnessService.getCurrentSolarTerm();
+      if (!result.success || result.data == null) return;
+
+      final currentTerm = result.data!['name'] as String? ?? '';
+      final wellness = result.data!['wellness'] as String? ?? '';
+      final upcoming = result.data!['upcoming'] as Map<String, dynamic>?;
+      final prefs = await SharedPreferences.getInstance();
+      final lastTerm = prefs.getString('last_solar_term') ?? '';
+
+      if (lastTerm.isNotEmpty && currentTerm != lastTerm) {
+        // 节气已切换
+        if (mounted) {
+          setState(() {
+            _solarTermChanged = currentTerm;
+            _solarTermWellness = wellness;
+          });
+        }
+      }
+
+      // 检查即将到来的节气（3天内）
+      if (upcoming != null && mounted) {
+        final upcomingName = upcoming['name'] as String? ?? '';
+        final daysAhead = upcoming['days_ahead'] as int? ?? 0;
+        final lastUpcoming = prefs.getString('last_upcoming_solar_term') ?? '';
+        // 仅当节气预告未展示过时显示
+        if (upcomingName.isNotEmpty && '$upcomingName$daysAhead' != lastUpcoming) {
+          setState(() => _upcomingSolarTerm = upcoming);
+        }
+      }
+
+      // 更新缓存的节气
+      await prefs.setString('last_solar_term', currentTerm);
+    } catch (_) {
+      // 非关键功能，静默失败
+    }
   }
 
   Future<void> _loadDataForDate(DateTime date) async {
@@ -73,6 +131,40 @@ class _HomePageState extends ConsumerState<HomePage> {
         final statsResult = await userService.getUserStats();
         if (statsResult.isSuccess && statsResult.data != null) {
           _streakDays = statsResult.data!.streakDays;
+        }
+      } catch (_) {}
+
+      // 加载今日运动数据
+      try {
+        final exerciseResult =
+            await _exerciseService.getDailySummary(dateStr);
+        if (exerciseResult.success && exerciseResult.data != null) {
+          _todayExerciseCalories =
+              exerciseResult.data!.totalCaloriesBurned;
+          _todayExerciseDuration =
+              exerciseResult.data!.totalDurationMinutes;
+        }
+      } catch (_) {}
+
+      // 加载收藏餐食（取前6个常用）
+      try {
+        final mealsResult = await _savedMealService.getSavedMeals(pageSize: 6);
+        if (mealsResult.success && mealsResult.data != null) {
+          _favoriteMeals = mealsResult.data!;
+        }
+      } catch (_) {}
+
+      // 加载个性化每日营养目标
+      try {
+        final goalResult = await _goalTrackingService.getDailyStatus();
+        if (goalResult.success && goalResult.data != null) {
+          final targets = goalResult.data!['daily_targets'] as Map<String, dynamic>?;
+          if (targets != null) {
+            _targetCalories = (targets['calories'] as num?)?.toDouble() ?? _targetCalories;
+            _targetProtein = (targets['protein'] as num?)?.toDouble() ?? _targetProtein;
+            _targetCarbs = (targets['carbs'] as num?)?.toDouble() ?? _targetCarbs;
+            _targetFat = (targets['fat'] as num?)?.toDouble() ?? _targetFat;
+          }
         }
       } catch (_) {}
 
@@ -210,13 +302,46 @@ class _HomePageState extends ConsumerState<HomePage> {
                             const SizedBox(width: 12),
                             Expanded(
                               flex: 3,
-                              child: _buildExerciseQuickEntry(),
+                              child: SizedBox(
+                                height: 300,
+                                child: ExerciseQuickAdd(
+                                  todayCalories: _todayExerciseCalories > 0
+                                      ? _todayExerciseCalories
+                                      : null,
+                                  todayDuration: _todayExerciseDuration > 0
+                                      ? _todayExerciseDuration
+                                      : null,
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            const ExerciseRecordPage()),
+                                  ).then((_) => _refreshData()),
+                                ),
+                              ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 20),
-                        _buildHealthTipCard(),
+                        // 节气切换通知横幅
+                        if (_solarTermChanged != null)
+                          _buildSolarTermChangeBanner(),
+                        if (_solarTermChanged != null)
+                          const SizedBox(height: 12),
+                        // 节气预告横幅（3天内即将到来）
+                        if (_upcomingSolarTerm != null)
+                          _buildUpcomingSolarTermBanner(),
+                        if (_upcomingSolarTerm != null)
+                          const SizedBox(height: 12),
+                        SolarTermTodayWidget(
+                          onTapDetails: () => context.push('/wellness'),
+                          crowdTag: crowdTag,
+                        ),
                         const SizedBox(height: 24),
+                        if (_favoriteMeals.isNotEmpty) ...[
+                          _buildFavoriteMealsSection(),
+                          const SizedBox(height: 24),
+                        ],
                         _buildFoodIntakeSection(),
                       ],
                     ],
@@ -226,6 +351,193 @@ class _HomePageState extends ConsumerState<HomePage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 节气切换通知横幅
+  Widget _buildSolarTermChangeBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFFA726), Color(0xFFFFB74D)],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFFA726).withValues(alpha: 0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.sun, color: Colors.white, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '节气已切换：$_solarTermChanged',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                if (_solarTermWellness != null &&
+                    _solarTermWellness!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    _solarTermWellness!,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white70,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () {
+              context.push('/wellness');
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text(
+                '查看',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _solarTermChanged = null;
+                _solarTermWellness = null;
+              });
+            },
+            child: const Icon(
+              LucideIcons.x,
+              color: Colors.white70,
+              size: 16,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 节气预告横幅（提前3天提醒饮食调整）
+  Widget _buildUpcomingSolarTermBanner() {
+    final name = _upcomingSolarTerm!['name'] as String? ?? '';
+    final daysAhead = _upcomingSolarTerm!['days_ahead'] as int? ?? 0;
+    final wellness = _upcomingSolarTerm!['wellness'] as String? ?? '';
+    final season = _upcomingSolarTerm!['season'] as String? ?? '';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF66BB6A).withValues(alpha: 0.9),
+            const Color(0xFF81C784).withValues(alpha: 0.9),
+          ],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF66BB6A).withValues(alpha: 0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.calendarClock, color: Colors.white, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$daysAhead天后$season·$name',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                if (wellness.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '建议提前调整饮食：$wellness',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white70,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () {
+              context.push('/wellness');
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text(
+                '查看',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: () async {
+              final prefs = await SharedPreferences.getInstance();
+              final key = '$name$daysAhead';
+              await prefs.setString('last_upcoming_solar_term', key);
+              setState(() => _upcomingSolarTerm = null);
+            },
+            child: const Icon(
+              LucideIcons.x,
+              color: Colors.white70,
+              size: 16,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -494,384 +806,123 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  Widget _buildExerciseQuickEntry() {
-    return Container(
-      height: 300,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: AppColors.primaryGradient,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(LucideIcons.dumbbell,
-                  color: AppColors.textInverse, size: 20),
-              SizedBox(width: 8),
-              Text('运动记录',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textInverse)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(LucideIcons.footprints,
-                      color: AppColors.whiteWithOpacity(0.7), size: 40),
-                  const SizedBox(height: 8),
-                  const Text('动起来！',
-                      style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.textInverse)),
-                  const SizedBox(height: 4),
-                  Text('记录你的运动',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.whiteWithOpacity(0.7))),
-                ],
+  Widget _buildFavoriteMealsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('常用餐食', style: AppTextStyles.h4),
+            GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SavedMealsPage()),
               ),
+              child: Text('查看全部',
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.primary)),
             ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 90,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _favoriteMeals.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final meal = _favoriteMeals[index];
+              return _buildFavoriteMealCard(meal);
+            },
           ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => const ExerciseRecordPage()),
-            ).then((_) => _refreshData()),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                color: AppColors.whiteWithOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.whiteWithOpacity(0.3)),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(LucideIcons.plus,
-                      color: AppColors.textInverse, size: 16),
-                  SizedBox(width: 6),
-                  Text('记录运动',
-                      style: TextStyle(
-                          color: AppColors.textInverse,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _buildHealthTipCard() {
-    final userProfile = ref.watch(userProfileProvider).value;
-    final crowdTag = userProfile?.crowdTag ?? '普通';
-    final constitution = userProfile?.constitutionType ?? '平和质';
-    final tip = _getPersonalizedTip(crowdTag, constitution);
-
+  Widget _buildFavoriteMealCard(SavedMeal meal) {
+    final cal = meal.nutrition?.calories.round() ?? 0;
     return GestureDetector(
-      onTap: () => context.push('/wellness'),
+      onTap: () => _quickAddFromSavedMeal(meal),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        width: 130,
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: AppColors.backgroundCard,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           boxShadow: AppColors.lightShadow,
+          border: Border.all(color: AppColors.primaryWithOpacity(0.08)),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                gradient: tip.gradient,
-                borderRadius: const BorderRadius.all(Radius.circular(12)),
-              ),
-              child: Icon(tip.icon, color: AppColors.textInverse, size: 24),
+            Text(
+              meal.mealName,
+              style: AppTextStyles.bodySmall
+                  .copyWith(fontWeight: FontWeight.w600),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text('今日养生',
-                          style: AppTextStyles.bodyMedium.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary)),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: tip.tagColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(tip.tagName,
-                            style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w500,
-                                color: tip.tagColor)),
-                      ),
-                    ],
+            const SizedBox(height: 4),
+            if (meal.category != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryWithOpacity(0.08),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  meal.categoryDisplayName,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w500,
                   ),
-                  const SizedBox(height: 4),
-                  Text(tip.description,
-                      style: AppTextStyles.bodySmall
-                          .copyWith(color: AppColors.textTertiary),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis),
-                ],
+                ),
               ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(LucideIcons.zap,
+                    size: 12, color: AppColors.caloriesColor),
+                const SizedBox(width: 3),
+                Text('$cal kcal',
+                    style: AppTextStyles.numberXSmall.copyWith(
+                      color: AppColors.caloriesColor,
+                      fontWeight: FontWeight.bold,
+                    )),
+              ],
             ),
-            Icon(LucideIcons.chevronRight,
-                size: 18, color: AppColors.textTertiary),
           ],
         ),
       ),
     );
   }
 
-  /// 根据体质、人群标签和当日饮食数据生成个性化养生建议
-  _WellnessTip _getPersonalizedTip(String crowdTag, String constitution) {
-    final cal = _dailySummary?.totalCalories ?? 0.0;
-    final protein = _dailySummary?.totalProtein ?? 0.0;
-    final fat = _dailySummary?.totalFat ?? 0.0;
-    final carbs = _dailySummary?.totalCarbohydrates ?? 0.0;
-    final fiber = _dailySummary?.totalFiber ?? 0.0;
-    final sodium = _dailySummary?.totalSodium ?? 0.0;
-    final noRecord = _todayRecords.isEmpty;
-
-    // 节气标签（简化：按月份取）
-    final month = DateTime.now().month;
-    final solarTerms = {
-      1: '大寒',
-      2: '立春',
-      3: '惊蛰',
-      4: '清明',
-      5: '立夏',
-      6: '芒种',
-      7: '小暑',
-      8: '立秋',
-      9: '白露',
-      10: '寒露',
-      11: '立冬',
-      12: '大雪',
-    };
-    final term = solarTerms[month] ?? '芒种';
-
-    // 优先基于当日饮食数据给出针对性建议
-    if (noRecord) {
-      return _WellnessTip(
-        icon: LucideIcons.utensils,
-        gradient: AppColors.primaryGradient,
-        tagColor: AppColors.primary,
-        tagName: constitution,
-        description: '今日尚未记录饮食，及时记录可获取个性化养生建议',
-      );
+  Future<void> _quickAddFromSavedMeal(SavedMeal meal) async {
+    // 判断当前时间段对应的餐次
+    final hour = DateTime.now().hour;
+    int mealType;
+    if (hour < 10) {
+      mealType = 1; // 早餐
+    } else if (hour < 14) {
+      mealType = 2; // 午餐
+    } else if (hour < 20) {
+      mealType = 3; // 晚餐
+    } else {
+      mealType = 4; // 加餐
     }
 
-    // 高钠提醒
-    if (sodium > 2000) {
-      return _WellnessTip(
-        icon: LucideIcons.droplets,
-        gradient: const LinearGradient(
-            colors: [Color(0xFF42A5F5), Color(0xFF90CAF9)]),
-        tagColor: const Color(0xFF42A5F5),
-        tagName: term,
-        description: '今日钠摄入偏高(${sodium.toInt()}mg)，建议多饮水、减少盐分，可食用冬瓜、薏仁利水',
-      );
-    }
-
-    // 低纤维提醒
-    if (fiber < 10) {
-      return _WellnessTip(
-        icon: LucideIcons.salad,
-        gradient: const LinearGradient(
-            colors: [Color(0xFF66BB6A), Color(0xFFA5D6A7)]),
-        tagColor: const Color(0xFF66BB6A),
-        tagName: term,
-        description: '今日膳食纤维不足(${fiber.toInt()}g)，建议增加蔬果摄入，如燕麦、红薯、绿叶菜',
-      );
-    }
-
-    // 按人群标签推荐
-    if (crowdTag == '减脂') {
-      if (cal > _targetCalories) {
-        return _WellnessTip(
-          icon: LucideIcons.flame,
-          gradient: const LinearGradient(
-              colors: [Color(0xFFFF6B6B), Color(0xFFFF8E8E)]),
-          tagColor: const Color(0xFFFF6B6B),
-          tagName: term,
-          description: '今日热量已超标，建议晚餐以蔬菜为主，搭配30分钟有氧运动消耗多余热量',
-        );
-      }
-      return _WellnessTip(
-        icon: LucideIcons.flame,
-        gradient: const LinearGradient(
-            colors: [Color(0xFFFF6B6B), Color(0xFFFF8E8E)]),
-        tagColor: const Color(0xFFFF6B6B),
-        tagName: term,
-        description: '减脂期注意控制碳水比例，多食高蛋白低脂食物如鸡胸、鱼虾，避免油炸',
-      );
-    }
-
-    if (crowdTag == '健身') {
-      if (protein < 60) {
-        return _WellnessTip(
-          icon: LucideIcons.dumbbell,
-          gradient: const LinearGradient(
-              colors: [Color(0xFF4ECDC4), Color(0xFF6EE7DE)]),
-          tagColor: const Color(0xFF4ECDC4),
-          tagName: term,
-          description: '今日蛋白质摄入不足(${protein.toInt()}g)，建议补充鸡蛋、牛奶或蛋白粉促进肌肉恢复',
-        );
-      }
-      return _WellnessTip(
-        icon: LucideIcons.dumbbell,
-        gradient: const LinearGradient(
-            colors: [Color(0xFF4ECDC4), Color(0xFF6EE7DE)]),
-        tagColor: const Color(0xFF4ECDC4),
-        tagName: term,
-        description: '健身期注意训练后30分钟内补充蛋白质和碳水，保证充足睡眠促进恢复',
-      );
-    }
-
-    if (crowdTag == '养生') {
-      return _getConstitutionTip(constitution, term);
-    }
-
-    // 普通人群：按体质推荐
-    return _getConstitutionTip(constitution, term);
-  }
-
-  /// 按中医体质推荐
-  _WellnessTip _getConstitutionTip(String constitution, String term) {
-    final cal = _dailySummary?.totalCalories ?? 0.0;
-    final fat = _dailySummary?.totalFat ?? 0.0;
-
-    switch (constitution) {
-      case '阳虚质':
-        return _WellnessTip(
-          icon: LucideIcons.sun,
-          gradient: const LinearGradient(
-              colors: [Color(0xFFFF9800), Color(0xFFFFB74D)]),
-          tagColor: const Color(0xFFFF9800),
-          tagName: term,
-          description: '阳虚体质宜温补，多食羊肉、生姜、桂圆，少食生冷寒凉，注意保暖避寒',
-        );
-      case '阴虚质':
-        return _WellnessTip(
-          icon: LucideIcons.moon,
-          gradient: const LinearGradient(
-              colors: [Color(0xFF9C27B0), Color(0xFFBA68C8)]),
-          tagColor: const Color(0xFF9C27B0),
-          tagName: term,
-          description: '阴虚体质宜滋阴润燥，多食银耳、百合、枸杞，少食辛辣燥热之物',
-        );
-      case '气虚质':
-        return _WellnessTip(
-          icon: LucideIcons.wind,
-          gradient: const LinearGradient(
-              colors: [Color(0xFFFFC107), Color(0xFFFFD54F)]),
-          tagColor: const Color(0xFFFFC107),
-          tagName: term,
-          description: '气虚体质宜补气健脾，多食山药、黄芪、红枣，避免过度劳累和剧烈运动',
-        );
-      case '痰湿质':
-        if (fat > 65) {
-          return _WellnessTip(
-            icon: LucideIcons.droplets,
-            gradient: const LinearGradient(
-                colors: [Color(0xFF78909C), Color(0xFFB0BEC5)]),
-            tagColor: const Color(0xFF78909C),
-            tagName: term,
-            description: '今日脂肪摄入偏高(${fat.toInt()}g)，痰湿体质宜清淡祛湿，多食薏仁、冬瓜、荷叶茶',
-          );
-        }
-        return _WellnessTip(
-          icon: LucideIcons.droplets,
-          gradient: const LinearGradient(
-              colors: [Color(0xFF78909C), Color(0xFFB0BEC5)]),
-          tagColor: const Color(0xFF78909C),
-          tagName: term,
-          description: '痰湿体质宜健脾祛湿，少食甜腻厚味，多运动排汗，可饮薏仁红豆汤',
-        );
-      case '湿热质':
-        return _WellnessTip(
-          icon: LucideIcons.thermometer,
-          gradient: const LinearGradient(
-              colors: [Color(0xFFF44336), Color(0xFFEF9A9A)]),
-          tagColor: const Color(0xFFF44336),
-          tagName: term,
-          description: '湿热体质宜清热利湿，多食绿豆、苦瓜、薏仁，少食辛辣油腻和甜食',
-        );
-      case '血瘀质':
-        return _WellnessTip(
-          icon: LucideIcons.heart,
-          gradient: const LinearGradient(
-              colors: [Color(0xFFE91E63), Color(0xFFF48FB1)]),
-          tagColor: const Color(0xFFE91E63),
-          tagName: term,
-          description: '血瘀体质宜活血化瘀，多食山楂、黑豆、醋，适量运动促进气血运行',
-        );
-      case '气郁质':
-        return _WellnessTip(
-          icon: LucideIcons.smile,
-          gradient: const LinearGradient(
-              colors: [Color(0xFF7E57C2), Color(0xFFB39DDB)]),
-          tagColor: const Color(0xFF7E57C2),
-          tagName: term,
-          description: '气郁体质宜疏肝解郁，多食玫瑰花茶、佛手、柑橘类，保持心情舒畅',
-        );
-      case '特禀质':
-        return _WellnessTip(
-          icon: LucideIcons.shield,
-          gradient: const LinearGradient(
-              colors: [Color(0xFF26A69A), Color(0xFF80CBC4)]),
-          tagColor: const Color(0xFF26A69A),
-          tagName: term,
-          description: '特禀体质宜益气固表，避免过敏原，饮食清淡均衡，增强免疫力',
-        );
-      default: // 平和质
-        if (cal > _targetCalories * 1.1) {
-          return _WellnessTip(
-            icon: LucideIcons.leaf,
-            gradient: AppColors.warningGradient,
-            tagColor: AppColors.success,
-            tagName: term,
-            description: '今日热量摄入偏高，建议适当控制饮食量，增加蔬果比例，保持均衡',
-          );
-        }
-        return _WellnessTip(
-          icon: LucideIcons.leaf,
-          gradient: AppColors.warningGradient,
-          tagColor: AppColors.success,
-          tagName: term,
-          description: '平和体质保持均衡饮食即可，注意顺应节气调养，规律作息适度运动',
-        );
-    }
+    final mealNames = ['早餐', '午餐', '晚餐', '加餐'];
+    await _createFoodRecordFromSavedMeal(
+      meal,
+      mealNames[mealType - 1],
+      mealType,
+      DateTime.now().toIso8601String(),
+    );
   }
 
   Widget _buildFoodIntakeSection() {
@@ -939,162 +990,126 @@ class _HomePageState extends ConsumerState<HomePage> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: AppColors.lightShadow,
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              gradient: gradient,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: AppColors.textInverse, size: 20),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _showMealRecordsModal(name, mealType),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name,
-                      style: AppTextStyles.bodyLarge
-                          .copyWith(fontWeight: FontWeight.w500)),
-                  if (mealRecords.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        const Icon(LucideIcons.zap,
-                            size: 16, color: AppColors.caloriesColor),
-                        const SizedBox(width: 4),
-                        Text('${mealCalories.round()} kcal',
-                            style: AppTextStyles.numberXSmall.copyWith(
-                                color: AppColors.caloriesColor,
-                                fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text('${mealRecords.length} 项食物',
-                        style: AppTextStyles.bodySmall
-                            .copyWith(color: AppColors.textTertiary)),
-                  ] else ...[
-                    const SizedBox(height: 4),
-                    Text('还没有记录',
-                        style: AppTextStyles.bodySmall
-                            .copyWith(color: AppColors.textTertiary)),
+          // 餐次标题行
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  gradient: gradient,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: AppColors.textInverse, size: 20),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name,
+                        style: AppTextStyles.bodyLarge
+                            .copyWith(fontWeight: FontWeight.w500)),
+                    if (mealRecords.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(LucideIcons.zap,
+                              size: 14, color: AppColors.caloriesColor),
+                          const SizedBox(width: 3),
+                          Text('${mealCalories.round()} kcal',
+                              style: AppTextStyles.numberXSmall.copyWith(
+                                  color: AppColors.caloriesColor,
+                                  fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 8),
+                          Text('${mealRecords.length} 项',
+                              style: AppTextStyles.bodySmall.copyWith(
+                                  color: AppColors.textTertiary)),
+                        ],
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 4),
+                      Text('还没有记录',
+                          style: AppTextStyles.bodySmall
+                              .copyWith(color: AppColors.textTertiary)),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
+              GestureDetector(
+                onTap: () => _showFoodRecordModal(name),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primarySurface,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(LucideIcons.plus,
+                          size: 16, color: AppColors.primary),
+                      const SizedBox(width: 4),
+                      Text('记录',
+                          style: AppTextStyles.labelMedium
+                              .copyWith(color: AppColors.primary)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-          GestureDetector(
-            onTap: () => _showFoodRecordModal(name),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.primarySurface,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(LucideIcons.plus,
-                      size: 16, color: AppColors.primary),
-                  const SizedBox(width: 4),
-                  Text('记录',
-                      style: AppTextStyles.labelMedium
-                          .copyWith(color: AppColors.primary)),
-                ],
-              ),
-            ),
-          ),
+          // 内联食物记录列表
+          if (mealRecords.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1, color: AppColors.borderLight),
+            const SizedBox(height: 8),
+            ...mealRecords.map((record) => _buildInlineMealRecord(record)),
+          ],
         ],
       ),
     );
   }
 
-  void _showMealRecordsModal(String mealName, int mealType) {
-    final mealRecords =
-        _todayRecords.where((record) => record.mealType == mealType).toList();
-    if (mealRecords.isEmpty) {
-      _showFoodRecordModal(mealName);
-      return;
-    }
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.6,
-        decoration: const BoxDecoration(
-          color: AppColors.backgroundCard,
-          borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(20), topRight: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(top: 12),
-              decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(2)),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Text('$mealName记录', style: AppTextStyles.h4),
-                  const Spacer(),
-                  TextButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _showFoodRecordModal(mealName);
-                    },
-                    icon: const Icon(LucideIcons.plus,
-                        size: 18, color: AppColors.primary),
-                    label: const Text('添加',
-                        style: TextStyle(color: AppColors.primary)),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: mealRecords.length,
-                itemBuilder: (context, index) =>
-                    _buildMealRecordItem(mealRecords[index]),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMealRecordItem(FoodRecord record) {
+  Widget _buildInlineMealRecord(FoodRecord record) {
     final calories = record.analysisResult?.nutritionFacts.totalCalories ??
         record.nutritionDetail?.calories ??
         0.0;
+    final protein = record.analysisResult?.nutritionFacts.macronutrients.protein ??
+        record.nutritionDetail?.protein ??
+        0.0;
+    final fat = record.analysisResult?.nutritionFacts.macronutrients.fat ??
+        record.nutritionDetail?.fat ??
+        0.0;
+    final carbs = record.analysisResult?.nutritionFacts.macronutrients.carbohydrates ??
+        record.nutritionDetail?.carbohydrates ??
+        0.0;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSecondary,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderLight),
-      ),
+    // 格式化就餐时间
+    String? timeText;
+    if (record.recordTime != null && record.recordTime!.isNotEmpty) {
+      try {
+        final timeParts = record.recordTime!.split(':');
+        if (timeParts.length >= 2) {
+          timeText = '${timeParts[0]}:${timeParts[1]}';
+        }
+      } catch (_) {}
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
+          // 食物图片或图标
           if (record.imageUrl != null && record.imageUrl!.isNotEmpty)
             Container(
-              width: 50,
-              height: 50,
-              margin: const EdgeInsets.only(right: 12),
+              width: 40,
+              height: 40,
+              margin: const EdgeInsets.only(right: 10),
               decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
                   color: AppColors.backgroundTertiary),
@@ -1106,50 +1121,90 @@ class _HomePageState extends ConsumerState<HomePage> {
                   errorBuilder: (context, error, stackTrace) => Container(
                     color: AppColors.backgroundTertiary,
                     child: const Icon(LucideIcons.image,
-                        color: AppColors.textHint, size: 24),
+                        color: AppColors.textHint, size: 18),
                   ),
                 ),
               ),
             )
           else
             Container(
-              width: 50,
-              height: 50,
-              margin: const EdgeInsets.only(right: 12),
+              width: 40,
+              height: 40,
+              margin: const EdgeInsets.only(right: 10),
               decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
                   color: AppColors.backgroundTertiary),
               child: const Icon(LucideIcons.utensils,
-                  color: AppColors.textHint, size: 24),
+                  color: AppColors.textHint, size: 18),
             ),
+          // 食物名称和营养信息
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(record.foodName ?? '未命名食物',
-                    style: AppTextStyles.bodyMedium
-                        .copyWith(fontWeight: FontWeight.w500),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 4),
-                Text('${calories.round()} kcal',
-                    style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.caloriesColor,
-                        fontWeight: FontWeight.w500)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(record.foodName ?? '未命名食物',
+                          style: AppTextStyles.bodySmall
+                              .copyWith(fontWeight: FontWeight.w500),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    if (timeText != null) ...[
+                      const SizedBox(width: 4),
+                      Icon(LucideIcons.clock,
+                          size: 11, color: AppColors.textTertiary),
+                      const SizedBox(width: 1),
+                      Text(timeText,
+                          style: AppTextStyles.bodySmall.copyWith(
+                              color: AppColors.textTertiary, fontSize: 10)),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 2,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text('${calories.round()}kcal',
+                        style: AppTextStyles.numberXSmall.copyWith(
+                            color: AppColors.caloriesColor,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 10)),
+                    if (protein > 0)
+                      Text('蛋白${protein.round()}g',
+                          style: AppTextStyles.numberXSmall.copyWith(
+                              color: AppColors.proteinColor, fontSize: 9)),
+                    if (carbs > 0)
+                      Text('碳水${carbs.round()}g',
+                          style: AppTextStyles.numberXSmall.copyWith(
+                              color: AppColors.carbsColor, fontSize: 9)),
+                    if (fat > 0)
+                      Text('脂肪${fat.round()}g',
+                          style: AppTextStyles.numberXSmall.copyWith(
+                              color: AppColors.fatColor, fontSize: 9)),
+                  ],
+                ),
               ],
             ),
           ),
-          Row(
+          // 编辑和删除按钮
+          Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              IconButton(
-                  onPressed: () => _editFoodRecordName(record),
-                  icon: const Icon(LucideIcons.edit2, size: 18),
-                  color: AppColors.info),
-              IconButton(
-                  onPressed: () => _deleteFoodRecord(record),
-                  icon: const Icon(LucideIcons.trash2, size: 18),
-                  color: AppColors.error),
+              GestureDetector(
+                onTap: () => _editFoodRecordName(record),
+                child: const Icon(LucideIcons.edit2,
+                    size: 14, color: AppColors.info),
+              ),
+              const SizedBox(height: 4),
+              GestureDetector(
+                onTap: () => _deleteFoodRecord(record),
+                child: const Icon(LucideIcons.trash2,
+                    size: 14, color: AppColors.error),
+              ),
             ],
           ),
         ],
@@ -1490,7 +1545,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       );
     } else if (crowdTag == '健身') {
       final protein = _dailySummary?.totalProtein ?? 0.0;
-      const targetProtein = 150.0;
+      final targetProtein = _targetProtein;
       return Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -1674,6 +1729,21 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
     if (result != null) {
       setState(() => _targetCalories = result);
+      // 尝试同步到后端重新计算目标
+      try {
+        final recalcResult = await _goalTrackingService.recalculateTargets();
+        if (recalcResult.success && recalcResult.data != null) {
+          final targets = recalcResult.data!['daily_targets'] as Map<String, dynamic>?;
+          if (targets != null) {
+            setState(() {
+              _targetCalories = (targets['calories'] as num?)?.toDouble() ?? _targetCalories;
+              _targetProtein = (targets['protein'] as num?)?.toDouble() ?? _targetProtein;
+              _targetCarbs = (targets['carbs'] as num?)?.toDouble() ?? _targetCarbs;
+              _targetFat = (targets['fat'] as num?)?.toDouble() ?? _targetFat;
+            });
+          }
+        }
+      } catch (_) {}
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('卡路里目标已设置为 ${result.round()} kcal'),
           backgroundColor: AppColors.success));
@@ -1684,9 +1754,9 @@ class _HomePageState extends ConsumerState<HomePage> {
     final protein = _dailySummary?.totalProtein ?? 0.0;
     final carbs = _dailySummary?.totalCarbohydrates ?? 0.0;
     final fat = _dailySummary?.totalFat ?? 0.0;
-    const targetProtein = 150.0;
-    const targetCarbs = 250.0;
-    const targetFat = 65.0;
+    final targetProtein = _targetProtein;
+    final targetCarbs = _targetCarbs;
+    final targetFat = _targetFat;
 
     // 获取人群标签
     final userProfile = ref.watch(userProfileProvider).value;
@@ -1789,6 +1859,54 @@ class _HomePageState extends ConsumerState<HomePage> {
                       : '今日宏观营养素',
               style: AppTextStyles.h4),
           const SizedBox(height: 16),
+          // 营养素比例环形图
+          if (protein + carbs + fat > 0) ...[
+            Center(
+              child: SizedBox(
+                height: 120,
+                width: 120,
+                child: CustomPaint(
+                  painter: _MacroDonutPainter(
+                    protein: protein,
+                    carbs: carbs,
+                    fat: fat,
+                    proteinColor: AppColors.proteinColor,
+                    carbsColor: AppColors.carbsColor,
+                    fatColor: AppColors.fatColor,
+                  ),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${(protein + carbs * 4 + fat * 9).round()}',
+                          style: AppTextStyles.numberMedium.copyWith(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        Text('kcal',
+                            style: AppTextStyles.bodySmall.copyWith(
+                                color: AppColors.textTertiary)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // 图例
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildLegend('蛋白质', protein, AppColors.proteinColor),
+                const SizedBox(width: 16),
+                _buildLegend('碳水', carbs, AppColors.carbsColor),
+                const SizedBox(width: 16),
+                _buildLegend('脂肪', fat, AppColors.fatColor),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
           ...nutrientList.map((n) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _buildNutrientProgress(
@@ -1801,6 +1919,19 @@ class _HomePageState extends ConsumerState<HomePage> {
               )),
         ],
       ),
+    );
+  }
+
+  Widget _buildLegend(String label, double value, Color color) {
+    final total = (_dailySummary?.totalProtein ?? 0) + (_dailySummary?.totalCarbohydrates ?? 0) + (_dailySummary?.totalFat ?? 0);
+    final percent = total > 0 ? (value / total * 100).round() : 0;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 4),
+        Text('$label $percent%', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+      ],
     );
   }
 
@@ -1946,21 +2077,74 @@ class _CalorieGoalDialogState extends State<_CalorieGoalDialog> {
   }
 }
 
-/// 养生推荐数据模型
-class _WellnessTip {
-  final IconData icon;
-  final LinearGradient gradient;
-  final Color tagColor;
-  final String tagName;
-  final String description;
+/// 宏量营养素环形图绘制器
+class _MacroDonutPainter extends CustomPainter {
+  final double protein;
+  final double carbs;
+  final double fat;
+  final Color proteinColor;
+  final Color carbsColor;
+  final Color fatColor;
 
-  const _WellnessTip({
-    required this.icon,
-    required this.gradient,
-    required this.tagColor,
-    required this.tagName,
-    required this.description,
+  _MacroDonutPainter({
+    required this.protein,
+    required this.carbs,
+    required this.fat,
+    required this.proteinColor,
+    required this.carbsColor,
+    required this.fatColor,
   });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final total = protein + carbs + fat;
+    if (total <= 0) return;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+    final strokeWidth = radius * 0.3;
+
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    // 背景圆环
+    final bgPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..color = AppColors.backgroundTertiary;
+    canvas.drawCircle(center, radius - strokeWidth / 2, bgPaint);
+
+    // 绘制各段
+    double startAngle = -3.14159265 / 2; // 从顶部开始
+    final segments = [
+      (protein, proteinColor),
+      (carbs, carbsColor),
+      (fat, fatColor),
+    ];
+
+    for (final (value, color) in segments) {
+      if (value <= 0) continue;
+      final sweepAngle = (value / total) * 2 * 3.14159265;
+      paint.color = color;
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius - strokeWidth / 2),
+        startAngle,
+        sweepAngle,
+        false,
+        paint,
+      );
+      startAngle += sweepAngle;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _MacroDonutPainter oldDelegate) {
+    return oldDelegate.protein != protein ||
+        oldDelegate.carbs != carbs ||
+        oldDelegate.fat != fat;
+  }
 }
 
 class _FoodNameDialog extends StatefulWidget {

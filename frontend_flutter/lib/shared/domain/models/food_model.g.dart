@@ -72,6 +72,17 @@ Map<String, dynamic> _$NutritionFactsToJson(NutritionFacts instance) =>
       'health_level': instance.healthLevel,
     };
 
+ActionItem _$ActionItemFromJson(Map<String, dynamic> json) => ActionItem(
+      action: json['action'] as String,
+      priority: json['priority'] as String,
+    );
+
+Map<String, dynamic> _$ActionItemToJson(ActionItem instance) =>
+    <String, dynamic>{
+      'action': instance.action,
+      'priority': instance.priority,
+    };
+
 Recommendations _$RecommendationsFromJson(Map<String, dynamic> json) =>
     Recommendations(
       recommendations: (json['recommendations'] as List<dynamic>?)
@@ -86,6 +97,9 @@ Recommendations _$RecommendationsFromJson(Map<String, dynamic> json) =>
       alternativeFoods: (json['alternative_foods'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList(),
+      actionItems: (json['action_items'] as List<dynamic>?)
+          ?.map((e) => ActionItem.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
 
 Map<String, dynamic> _$RecommendationsToJson(Recommendations instance) =>
@@ -94,6 +108,7 @@ Map<String, dynamic> _$RecommendationsToJson(Recommendations instance) =>
       'dietary_tips': instance.dietaryTips,
       'warnings': instance.warnings,
       'alternative_foods': instance.alternativeFoods,
+      'action_items': instance.actionItems,
     };
 
 AgentAnalysisData _$AgentAnalysisDataFromJson(Map<String, dynamic> json) =>

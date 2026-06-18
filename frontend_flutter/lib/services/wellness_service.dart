@@ -43,6 +43,24 @@ class WellnessService {
     }
   }
 
+  /// 获取当前节气信息
+  Future<ApiResponse<Map<String, dynamic>>> getCurrentSolarTerm() async {
+    try {
+      final response = await _apiService.dio.get(
+        '/wellness/current-solar-term',
+      );
+
+      return ApiResponse.fromJson(
+        response.data,
+        (json) => json as Map<String, dynamic>,
+      );
+    } catch (e) {
+      return ApiResponse<Map<String, dynamic>>.failure(
+        message: '获取当前节气失败: $e',
+      );
+    }
+  }
+
   /// 本地默认养生知识
   List<Map<String, dynamic>> _getDefaultTips() {
     return [

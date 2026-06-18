@@ -85,7 +85,12 @@ def render_shared_memory(data: SharedMemoryData) -> str:
     gender_map = {1: "男", 2: "女", 3: "其他"}
     lines.append(f"- 性别: {gender_map.get(data.gender, '未知')} | 年龄: {data.age} | 身高: {data.height}cm | 体重: {data.weight}kg")
     activity_map = {1: "久坐", 2: "轻度活动", 3: "中度活动", 4: "重度活动", 5: "超重度活动"}
-    lines.append(f"- 活动水平: {activity_map.get(data.activity_level, '轻度活动')} ({data.activity_level})\n")
+    lines.append(f"- 活动水平: {activity_map.get(data.activity_level, '轻度活动')} ({data.activity_level})")
+    if data.crowd_tag:
+        lines.append(f"- 人群标签: {data.crowd_tag}")
+    if data.constitution_type:
+        lines.append(f"- 体质类型: {data.constitution_type}")
+    lines.append("")
 
     # 健康状况
     lines.append("## 健康状况")

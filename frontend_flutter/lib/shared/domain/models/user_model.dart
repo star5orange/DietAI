@@ -320,7 +320,7 @@ class RefreshTokenRequest {
 }
 
 /// 用户资料更新请求模型
-@JsonSerializable()
+@JsonSerializable(includeIfNull: false)
 class UserProfileUpdateRequest {
   @JsonKey(name: 'real_name')
   final String? realName;

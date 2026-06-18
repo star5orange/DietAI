@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../../../../core/services/notification_service.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../shared/domain/models/reminder_model.dart';
@@ -42,6 +43,23 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
   Future<void> _toggleReminder(ReminderRecord record, bool value) async {
     try {
       await _reminderService.toggleReminder(record.id, value);
+
+      // 同步本地通知
+      final notificationService = NotificationService();
+      await notificationService.initialize();
+      if (value) {
+        await notificationService.scheduleReminder(
+          id: record.id.hashCode,
+          title: record.title,
+          body: record.message ?? '该完成你的健康计划了',
+          hour: record.hour,
+          minute: record.minute,
+          repeatDays: record.repeatDays,
+        );
+      } else {
+        await notificationService.cancelReminder(record.id.hashCode);
+      }
+
       _loadData();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -69,6 +87,19 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
       builder: (context) => _AddEditReminderModal(
         onSave: (record) async {
           await _reminderService.addReminder(record);
+          // 同步本地通知
+          if (record.isEnabled) {
+            final notificationService = NotificationService();
+            await notificationService.initialize();
+            await notificationService.scheduleReminder(
+              id: record.id.hashCode,
+              title: record.title,
+              body: record.message ?? '该完成你的健康计划了',
+              hour: record.hour,
+              minute: record.minute,
+              repeatDays: record.repeatDays,
+            );
+          }
           _loadData();
         },
       ),
@@ -84,6 +115,20 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
         existingRecord: record,
         onSave: (updated) async {
           await _reminderService.updateReminder(updated);
+          // 同步本地通知：先取消旧的，再按需创建新的
+          final notificationService = NotificationService();
+          await notificationService.initialize();
+          await notificationService.cancelReminder(record.id.hashCode);
+          if (updated.isEnabled) {
+            await notificationService.scheduleReminder(
+              id: updated.id.hashCode,
+              title: updated.title,
+              body: updated.message ?? '该完成你的健康计划了',
+              hour: updated.hour,
+              minute: updated.minute,
+              repeatDays: updated.repeatDays,
+            );
+          }
           _loadData();
         },
       ),
@@ -109,6 +154,10 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
               Navigator.pop(context);
               try {
                 await _reminderService.deleteReminder(record.id);
+                // 同步取消本地通知
+                final notificationService = NotificationService();
+                await notificationService.initialize();
+                await notificationService.cancelReminder(record.id.hashCode);
                 _loadData();
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(

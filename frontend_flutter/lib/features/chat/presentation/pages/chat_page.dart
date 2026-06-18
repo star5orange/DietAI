@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../services/chat_service.dart';
 import '../../../../shared/domain/models/api_response.dart';
+import '../../../../core/themes/app_colors.dart';
 import 'chat_history_page.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
@@ -252,6 +253,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         actions: [
           IconButton(
             icon: const Icon(
+              Icons.delete_sweep_outlined,
+              size: 22,
+              color: Color(0xFFE74C3C),
+            ),
+            tooltip: '清除所有对话',
+            onPressed: _clearAllHistory,
+          ),
+          IconButton(
+            icon: const Icon(
               Icons.history,
               size: 24,
               color: Color(0xFF2BAF74),
@@ -325,12 +335,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.all(8),
-      itemCount: _messages.length + (_isSending ? 1 : 0),
+      itemCount: _messages.length,
       itemBuilder: (context, index) {
-        if (index == _messages.length && _isSending) {
-          return _buildTypingIndicator();
-        }
-
         final message = _messages[index];
         return _buildMessageBubble(message);
       },
@@ -580,69 +586,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     );
   }
 
-  Widget _buildTypingIndicator() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
-      child: Row(
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: const BoxDecoration(
-              color: Color(0xFF2BAF74),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.smart_toy,
-              size: 18,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20).copyWith(
-                bottomLeft: const Radius.circular(4),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  '正在思考中...',
-                  style: TextStyle(
-                    color: Color(0xFF666666),
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      Color(0xFF2BAF74),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildInputArea() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -770,6 +713,56 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _clearAllHistory() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清除所有对话'),
+        content: const Text('确定要删除所有对话记录吗？此操作无法撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        final response = await _chatService.deleteAllSessions(
+          sessionType: widget.sessionType,
+        );
+        if (response.success && mounted) {
+          setState(() {
+            _messages.clear();
+            _currentSessionId = null;
+          });
+          await _createNewSession();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('所有对话已清除'),
+                backgroundColor: AppColors.success,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('清除失败: $e')),
+          );
+        }
+      }
+    }
   }
 
   void _showSessionInfo() {

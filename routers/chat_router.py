@@ -6,7 +6,7 @@ LangGraph 聊天 Agent 路由
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, Dict, Any, List, AsyncGenerator
 import json
 
@@ -71,6 +71,7 @@ async def _run_chat_agent(
     user_context = await get_user_context(current_user.id, db)
     recent_meals = await get_recent_meals(current_user.id, db)
     health_goals = await get_health_goals(current_user.id, db)
+    weekly_trends = await get_weekly_trends(current_user.id, db)
     conversation_history = await get_conversation_history(session_id, db)
     if (
         conversation_history
@@ -88,6 +89,7 @@ async def _run_chat_agent(
             "user_context": user_context,
             "recent_meals": recent_meals,
             "health_goals": health_goals,
+            "weekly_trends": weekly_trends,
             "conversation_history": conversation_history,
         },
         config={"configurable": get_agent_model_config(include_vision=False)},
@@ -163,7 +165,12 @@ async def send_chat_message_stream(
             user_context = await get_user_context(current_user.id, db)
             recent_meals = await get_recent_meals(current_user.id, db)
             health_goals = await get_health_goals(current_user.id, db)
+            weekly_trends = await get_weekly_trends(current_user.id, db)
             conversation_history = await get_conversation_history(session.id, db)
+
+            # 提取人群标签和体质类型
+            crowd_tag = user_context.get('crowd_tag')
+            constitution_type = user_context.get('constitution_type')
 
             # 4. 调用 LangGraph Agent
             client = get_client(url="http://127.0.0.1:2024")
@@ -204,6 +211,9 @@ async def send_chat_message_stream(
                     "user_context": user_context,
                     "recent_meals": recent_meals,
                     "health_goals": health_goals,
+                    "weekly_trends": weekly_trends,
+                    "crowd_tag": crowd_tag,
+                    "constitution_type": constitution_type,
                     "conversation_history": conversation_history
                 },
                 stream_mode="values"
@@ -327,7 +337,12 @@ async def send_chat_message(
         user_context = await get_user_context(current_user.id, db)
         recent_meals = await get_recent_meals(current_user.id, db)
         health_goals = await get_health_goals(current_user.id, db)
+        weekly_trends = await get_weekly_trends(current_user.id, db)
         conversation_history = await get_conversation_history(session.id, db)
+
+        # 提取人群标签和体质类型
+        crowd_tag = user_context.get('crowd_tag')
+        constitution_type = user_context.get('constitution_type')
 
         # 4. 调用 LangGraph Agent
         client = get_client(url="http://127.0.0.1:2024")
@@ -365,6 +380,9 @@ async def send_chat_message(
                 "user_context": user_context,
                 "recent_meals": recent_meals,
                 "health_goals": health_goals,
+                "weekly_trends": weekly_trends,
+                "crowd_tag": crowd_tag,
+                "constitution_type": constitution_type,
                 "conversation_history": conversation_history
             },
             stream_mode="values"
@@ -540,41 +558,76 @@ async def get_user_context(user_id: int, db: Session) -> Dict[str, Any]:
     
     context = {
         "username": user.username,
-        # "age": user_profile.age if user_profile else None,
+        "age": (date.today().year - user_profile.birth_date.year - ((date.today().month, date.today().day) < (user_profile.birth_date.month, user_profile.birth_date.day))) if user_profile and user_profile.birth_date else None,
         "gender": user_profile.gender if user_profile else None,
         "height": float(user_profile.height) if user_profile and user_profile.height else None,
         "weight": float(user_profile.weight) if user_profile and user_profile.weight else None,
-        "activity_level": user_profile.activity_level if user_profile else None
+        "activity_level": user_profile.activity_level if user_profile else None,
+        "crowd_tag": user_profile.crowd_tag if user_profile else None,
+        "constitution_type": user_profile.constitution_type if user_profile else None,
     }
     
     return {k: v for k, v in context.items() if v is not None}
 
 
 async def get_recent_meals(user_id: int, db: Session, limit: int = 5) -> List[Dict[str, Any]]:
-    """获取最近的饮食记录"""
+    """获取最近的饮食记录，包含今日汇总"""
     try:
-        from shared.models.food_models import FoodRecord
-        
+        from shared.models.food_models import FoodRecord, DailyNutritionSummary
+        from sqlalchemy import func
+        from datetime import date
+
+        # 获取今日饮食汇总
+        today = date.today()
+        today_summary = db.query(DailyNutritionSummary).filter(
+            DailyNutritionSummary.user_id == user_id,
+            DailyNutritionSummary.summary_date == today
+        ).first()
+
+        summary_data = None
+        if today_summary:
+            summary_data = {
+                "date": today.isoformat(),
+                "total_calories": float(today_summary.total_calories) if today_summary.total_calories else 0,
+                "total_protein": float(today_summary.total_protein) if today_summary.total_protein else 0,
+                "total_fat": float(today_summary.total_fat) if today_summary.total_fat else 0,
+                "total_carbohydrates": float(today_summary.total_carbohydrates) if today_summary.total_carbohydrates else 0,
+            }
+
         recent_records = db.query(FoodRecord).filter(
             FoodRecord.user_id == user_id
         ).order_by(FoodRecord.record_date.desc(), FoodRecord.created_at.desc()).limit(limit).all()
-        
+
+        meal_type_map = {1: "早餐", 2: "午餐", 3: "晚餐", 4: "加餐", 5: "夜宵"}
         meals = []
         for record in recent_records:
             meal_data = {
                 "food_name": record.food_name,
+                "description": record.description,
                 "meal_type": record.meal_type,
+                "meal_type_name": meal_type_map.get(record.meal_type, "其他"),
                 "record_date": record.record_date.isoformat(),
             }
-            
+
             # 安全地处理nutrition_detail中的decimal字段
             if record.nutrition_detail:
-                if hasattr(record.nutrition_detail, 'calories') and record.nutrition_detail.calories is not None:
-                    meal_data["calories"] = float(record.nutrition_detail.calories)
-                    
+                nd = record.nutrition_detail
+                if nd.calories is not None:
+                    meal_data["calories"] = float(nd.calories)
+                if nd.protein is not None:
+                    meal_data["protein"] = float(nd.protein)
+                if nd.fat is not None:
+                    meal_data["fat"] = float(nd.fat)
+                if nd.carbohydrates is not None:
+                    meal_data["carbohydrates"] = float(nd.carbohydrates)
+
             meals.append(meal_data)
-        
-        return meals
+
+        result = {"recent_meals": meals}
+        if summary_data:
+            result["today_summary"] = summary_data
+
+        return result
     except Exception as e:
         # 如果表不存在或其他错误，返回空列表
         print(f"Error getting recent meals: {e}")
@@ -617,6 +670,67 @@ async def get_health_goals(user_id: int, db: Session) -> Dict[str, Any]:
     except Exception as e:
         # 如果表不存在或其他错误，返回空字典
         print(f"Error getting health goals: {e}")
+        return {}
+
+
+async def get_weekly_trends(user_id: int, db: Session) -> Dict[str, Any]:
+    """获取用户一周饮食趋势数据，供 AI 分析使用"""
+    try:
+        from shared.models.food_models import FoodRecord, NutritionDetail
+        from sqlalchemy import func
+        from datetime import timedelta
+
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=6)
+
+        # 按天汇总营养数据
+        daily_data = []
+        for i in range(7):
+            day = start_date + timedelta(days=i)
+            stats = db.query(
+                func.coalesce(func.sum(NutritionDetail.calories), 0).label('total_calories'),
+                func.coalesce(func.sum(NutritionDetail.protein), 0).label('total_protein'),
+                func.coalesce(func.sum(NutritionDetail.fat), 0).label('total_fat'),
+                func.coalesce(func.sum(NutritionDetail.carbohydrates), 0).label('total_carbs'),
+                func.count(FoodRecord.id).label('meal_count'),
+            ).join(
+                NutritionDetail, FoodRecord.id == NutritionDetail.food_record_id
+            ).filter(
+                FoodRecord.user_id == user_id,
+                FoodRecord.record_date == day
+            ).first()
+
+            daily_data.append({
+                "date": day.isoformat(),
+                "calories": float(stats.total_calories) if stats else 0,
+                "protein": float(stats.total_protein) if stats else 0,
+                "fat": float(stats.total_fat) if stats else 0,
+                "carbs": float(stats.total_carbs) if stats else 0,
+                "meal_count": stats.meal_count if stats else 0,
+            })
+
+        # 计算平均值
+        valid_days = [d for d in daily_data if d["calories"] > 0]
+        if valid_days:
+            avg_cal = sum(d["calories"] for d in valid_days) / len(valid_days)
+            avg_protein = sum(d["protein"] for d in valid_days) / len(valid_days)
+            avg_fat = sum(d["fat"] for d in valid_days) / len(valid_days)
+            avg_carbs = sum(d["carbs"] for d in valid_days) / len(valid_days)
+        else:
+            avg_cal = avg_protein = avg_fat = avg_carbs = 0
+
+        return {
+            "daily_data": daily_data,
+            "summary": {
+                "avg_daily_calories": round(avg_cal, 1),
+                "avg_daily_protein": round(avg_protein, 1),
+                "avg_daily_fat": round(avg_fat, 1),
+                "avg_daily_carbs": round(avg_carbs, 1),
+                "recorded_days": len(valid_days),
+            }
+        }
+    except Exception as e:
+        print(f"Error getting weekly trends: {e}")
         return {}
 
 
@@ -744,6 +858,47 @@ async def get_session_messages(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取消息历史失败: {str(e)}"
+        )
+
+
+@router.delete("/sessions", response_model=schemas.BaseResponse)
+async def delete_all_sessions(
+        session_type: int = None,
+        current_user: user_models.User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """删除当前用户的所有聊天会话（可按类型筛选）"""
+    try:
+        query = db.query(conversation_models.ConversationSession).filter(
+            conversation_models.ConversationSession.user_id == current_user.id
+        )
+        if session_type is not None:
+            query = query.filter(conversation_models.ConversationSession.session_type == session_type)
+
+        sessions = query.all()
+        session_ids = [s.id for s in sessions]
+
+        # 删除所有消息
+        db.query(conversation_models.ConversationMessage).filter(
+            conversation_models.ConversationMessage.session_id.in_(session_ids)
+        ).delete(synchronize_session=False)
+
+        # 删除所有会话
+        for s in sessions:
+            db.delete(s)
+
+        db.commit()
+
+        return schemas.BaseResponse(
+            success=True,
+            message=f"已删除 {len(sessions)} 个会话"
+        )
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"删除会话失败: {str(e)}"
         )
 
 

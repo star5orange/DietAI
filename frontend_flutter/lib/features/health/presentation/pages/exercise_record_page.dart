@@ -8,6 +8,9 @@ import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../shared/domain/models/exercise_model.dart';
 import '../../../../services/exercise_service.dart';
+import '../../../profile/domain/services/user_service.dart';
+import '../../../../core/services/api_service.dart';
+import '../../../../shared/domain/models/api_response.dart';
 import 'exercise_history_page.dart';
 
 class ExerciseRecordPage extends StatefulWidget {
@@ -24,12 +27,26 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
   List<ExerciseRecord> _records = [];
   DailyExerciseSummary? _todaySummary;
   bool _isLoading = true;
+  String? _crowdTag;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _loadData();
+    _loadCrowdTag();
+  }
+
+  Future<void> _loadCrowdTag() async {
+    try {
+      final userService = UserService(ApiService());
+      final result = await userService.getUserProfile();
+      if (result.success && result.data != null) {
+        if (mounted) {
+          setState(() => _crowdTag = result.data!.crowdTag);
+        }
+      }
+    } catch (_) {}
   }
 
   @override
@@ -435,6 +452,8 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
   Widget _buildExerciseRecordCard(ExerciseRecord record) {
     final typeLabel = ExerciseType.getLabel(record.exerciseType);
     final typeIcon = _getExerciseIcon(record.exerciseType);
+    final hasStrengthDetail = record.exerciseType == 'strength' &&
+        record.strengthDetail != null;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -449,80 +468,188 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(typeIcon, color: AppColors.primary, size: 24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(typeIcon, color: AppColors.primary, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      record.exerciseName,
-                      style: AppTextStyles.h6.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        typeLabel,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.primary,
+                    Row(
+                      children: [
+                        Text(
+                          record.exerciseName,
+                          style: AppTextStyles.h6.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            typeLabel,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      record.formattedDate,
+                      style: AppTextStyles.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    record.formattedCalories,
+                    style: AppTextStyles.h6.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    record.formattedDuration,
+                    style: AppTextStyles.bodySmall,
+                  ),
+                ],
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(LucideIcons.trash2, size: 18),
+                color: AppColors.textTertiary,
+                onPressed: () => _showDeleteConfirmation(record),
+              ),
+            ],
+          ),
+          // 力量训练详情展示
+          if (hasStrengthDetail) ...[
+            const SizedBox(height: 12),
+            _buildStrengthDetailDisplay(record.strengthDetail!),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStrengthDetailDisplay(Map<String, dynamic> detail) {
+    final muscleGroups =
+        (detail['muscle_groups'] as List<dynamic>?)?.cast<String>() ?? [];
+    final sets =
+        (detail['sets'] as List<dynamic>?) ?? [];
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF66BB6A).withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF66BB6A).withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (muscleGroups.isNotEmpty) ...[
+            Row(
+              children: [
+                const Icon(LucideIcons.target, size: 14, color: Color(0xFF66BB6A)),
+                const SizedBox(width: 6),
+                Text('训练肌群',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF66BB6A),
+                    )),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: muscleGroups.map((g) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF66BB6A).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(g,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF66BB6A),
+                    )),
+              )).toList(),
+            ),
+            if (sets.isNotEmpty) const SizedBox(height: 10),
+          ],
+          if (sets.isNotEmpty) ...[
+            Row(
+              children: [
+                const Icon(LucideIcons.dumbbell, size: 14, color: Color(0xFF66BB6A)),
+                const SizedBox(width: 6),
+                Text('训练内容',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF66BB6A),
+                    )),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ...sets.map((s) {
+              final item = s as Map<String, dynamic>;
+              final exercise = item['exercise'] as String? ?? '';
+              final setCount = item['sets'] as int? ?? 0;
+              final reps = item['reps'] as int? ?? 0;
+              final weight = item['weight_kg'] as num?;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(exercise,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.textPrimary,
+                          )),
+                    ),
+                    Text(
+                      '$setCount组×$reps次${weight != null ? ' ${weight}kg' : ''}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  record.formattedDate,
-                  style: AppTextStyles.bodySmall,
-                ),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                record.formattedCalories,
-                style: AppTextStyles.h6.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.accent,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                record.formattedDuration,
-                style: AppTextStyles.bodySmall,
-              ),
-            ],
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: const Icon(LucideIcons.trash2, size: 18),
-            color: AppColors.textTertiary,
-            onPressed: () => _showDeleteConfirmation(record),
-          ),
+              );
+            }),
+          ],
         ],
       ),
     );
@@ -1009,6 +1136,7 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
       builder: (context) => _AddExerciseModal(
         onRecordAdded: _loadData,
         exerciseService: _exerciseService,
+        crowdTag: _crowdTag,
       ),
     );
   }
@@ -1091,6 +1219,13 @@ class _ExerciseDailyStat {
   });
 }
 
+class _StrengthSetEntry {
+  final exerciseController = TextEditingController();
+  final setsController = TextEditingController();
+  final repsController = TextEditingController();
+  final weightController = TextEditingController();
+}
+
 class _ExerciseTypeStat {
   final String type;
   int count;
@@ -1115,10 +1250,12 @@ class _ExerciseTypeStat {
 class _AddExerciseModal extends StatefulWidget {
   final VoidCallback onRecordAdded;
   final ExerciseService exerciseService;
+  final String? crowdTag;
 
   const _AddExerciseModal({
     required this.onRecordAdded,
     required this.exerciseService,
+    this.crowdTag,
   });
 
   @override
@@ -1135,6 +1272,14 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
   String _selectedType = 'running';
   bool _isAutoCalories = true;
   bool _isSubmitting = false;
+
+  // 力量训练详情
+  final List<String> _selectedMuscleGroups = [];
+  final List<_StrengthSetEntry> _strengthSets = [];
+
+  static const List<String> _muscleGroupOptions = [
+    '胸', '背', '肩', '二头', '三头', '核心', '大腿', '小腿', '臀',
+  ];
 
   @override
   void dispose() {
@@ -1300,6 +1445,14 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
                   ),
                 ),
               ),
+              // 力量训练详情（健身用户展示完整详情，非健身用户展示简化提示）
+              if (_selectedType == 'strength') ...[
+                const SizedBox(height: 20),
+                if (widget.crowdTag == '健身')
+                  _buildStrengthDetailSection()
+                else
+                  _buildSimplifiedStrengthHint(),
+              ],
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
@@ -1340,7 +1493,15 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
   }
 
   Widget _buildExerciseTypeGrid() {
-    final entries = ExerciseType.entries;
+    List<MapEntry<String, String>> entries = ExerciseType.entries.toList();
+    // 健身用户将力量训练排到第一个
+    if (widget.crowdTag == '健身') {
+      final strengthIdx = entries.indexWhere((e) => e.key == 'strength');
+      if (strengthIdx > 0) {
+        final strength = entries.removeAt(strengthIdx);
+        entries.insert(0, strength);
+      }
+    }
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -1379,6 +1540,220 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
     );
   }
 
+  Widget _buildStrengthDetailSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(LucideIcons.dumbbell, size: 16, color: AppColors.primary),
+            const SizedBox(width: 8),
+            Text('力量训练详情',
+                style: AppTextStyles.labelLarge.copyWith(
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // 肌群选择
+        Text('训练肌群', style: AppTextStyles.bodySmall.copyWith(
+            fontWeight: FontWeight.w500)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _muscleGroupOptions.map((group) {
+            final isSelected = _selectedMuscleGroups.contains(group);
+            return GestureDetector(
+              onTap: () {
+                setState(() {
+                  if (isSelected) {
+                    _selectedMuscleGroups.remove(group);
+                  } else {
+                    _selectedMuscleGroups.add(group);
+                  }
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AppColors.primary
+                      : AppColors.backgroundSecondary,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isSelected ? AppColors.primary : AppColors.border,
+                  ),
+                ),
+                child: Text(group,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                      color: isSelected ? AppColors.textInverse : AppColors.textSecondary,
+                    )),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 16),
+        // 训练组列表
+        Row(
+          children: [
+            Text('训练组', style: AppTextStyles.bodySmall.copyWith(
+                fontWeight: FontWeight.w500)),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: () {
+                setState(() {
+                  _strengthSets.add(_StrengthSetEntry());
+                });
+              },
+              icon: const Icon(LucideIcons.plus, size: 16),
+              label: const Text('添加组'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ..._strengthSets.asMap().entries.map((entry) {
+          final idx = entry.key;
+          final set = entry.value;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.backgroundSecondary,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Text('组 ${idx + 1}',
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600)),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(LucideIcons.x, size: 16),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () {
+                          setState(() => _strengthSets.removeAt(idx));
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: TextFormField(
+                          controller: set.exerciseController,
+                          decoration: InputDecoration(
+                            labelText: '动作',
+                            hintText: '卧推',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 8),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                          ),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextFormField(
+                          controller: set.setsController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: '组数',
+                            hintText: '4',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 8),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                          ),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextFormField(
+                          controller: set.repsController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: '次数',
+                            hintText: '12',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 8),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                          ),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextFormField(
+                          controller: set.weightController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: 'kg',
+                            hintText: '60',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 8),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                          ),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildSimplifiedStrengthHint() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF66BB6A).withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF66BB6A).withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.info, size: 18, color: Color(0xFF66BB6A)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '切换至「健身」人群标签可记录训练肌群、组数×次数、负重等详情',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _submitRecord() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -1386,6 +1761,26 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
 
     try {
       final name = _nameController.text.trim();
+
+      // 构建力量训练详情
+      Map<String, dynamic>? strengthDetail;
+      if (_selectedType == 'strength' &&
+          (_selectedMuscleGroups.isNotEmpty || _strengthSets.isNotEmpty)) {
+        strengthDetail = {
+          'muscle_groups': _selectedMuscleGroups,
+          'sets': _strengthSets
+              .where((s) => s.exerciseController.text.trim().isNotEmpty)
+              .map((s) => {
+                    'exercise': s.exerciseController.text.trim(),
+                    'sets': int.tryParse(s.setsController.text) ?? 0,
+                    'reps': int.tryParse(s.repsController.text) ?? 0,
+                    'weight_kg': double.tryParse(s.weightController.text),
+                  })
+              .where((s) => (s['sets'] as int) > 0 && (s['reps'] as int) > 0)
+              .toList(),
+        };
+      }
+
       final result = await widget.exerciseService.createRemoteExerciseRecord(
         exerciseName:
             name.isEmpty ? ExerciseType.getLabel(_selectedType) : name,
@@ -1395,6 +1790,7 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
         notes: _notesController.text.trim().isEmpty
             ? null
             : _notesController.text.trim(),
+        strengthDetail: strengthDetail,
       );
 
       if (mounted) {

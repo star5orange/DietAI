@@ -7,6 +7,10 @@ import '../../../../services/food_service.dart';
 import '../../../../services/saved_meal_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/presentation/widgets/food_image_preview.dart';
+import '../../../home/presentation/widgets/food_record_modal.dart';
+import '../../../camera/presentation/pages/camera_page.dart';
+import '../../../home/presentation/pages/meal_selection_page.dart';
+import '../../../home/presentation/pages/text_describe_page.dart';
 
 class HistoryPage extends ConsumerStatefulWidget {
   const HistoryPage({super.key});
@@ -189,9 +193,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // TODO: 添加新记录
-        },
+        onPressed: () => _showFoodRecordModal(_getMealNameForNow()),
         child: const Icon(LucideIcons.plus),
       ),
     );
@@ -209,6 +211,126 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       return '昨天 - ${_selectedDate.year}年${_selectedDate.month}月${_selectedDate.day}日';
     } else {
       return '${_selectedDate.year}年${_selectedDate.month}月${_selectedDate.day}日';
+    }
+  }
+
+  String _getMealNameForNow() {
+    final hour = DateTime.now().hour;
+    if (hour < 10) return '早餐';
+    if (hour < 14) return '午餐';
+    if (hour < 20) return '晚餐';
+    return '零食';
+  }
+
+  void _showFoodRecordModal(String mealName) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => FoodRecordModal(
+        mealName: mealName,
+        onRecordMethod: (method) {
+          Navigator.pop(context);
+          _handleRecordMethod(method, mealName);
+        },
+      ),
+    );
+  }
+
+  void _handleRecordMethod(String method, String mealName) {
+    final mealType = _getMealTypeFromName(mealName);
+    _showTimePicker(method, mealName, mealType);
+  }
+
+  Future<void> _showTimePicker(
+      String method, String mealName, int mealType) async {
+    final now = DateTime.now();
+    final initialTime = TimeOfDay(hour: now.hour, minute: now.minute);
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+      helpText: '选择用餐时间',
+      cancelText: '取消',
+      confirmText: '确定',
+    );
+
+    if (picked != null && mounted) {
+      final selectedTime = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        picked.hour,
+        picked.minute,
+      );
+      _executeRecordMethod(
+          method, mealName, mealType, selectedTime.toIso8601String());
+    }
+  }
+
+  Future<void> _executeRecordMethod(
+      String method, String mealName, int mealType,
+      [String? recordTime]) async {
+    final dateStr =
+        '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+    switch (method) {
+      case 'ai_scan':
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => CameraPage(
+                    mealName: mealName,
+                    mealType: mealType,
+                    recordDate: dateStr,
+                    recordTime: recordTime))).then((_) => _loadRecords());
+        break;
+      case 'text_describe':
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => TextDescribePage(
+                    mealName: mealName,
+                    mealType: mealType,
+                    recordDate: dateStr,
+                    recordTime: recordTime))).then((result) {
+          if (result == true) _loadRecords();
+        });
+        break;
+      case 'voice_record':
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('语音记录功能即将推出，敬请期待'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+        break;
+      case 'saved_meals':
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => MealSelectionPage(recordMethod: method)))
+            .then((result) {
+          if (result != null) {
+            // TODO: 处理从常用餐食选择的记录
+            _loadRecords();
+          }
+        });
+        break;
+    }
+  }
+
+  int _getMealTypeFromName(String name) {
+    switch (name) {
+      case '早餐':
+        return 1;
+      case '午餐':
+        return 2;
+      case '晚餐':
+        return 3;
+      case '零食':
+        return 4;
+      default:
+        return 4;
     }
   }
 
@@ -387,16 +509,19 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                   ),
                 ),
                 const Spacer(),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    LucideIcons.plus,
-                    color: color,
-                    size: 18,
+                GestureDetector(
+                  onTap: () => _showFoodRecordModal(title),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      LucideIcons.plus,
+                      color: color,
+                      size: 18,
+                    ),
                   ),
                 ),
               ],

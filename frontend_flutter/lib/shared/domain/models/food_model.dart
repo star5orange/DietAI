@@ -82,6 +82,22 @@ class NutritionFacts {
   Map<String, dynamic> toJson() => _$NutritionFactsToJson(this);
 }
 
+/// 行动项
+@JsonSerializable()
+class ActionItem {
+  final String action;
+  final String priority; // high/medium/low
+
+  const ActionItem({
+    required this.action,
+    required this.priority,
+  });
+
+  factory ActionItem.fromJson(Map<String, dynamic> json) =>
+      _$ActionItemFromJson(json);
+  Map<String, dynamic> toJson() => _$ActionItemToJson(this);
+}
+
 /// 推荐建议
 @JsonSerializable()
 class Recommendations {
@@ -91,12 +107,15 @@ class Recommendations {
   final List<String>? warnings;
   @JsonKey(name: 'alternative_foods')
   final List<String>? alternativeFoods;
+  @JsonKey(name: 'action_items')
+  final List<ActionItem>? actionItems;
 
   const Recommendations({
     this.recommendations,
     this.dietaryTips,
     this.warnings,
     this.alternativeFoods,
+    this.actionItems,
   });
 
   factory Recommendations.fromJson(Map<String, dynamic> json) =>

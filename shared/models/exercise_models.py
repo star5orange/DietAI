@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Text, ForeignKey, func, Index
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Text, ForeignKey, func, Index, JSON
 from .database import Base
 
 class ExerciseRecord(Base):
@@ -13,6 +13,7 @@ class ExerciseRecord(Base):
     calories_burned = Column(Float, nullable=False)
     record_date = Column(Date, nullable=False)
     notes = Column(Text)
+    strength_detail = Column(JSON, nullable=True)  # 力量训练详情：{"muscle_groups":["胸","三头"],"sets":[{"exercise":"卧推","sets":4,"reps":12,"weight_kg":60}]}
     created_at = Column(DateTime, server_default=func.now())
 
     __table_args__ = (

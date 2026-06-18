@@ -3,6 +3,20 @@ from datetime import date, datetime
 from typing import Optional
 
 
+class StrengthSet(BaseModel):
+    """单组力量训练记录"""
+    exercise: str = Field(..., description="动作名称，如卧推、深蹲")
+    sets: int = Field(..., gt=0, description="组数")
+    reps: int = Field(..., gt=0, description="每组次数")
+    weight_kg: Optional[float] = Field(None, ge=0, description="负重(kg)")
+
+
+class StrengthDetail(BaseModel):
+    """力量训练详情"""
+    muscle_groups: list[str] = Field(default_factory=list, description="训练肌群，如['胸','三头','肩']")
+    sets: list[StrengthSet] = Field(default_factory=list, description="各组训练详情")
+
+
 class ExerciseRecordCreate(BaseModel):
     exercise_type: str = Field(..., max_length=50, description="运动类型：跑步/游泳/力量训练等")
     exercise_name: Optional[str] = Field(None, max_length=100, description="运动名称（自定义）")
@@ -11,6 +25,7 @@ class ExerciseRecordCreate(BaseModel):
     calories_burned: Optional[float] = Field(None, ge=0, le=10000, description="消耗热量，不传则自动计算")
     record_date: date = Field(default_factory=date.today, description="运动日期")
     notes: Optional[str] = Field(None, max_length=500, description="备注")
+    strength_detail: Optional[StrengthDetail] = Field(None, description="力量训练详情（仅exercise_type=力量训练时使用）")
 
 
 class ExerciseRecordOut(BaseModel):
@@ -23,6 +38,7 @@ class ExerciseRecordOut(BaseModel):
     calories_burned: float
     record_date: date
     notes: Optional[str]
+    strength_detail: Optional[dict]
     created_at: datetime
 
     class Config:

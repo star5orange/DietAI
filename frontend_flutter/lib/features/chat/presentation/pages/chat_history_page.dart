@@ -187,6 +187,53 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
     }
   }
 
+  Future<void> _clearAllHistory() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清除所有对话'),
+        content: const Text('确定要删除所有对话记录吗？此操作无法撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        final response = await _chatService.deleteAllSessions(
+          sessionType: widget.sessionType,
+        );
+        if (response.success && mounted) {
+          setState(() {
+            _sessions.clear();
+            _filteredSessions.clear();
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('所有对话已清除'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('清除失败: $e')),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -207,6 +254,15 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          if (_sessions.isNotEmpty)
+            IconButton(
+              icon: const Icon(
+                Icons.delete_sweep_outlined,
+                color: Color(0xFFE74C3C),
+              ),
+              tooltip: '清除所有对话',
+              onPressed: _clearAllHistory,
+            ),
           IconButton(
             icon: Icon(
               _showSearchBar ? Icons.close : Icons.search,

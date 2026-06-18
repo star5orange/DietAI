@@ -32,7 +32,17 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
   int? _selectedGender;
   String? _selectedBirthDate;
   int? _selectedActivityLevel;
+  String? _selectedCrowdTag;
   bool _isLoading = false;
+
+  static const List<Map<String, dynamic>> _crowdTagOptions = [
+    {'tag': '减脂', 'icon': LucideIcons.flame, 'color': Color(0xFFFF6B6B)},
+    {'tag': '健身', 'icon': LucideIcons.dumbbell, 'color': Color(0xFF4ECDC4)},
+    {'tag': '普通', 'icon': LucideIcons.scale, 'color': Color(0xFF2BAF74)},
+    {'tag': '养生', 'icon': LucideIcons.leaf, 'color': Color(0xFF9C88FF)},
+    {'tag': '孕期', 'icon': LucideIcons.baby, 'color': Color(0xFFFFB6C1)},
+    {'tag': '慢病管理', 'icon': LucideIcons.heartPulse, 'color': Color(0xFF5B86E5)},
+  ];
 
   @override
   void initState() {
@@ -51,6 +61,7 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
       _selectedGender = profile.gender;
       _selectedBirthDate = profile.birthDate;
       _selectedActivityLevel = profile.activityLevel;
+      _selectedCrowdTag = profile.crowdTag;
     }
   }
 
@@ -123,12 +134,6 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
                       controller: _realNameController,
                       label: '真实姓名',
                       prefixIcon: LucideIcons.user,
-                      validator: (value) {
-                        if (value?.isEmpty ?? true) {
-                          return '请输入真实姓名';
-                        }
-                        return null;
-                      },
                     ),
                     const SizedBox(height: 16),
                     
@@ -186,6 +191,12 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
                     
                     // 活动级别
                     _buildActivityLevelSelector(),
+                    const SizedBox(height: 24),
+                    
+                    // 人群标签
+                    _buildSectionTitle('人群标签'),
+                    const SizedBox(height: 12),
+                    _buildCrowdTagSelector(),
                     const SizedBox(height: 24),
                     
                     // 其他信息
@@ -392,6 +403,52 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
     );
   }
 
+  Widget _buildCrowdTagSelector() {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: _crowdTagOptions.map((option) {
+        final tag = option['tag'] as String;
+        final icon = option['icon'] as IconData;
+        final color = option['color'] as Color;
+        final isSelected = _selectedCrowdTag == tag;
+        return GestureDetector(
+          onTap: () {
+            setState(() {
+              _selectedCrowdTag = tag;
+            });
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: isSelected ? color.withValues(alpha: 0.1) : AppColors.backgroundSecondary,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isSelected ? color : AppColors.divider,
+                width: isSelected ? 2 : 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: isSelected ? color : AppColors.textSecondary),
+                const SizedBox(width: 6),
+                Text(
+                  tag,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                    color: isSelected ? color : AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
   Future<void> _selectBirthDate() async {
     final selectedDate = await showDatePicker(
       context: context,
@@ -420,10 +477,11 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
       final request = UserProfileUpdateRequest(
         realName: _realNameController.text.trim().isEmpty ? null : _realNameController.text.trim(),
         gender: _selectedGender,
-        birthDate: _selectedBirthDate,
+        birthDate: _selectedBirthDate?.split('T')[0],
         height: _heightController.text.trim().isEmpty ? null : double.tryParse(_heightController.text),
         weight: _weightController.text.trim().isEmpty ? null : double.tryParse(_weightController.text),
         activityLevel: _selectedActivityLevel,
+        crowdTag: _selectedCrowdTag,
         occupation: _occupationController.text.trim().isEmpty ? null : _occupationController.text.trim(),
         region: _regionController.text.trim().isEmpty ? null : _regionController.text.trim(),
       );

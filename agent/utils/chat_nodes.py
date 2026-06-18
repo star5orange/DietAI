@@ -51,29 +51,113 @@ def analyze_conversation_context(state: ChatState) -> ChatState:
         # 分析用户消息内容和意图
         context_info = []
         
-        # 添加用户上下文信息
+        # 添加用户上下文信息（结构化格式）
         if state.get('user_context'):
-            context_info.append(f"用户档案: {state['user_context']}")
+            uc = state['user_context']
+            if isinstance(uc, dict):
+                profile_lines = []
+                label_map = {
+                    'username': '用户名',
+                    'age': '年龄',
+                    'gender': '性别',
+                    'height': '身高(cm)',
+                    'weight': '体重(kg)',
+                    'activity_level': '活动水平',
+                    'crowd_tag': '人群标签',
+                    'constitution_type': '体质类型',
+                }
+                for k, v in uc.items():
+                    label = label_map.get(k, k)
+                    profile_lines.append(f"{label}: {v}")
+                context_info.append("【用户档案】\n" + "\n".join(profile_lines))
+            else:
+                context_info.append(f"用户档案: {uc}")
         
         # 添加健康目标信息
         if state.get('health_goals'):
             context_info.append(f"健康目标: {state['health_goals']}")
         
-        # 添加最近饮食记录
+        # 添加最近饮食记录（结构化格式，便于AI理解）
         if state.get('recent_meals'):
-            context_info.append(f"最近饮食: {state['recent_meals'][-3:]}")  # 只取最近3条
+            meals_data = state['recent_meals']
+            if isinstance(meals_data, dict):
+                # 今日饮食汇总
+                if meals_data.get('today_summary'):
+                    ts = meals_data['today_summary']
+                    context_info.append(
+                        f"【今日饮食汇总】日期: {ts.get('date', '今天')}, "
+                        f"总热量: {ts.get('total_calories', 0)}kcal, "
+                        f"蛋白质: {ts.get('total_protein', 0)}g, "
+                        f"脂肪: {ts.get('total_fat', 0)}g, "
+                        f"碳水: {ts.get('total_carbohydrates', 0)}g"
+                    )
+                # 最近饮食记录详情
+                recent_list = meals_data.get('recent_meals', [])
+                if recent_list and isinstance(recent_list, list):
+                    meal_details = []
+                    for m in recent_list[-5:]:
+                        detail = f"{m.get('meal_type_name', m.get('meal_type', ''))} - {m.get('food_name', '未知食物')}"
+                        if m.get('description'):
+                            detail += f"({m['description']})"
+                        nutrients = []
+                        if m.get('calories'):
+                            nutrients.append(f"{m['calories']}kcal")
+                        if m.get('protein'):
+                            nutrients.append(f"蛋白质{m['protein']}g")
+                        if m.get('fat'):
+                            nutrients.append(f"脂肪{m['fat']}g")
+                        if m.get('carbohydrates'):
+                            nutrients.append(f"碳水{m['carbohydrates']}g")
+                        if nutrients:
+                            detail += f" [{', '.join(nutrients)}]"
+                        detail += f" ({m.get('record_date', '')})"
+                        meal_details.append(detail)
+                    context_info.append("【最近饮食记录】\n" + "\n".join(meal_details))
+            elif isinstance(meals_data, list):
+                context_info.append(f"最近饮食: {meals_data[-3:]}")
         
         # 分析会话类型和用户意图
         session_type_context = {
             1: "营养咨询 - 专注于饮食建议、营养搭配、膳食规划",
             2: "健康评估 - 专注于健康状况分析、指标评估、改善建议", 
             3: "食物识别 - 专注于食物识别、营养成分分析",
-            4: "运动建议 - 专注于运动计划、健身指导、运动营养"
+            4: "运动建议 - 专注于运动计划、健身指导、运动营养",
+            5: "养生咨询 - 专注于节气养生、体质调理、药膳茶饮、起居建议"
         }
         
         context_analysis = f"会话类型: {session_type_context.get(state['session_type'], '通用咨询')}"
         if context_info:
-            context_analysis += f"\n背景信息: {'; '.join(context_info)}"
+            context_analysis += "\n" + "\n".join(context_info)
+        
+        # 注入体质/人群标签
+        if state.get('crowd_tag'):
+            context_analysis += f"\n人群标签: {state['crowd_tag']}"
+        if state.get('constitution_type'):
+            context_analysis += f"\n体质类型: {state['constitution_type']}"
+        
+        # 注入当前节气信息（养生咨询时特别有用）
+        if state.get('session_type') == 5:
+            from agent.common_utils.solar_term_utils import get_current_solar_term
+            try:
+                term_info = get_current_solar_term()
+                context_analysis += f"\n当前节气: {term_info}"
+            except Exception:
+                month = datetime.now().month
+                season_map = {3: "春", 4: "春", 5: "春", 6: "夏", 7: "夏", 8: "夏",
+                              9: "秋", 10: "秋", 11: "秋", 12: "冬", 1: "冬", 2: "冬"}
+                context_analysis += f"\n当前季节: {season_map.get(month, '未知')}"
+
+        # 注入一周趋势数据（营养咨询和健康评估时特别有用）
+        if state.get('weekly_trends') and state['session_type'] in [1, 2, 4]:
+            trends = state['weekly_trends']
+            summary = trends.get('summary', {})
+            context_analysis += (
+                f"\n一周饮食趋势: 平均每日{summary.get('avg_daily_calories', 0)}kcal, "
+                f"蛋白质{summary.get('avg_daily_protein', 0)}g, "
+                f"脂肪{summary.get('avg_daily_fat', 0)}g, "
+                f"碳水{summary.get('avg_daily_carbs', 0)}g, "
+                f"共记录{summary.get('recorded_days', 0)}天"
+            )
         
         updated_state = state.copy()
         updated_state['context_analysis'] = context_analysis
@@ -96,7 +180,9 @@ def generate_chat_response(state: ChatState) -> ChatState:
         
         # 添加上下文信息到系统消息中
         if state.get('context_analysis'):
-            context_message = SystemMessage(content=f"当前对话上下文: {state['context_analysis']}")
+            context_message = SystemMessage(
+                content=f"以下是用户的实时数据，请务必参考这些数据来回答用户的问题：\n\n{state['context_analysis']}"
+            )
             messages.append(context_message)
         
         # 添加用户消息
@@ -203,6 +289,27 @@ def generate_suggestions_by_type(session_type: int, user_message: str) -> List[s
             "了解运动营养搭配",
             "查看健身指导"
         ]
+    
+    elif session_type == 5:  # 养生咨询
+        if any(keyword in message_lower for keyword in ["体质", "气虚", "阳虚", "阴虚", "痰湿", "湿热", "血瘀", "气郁", "特禀", "平和"]):
+            return [
+                "了解我的体质调理方案",
+                "推荐适合体质的食材",
+                "查看体质养生茶饮"
+            ]
+        elif any(keyword in message_lower for keyword in ["节气", "季节", "春夏秋冬"]):
+            return [
+                "查看当前节气养生建议",
+                "了解应季食材推荐",
+                "获取节气起居指南"
+            ]
+        else:
+            return [
+                "查看当前节气养生建议",
+                "了解我的体质调理方案",
+                "推荐养生药膳和茶饮",
+                "获取起居作息建议"
+            ]
     
     else:
         return [

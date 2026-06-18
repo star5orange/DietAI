@@ -140,11 +140,25 @@ app.add_middleware(
 from shared.middleware.rate_limiter import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware)
 
-# 添加受信任主机中间件
+# 生产环境：HTTPS 强制重定向 + 受信任主机
 if not settings.debug:
+    # HTTPS 重定向中间件
+    @app.middleware("http")
+    async def enforce_https(request: Request, call_next):
+        # 检查 X-Forwarded-Proto 头（反向代理如 Nginx 设置）
+        if request.headers.get("x-forwarded-proto", "https") == "http":
+            https_url = request.url.replace(scheme="https")
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(https_url, status_code=301)
+        response = await call_next(request)
+        # 添加 HSTS 头：告诉浏览器未来 1 年只走 HTTPS
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+        return response
+
+    # 受信任主机中间件
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["*"]  # 生产环境应该配置具体的域名
+        allowed_hosts=settings.allowed_hosts if settings.allowed_hosts else ["*"]
     )
 
 

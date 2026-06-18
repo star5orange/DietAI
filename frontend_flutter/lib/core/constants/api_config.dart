@@ -1,6 +1,9 @@
 /// API 配置
 ///
-/// 在这里配置不同环境的API基础URL
+/// 支持三种配置方式（优先级从高到低）：
+/// 1. 运行时通过 setCustomBaseUrl() 动态设置
+/// 2. 环境变量 DIETAI_API_URL / DIETAI_MINIO_URL
+/// 3. 编译时常量 devBaseUrl / prodBaseUrl
 class ApiConfig {
   // 开发环境配置
   static const String devBaseUrl = 'http://localhost:8000';
@@ -61,12 +64,37 @@ class ApiConfig {
     _customMinioUrl = url;
   }
 
+  /// 从环境变量初始化配置
+  /// 在 main.dart 中调用：await ApiConfig.initFromEnv();
+  static Future<void> initFromEnv() async {
+    // 尝试从环境变量读取（适用于 CI/CD 或 docker 部署）
+    const envApiUrl = String.fromEnvironment('DIETAI_API_URL');
+    const envMinioUrl = String.fromEnvironment('DIETAI_MINIO_URL');
+
+    if (envApiUrl.isNotEmpty) {
+      _customBaseUrl = envApiUrl;
+    }
+    if (envMinioUrl.isNotEmpty) {
+      _customMinioUrl = envMinioUrl;
+    }
+  }
+
   static String get effectiveBaseUrl {
-    return _customBaseUrl ?? baseUrl;
+    final url = _customBaseUrl ?? baseUrl;
+    assert(
+      currentEnvironment == Environment.development || url.startsWith('https://'),
+      '生产环境必须使用 HTTPS！当前 URL: $url',
+    );
+    return url;
   }
 
   static String get effectiveMinioUrl {
-    return _customMinioUrl ?? minioUrl;
+    final url = _customMinioUrl ?? minioUrl;
+    assert(
+      currentEnvironment == Environment.development || url.startsWith('https://'),
+      '生产环境 MinIO 必须使用 HTTPS！当前 URL: $url',
+    );
+    return url;
   }
 }
 
@@ -77,7 +105,7 @@ enum Environment {
 }
 
 /// 使用方法：
-/// 1. 修改 devLocalNetworkUrl 为您后端服务器的实际IP地址
-/// 2. 确保后端服务器在对应端口上运行（默认8000）
-/// 3. 如果需要切换到生产环境，修改 currentEnvironment
-/// 4. 运行时可以通过 ApiConfig.setCustomBaseUrl() 动态设置API地址
+/// 1. 编译时传入环境变量：flutter run --dart-define=DIETAI_API_URL=http://192.168.1.100:8000
+/// 2. 运行时动态设置：ApiConfig.setCustomBaseUrl('http://192.168.1.100:8000')
+/// 3. 默认使用 devBaseUrl（开发环境）或 prodBaseUrl（生产环境）
+/// 4. 修改 devLocalNetworkUrl 为您后端服务器的实际IP地址

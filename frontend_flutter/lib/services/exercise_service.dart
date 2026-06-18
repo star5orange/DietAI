@@ -169,6 +169,7 @@ class ExerciseService {
     required double caloriesBurned,
     String? notes,
     String? recordDate,
+    Map<String, dynamic>? strengthDetail,
   }) async {
     try {
       final data = {
@@ -179,6 +180,7 @@ class ExerciseService {
         'record_date':
             recordDate ?? DateTime.now().toIso8601String().substring(0, 10),
         if (notes != null && notes.isNotEmpty) 'notes': notes,
+        if (strengthDetail != null) 'strength_detail': strengthDetail,
       };
 
       final response = await _apiService.post('/exercises/records', data: data);
