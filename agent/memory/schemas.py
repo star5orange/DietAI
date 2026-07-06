@@ -98,6 +98,10 @@ class SharedMemoryData(BaseModel):
     weight: float  # kg
     activity_level: ActivityLevel = ActivityLevel.LIGHT
 
+    # 人群标签与体质
+    crowd_tag: Optional[str] = None  # 减脂/健身/普通日常（逗号分隔多选）
+    constitution_type: Optional[str] = None  # 九种体质之一
+
     # 健康状况
     allergies: List[AllergyInfo] = Field(default_factory=list)
     diseases: List[DiseaseInfo] = Field(default_factory=list)

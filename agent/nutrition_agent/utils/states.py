@@ -17,6 +17,8 @@ class AgentState(TypedDict):
     nutrition_advice: Optional[NutritionAdvice]
     advice_dependencies: Optional[AdviceDependencies]
     user_preferences: Optional[Dict]
+    allergies: Optional[List[str]]  # 用户过敏原列表，如["花生","牛奶","海鲜"]
+    allergy_warnings: Optional[List[str]]  # 过敏交叉检查警告
     retrieved_documents: List[str]
     conversation_history: List[Dict]
     current_step: str

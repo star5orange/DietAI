@@ -67,14 +67,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('个人中心'),
-        actions: [
-          IconButton(
-            icon: const Icon(LucideIcons.settings),
-            onPressed: () {
-              // TODO: 设置页面
-            },
-          ),
-        ],
       ),
       body: userProfileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

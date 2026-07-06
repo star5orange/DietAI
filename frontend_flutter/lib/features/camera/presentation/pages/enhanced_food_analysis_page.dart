@@ -897,8 +897,9 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
   Widget _buildAIRecommendationsCard() {
     final healthTips = _recommendations['health_tips'] as List? ?? [];
     final dietaryAdvice = _recommendations['dietary_advice'] as List? ?? [];
+    final alternativeFoods = _recommendations['alternative_foods'] as List? ?? [];
     
-    if (healthTips.isEmpty && dietaryAdvice.isEmpty) {
+    if (healthTips.isEmpty && dietaryAdvice.isEmpty && alternativeFoods.isEmpty) {
       return const SizedBox.shrink();
     }
     
@@ -985,9 +986,89 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
               ),
             )).toList(),
           ],
+
+          // 替代食物推荐 - 一键记录
+          if (alternativeFoods.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(LucideIcons.replace,
+                    size: 16, color: Color(0xFF2BAF74)),
+                const SizedBox(width: 6),
+                Text(
+                  '推荐替代食物',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF222222),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: alternativeFoods.take(5).map((food) {
+                final foodName = food.toString();
+                return ActionChip(
+                  avatar: const Icon(LucideIcons.plus, size: 14, color: Color(0xFF2BAF74)),
+                  label: Text(foodName),
+                  labelStyle: const TextStyle(fontSize: 13, color: Color(0xFF222222)),
+                  backgroundColor: const Color(0xFF2BAF74).withValues(alpha: 0.06),
+                  side: const BorderSide(color: Color(0xFF2BAF74), width: 0.5),
+                  onPressed: () => _quickAddAlternativeFood(foodName),
+                );
+              }).toList(),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// 一键记录 AI 推荐的替代食物
+  Future<void> _quickAddAlternativeFood(String foodName) async {
+    try {
+      final now = DateTime.now();
+      final hour = now.hour;
+      int mealType;
+      if (hour < 10) {
+        mealType = 1;
+      } else if (hour < 14) {
+        mealType = 2;
+      } else if (hour < 20) {
+        mealType = 3;
+      } else {
+        mealType = 4;
+      }
+
+      final record = FoodRecordCreate(
+        foodName: foodName,
+        mealType: mealType,
+        recordDate: now.toIso8601String().substring(0, 10),
+        recordingMethod: 3, // AI建议
+      );
+
+      final result = await _foodService.createFoodRecord(record);
+      if (result.success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('已添加「$foodName」到今日饮食记录'),
+              backgroundColor: const Color(0xFF2BAF74),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('添加失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
   
   Widget _buildIngredientsCard() {

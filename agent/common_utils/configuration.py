@@ -21,7 +21,7 @@ class AnalysisModel(Enum):
 @dataclass(kw_only=True)
 class Configuration:
     vision_model_provider: VisionModel = VisionModel.QWEN
-    vision_model: str = "qwen-vl-max"
+    vision_model: str = "qwen3.7-plus"
     analysis_model_provider: AnalysisModel = AnalysisModel.DEEPSEEK
     analysis_model: str = "deepseek-v4-flash"
 
@@ -65,7 +65,7 @@ def get_agent_model_config(*, include_vision: bool = True) -> dict[str, str]:
     if include_vision:
         config.update({
             "vision_model_provider": get_env_value("VISION_MODEL_PROVIDER", "qwen"),
-            "vision_model": get_env_value("VISION_MODEL", "qwen-vl-max"),
+            "vision_model": get_env_value("VISION_MODEL", "qwen3.7-plus"),
         })
 
     return config

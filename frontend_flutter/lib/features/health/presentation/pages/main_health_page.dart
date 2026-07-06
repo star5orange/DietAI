@@ -7,6 +7,7 @@ import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../services/food_service.dart';
 import '../../../../services/water_service.dart';
+import '../../../../services/health_analysis_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/domain/models/api_response.dart';
 import '../../../health/presentation/pages/health_goals_page.dart';
@@ -30,11 +31,13 @@ class HealthPage extends ConsumerStatefulWidget {
 class _HealthPageState extends ConsumerState<HealthPage> {
   final FoodService _foodService = FoodService();
   final WaterService _waterService = WaterService();
+  final HealthAnalysisService _healthAnalysisService = HealthAnalysisService();
   DailyNutritionSummary? _dailySummary;
   double _waterIntake = 0.0;
   double _waterGoal = 2000.0;
   double _targetCalories = 2000.0;
   bool _isLoading = true;
+  Map<String, dynamic>? _weeklySummary;
 
   @override
   void initState() {
@@ -46,14 +49,17 @@ class _HealthPageState extends ConsumerState<HealthPage> {
     setState(() => _isLoading = true);
     try {
       final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      final summaryResult =
-          await _foodService.getDailyNutritionSummary(dateStr);
-      final waterResult = await _waterService.getDailySummary(dateStr);
+      final results = await Future.wait([
+        _foodService.getDailyNutritionSummary(dateStr),
+        _waterService.getDailySummary(dateStr),
+        _healthAnalysisService.getWeeklySummary(),
+      ]);
 
       if (mounted) {
         setState(() {
-          _dailySummary = summaryResult.data;
-          _waterIntake = (waterResult.data?.totalMl ?? 0).toDouble();
+          _dailySummary = (results[0] as ApiResponse<DailyNutritionSummary>).data;
+          _waterIntake = ((results[1] as ApiResponse).data?.totalMl ?? 0).toDouble();
+          _weeklySummary = (results[2] as ApiResponse<Map<String, dynamic>>).data;
           _isLoading = false;
         });
       }
@@ -82,6 +88,10 @@ class _HealthPageState extends ConsumerState<HealthPage> {
             children: [
               _buildHealthSummaryCard(),
               const SizedBox(height: 24),
+              if (_weeklySummary != null) ...[
+                _buildWeeklySummaryCard(),
+                const SizedBox(height: 24),
+              ],
               WaterIntakeWidget(
                 selectedDate: DateTime.now(),
               ),
@@ -204,6 +214,367 @@ class _HealthPageState extends ConsumerState<HealthPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildWeeklySummaryCard() {
+    final data = _weeklySummary!;
+    final period = data['period'] as Map<String, dynamic>? ?? {};
+    final trends = data['trends'] as Map<String, dynamic>? ?? {};
+    final goalCompletion = data['goal_completion'] as Map<String, dynamic>? ?? {};
+    final weightChange = data['weight_change'] as Map<String, dynamic>?;
+    final summaryText = data['summary_text'] as String? ?? '';
+    final crowdTag = data['crowd_tag'] as String? ?? '普通';
+    final daysWithData = period['days_with_data'] as int? ?? 0;
+
+    // 解析趋势数据
+    final calTrend = trends['total_calories'] as Map<String, dynamic>? ?? {};
+    final proteinTrend = trends['total_protein'] as Map<String, dynamic>? ?? {};
+    final waterTrend = trends['water_intake'] as Map<String, dynamic>? ?? {};
+    final exerciseTrend = trends['exercise_calories'] as Map<String, dynamic>? ?? {};
+
+    // 解析目标完成率
+    final calGoal = goalCompletion['calories'] as Map<String, dynamic>? ?? {};
+    final proteinGoal = goalCompletion['protein'] as Map<String, dynamic>? ?? {};
+
+    final startDate = period['start_date'] as String? ?? '';
+    final endDate = period['end_date'] as String? ?? '';
+    final periodLabel = _formatPeriodLabel(startDate, endDate);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.shadow,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 标题行
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  LucideIcons.calendarRange,
+                  color: Color(0xFF8B5CF6),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '每周摘要',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      periodLabel,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: daysWithData >= 5
+                      ? const Color(0xFF43A047).withValues(alpha: 0.1)
+                      : const Color(0xFFFFA726).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '$daysWithData/7天有数据',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: daysWithData >= 5
+                        ? const Color(0xFF43A047)
+                        : const Color(0xFFFFA726),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // 核心指标趋势行
+          Row(
+            children: [
+              Expanded(
+                  child: _buildTrendItem(
+                '热量',
+                calTrend,
+                LucideIcons.flame,
+                const Color(0xFFFF6B6B),
+              )),
+              const SizedBox(width: 8),
+              Expanded(
+                  child: _buildTrendItem(
+                '蛋白质',
+                proteinTrend,
+                LucideIcons.beef,
+                const Color(0xFF5B86E5),
+              )),
+              const SizedBox(width: 8),
+              Expanded(
+                  child: _buildTrendItem(
+                '饮水',
+                waterTrend,
+                LucideIcons.droplets,
+                const Color(0xFF06B6D4),
+              )),
+              const SizedBox(width: 8),
+              Expanded(
+                  child: _buildTrendItem(
+                '运动',
+                exerciseTrend,
+                LucideIcons.dumbbell,
+                const Color(0xFFF59E0B),
+              )),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // 目标完成率
+          if (calGoal.isNotEmpty || proteinGoal.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F3FF),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(LucideIcons.target,
+                          size: 14, color: Color(0xFF8B5CF6)),
+                      SizedBox(width: 6),
+                      Text(
+                        '目标完成率',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF8B5CF6),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      if (calGoal.isNotEmpty)
+                        Expanded(
+                            child: _buildGoalProgress(
+                                '热量', calGoal, const Color(0xFFFF6B6B))),
+                      if (calGoal.isNotEmpty && proteinGoal.isNotEmpty)
+                        const SizedBox(width: 12),
+                      if (proteinGoal.isNotEmpty)
+                        Expanded(
+                            child: _buildGoalProgress(
+                                '蛋白质', proteinGoal, const Color(0xFF5B86E5))),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // 体重变化
+          if (weightChange != null && weightChange['change_kg'] != null) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE6FAF0),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.scale,
+                      size: 16, color: Color(0xFF2BAF74)),
+                  const SizedBox(width: 8),
+                  const Text(
+                    '体重变化',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF2BAF74),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${weightChange['change_kg'] > 0 ? '+' : ''}${weightChange['change_kg']} kg',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: (weightChange['change_kg'] as num).toDouble() <= 0
+                          ? const Color(0xFF2BAF74)
+                          : const Color(0xFFFF6B6B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // AI摘要文字
+          if (summaryText.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.backgroundSecondary,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(LucideIcons.sparkles,
+                      size: 16, color: Color(0xFF8B5CF6)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      summaryText,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 构建趋势指标小卡片
+  Widget _buildTrendItem(
+      String label, Map<String, dynamic> trend, IconData icon, Color color) {
+    final direction = trend['direction'] as String? ?? '持平';
+    final changePct = (trend['change_pct'] as num?)?.toDouble() ?? 0.0;
+    final currentAvg = (trend['current_avg'] as num?)?.toDouble() ?? 0.0;
+
+    IconData arrowIcon;
+    Color arrowColor;
+    switch (direction) {
+      case '上升':
+        arrowIcon = LucideIcons.trendingUp;
+        arrowColor = const Color(0xFFFF6B6B);
+        break;
+      case '下降':
+        arrowIcon = LucideIcons.trendingDown;
+        arrowColor = const Color(0xFF2BAF74);
+        break;
+      default:
+        arrowIcon = LucideIcons.minus;
+        arrowColor = AppColors.textTertiary;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            currentAvg > 0 ? currentAvg.toInt().toString() : '-',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          Icon(arrowIcon, color: arrowColor, size: 14),
+        ],
+      ),
+    );
+  }
+
+  /// 构建目标完成率进度条
+  Widget _buildGoalProgress(String label, Map<String, dynamic> goal, Color color) {
+    final completionPct =
+        (goal['completion_pct'] as num?)?.toDouble() ?? 0.0;
+    final actual = (goal['actual'] as num?)?.toDouble() ?? 0.0;
+    final target = (goal['target'] as num?)?.toDouble() ?? 0.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary)),
+            Text('${completionPct.toInt()}%',
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+            value: (completionPct / 100).clamp(0.0, 1.0),
+            backgroundColor: color.withValues(alpha: 0.15),
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+            minHeight: 5,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '${actual.toInt()} / ${target.toInt()}',
+          style: const TextStyle(fontSize: 10, color: AppColors.textTertiary),
+        ),
+      ],
+    );
+  }
+
+  /// 格式化周期标签
+  String _formatPeriodLabel(String startDate, String endDate) {
+    try {
+      if (startDate.isNotEmpty && endDate.isNotEmpty) {
+        final s = DateTime.parse(startDate);
+        final e = DateTime.parse(endDate);
+        return '${s.month}/${s.day} - ${e.month}/${e.day}';
+      }
+    } catch (_) {}
+    return '本周';
   }
 
   String _formatNumber(double value) {

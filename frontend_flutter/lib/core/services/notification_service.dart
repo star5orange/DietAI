@@ -4,6 +4,13 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
+/// 通知点击回调类型
+/// reminderId: 提醒ID, reminderType: 提醒类型(water/meal等)
+typedef NotificationTapCallback = void Function(
+  int notificationId,
+  String? payload,
+);
+
 class NotificationService {
   static final NotificationService _instance = NotificationService._();
   factory NotificationService() => _instance;
@@ -14,6 +21,9 @@ class NotificationService {
 
   bool _initialized = false;
   bool get isAvailable => _initialized && !kIsWeb;
+
+  /// 通知点击回调
+  static NotificationTapCallback? onNotificationTapped;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -65,6 +75,10 @@ class NotificationService {
   static void _onNotificationTapped(NotificationResponse response) {
     debugPrint(
         'Notification tapped: id=${response.id}, payload=${response.payload}');
+    // 调用全局回调
+    if (onNotificationTapped != null && response.id != null) {
+      onNotificationTapped!(response.id!, response.payload);
+    }
   }
 
   Future<void> scheduleReminder({
@@ -74,6 +88,7 @@ class NotificationService {
     required int hour,
     required int minute,
     List<int> repeatDays = const [],
+    String? reminderType,
   }) async {
     if (!isAvailable) return;
 
@@ -119,7 +134,7 @@ class NotificationService {
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
           uiLocalNotificationDateInterpretation:
               UILocalNotificationDateInterpretation.absoluteTime,
-          payload: 'reminder_$id',
+          payload: 'reminder_${id}_${reminderType ?? 'unknown'}',
         );
       } else {
         for (final day in repeatDays) {
@@ -134,7 +149,7 @@ class NotificationService {
             uiLocalNotificationDateInterpretation:
                 UILocalNotificationDateInterpretation.absoluteTime,
             matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-            payload: 'reminder_${id}_day$day',
+            payload: 'reminder_${id}_${reminderType ?? 'unknown'}_day$day',
           );
         }
       }

@@ -591,3 +591,137 @@ async def use_saved_meal(
         logger.error(f"使用保存菜品失败: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail="操作失败")
+
+
+class FromSavedMealRequest(BaseModel):
+    """从收藏菜品快速创建饮食记录的请求"""
+    meal_type: int  # 1:早餐 2:午餐 3:晚餐 4:加餐 5:夜宵
+    record_date: Optional[str] = None  # 格式 YYYY-MM-DD，默认今天
+    serving_multiplier: float = 1.0  # 份量倍数，1.0=标准份
+
+
+class FromSavedMealResponse(BaseModel):
+    """从收藏菜品创建饮食记录的响应"""
+    food_record_id: int
+    saved_meal_id: int
+    meal_name: str
+    meal_type: int
+    record_date: str
+    nutrition: Optional[SavedMealNutritionCreate] = None
+
+
+@router.post("/{meal_id}/from-saved-meal", response_model=BaseResponse[FromSavedMealResponse])
+async def create_food_record_from_saved_meal(
+    meal_id: int,
+    request: FromSavedMealRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """从收藏菜品快速创建饮食记录（快速选餐）。
+
+    将保存菜品的名称、营养信息直接复制为一条新的食物记录，
+    无需拍照或手动输入，实现一键记录。
+    """
+    try:
+        # 查找保存的菜品
+        meal = db.query(SavedMeal).filter(SavedMeal.id == meal_id).first()
+        if not meal:
+            raise HTTPException(status_code=404, detail="菜品不存在")
+
+        # 检查权限
+        if not meal.is_public and meal.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="无权使用此菜品")
+
+        # 获取营养模板
+        nutrition_template = meal.nutrition_template
+        if not nutrition_template:
+            raise HTTPException(status_code=400, detail="菜品缺少营养信息，无法创建记录")
+
+        # 解析日期
+        from datetime import datetime as dt
+        if request.record_date:
+            record_date = dt.strptime(request.record_date, "%Y-%m-%d").date()
+        else:
+            record_date = dt.now().date()
+
+        # 创建食物记录
+        multiplier = request.serving_multiplier
+        food_record = FoodRecord(
+            user_id=current_user.id,
+            record_date=record_date,
+            record_time=dt.now(),
+            meal_type=request.meal_type,
+            food_name=meal.meal_name,
+            description=meal.description or f"来自收藏菜品: {meal.meal_name}",
+            image_url=meal.image_url,
+            recording_method=5,  # 5: saved_meal
+            analysis_status=3,  # 已完成（营养信息已知）
+            from_source="saved_meal",
+        )
+        db.add(food_record)
+        db.flush()
+
+        # 创建营养详情（按份量倍数计算）
+        nutrition_detail = NutritionDetail(
+            food_record_id=food_record.id,
+            calories=round(float(nutrition_template.calories) * multiplier, 2),
+            protein=round(float(nutrition_template.protein) * multiplier, 2),
+            fat=round(float(nutrition_template.fat) * multiplier, 2),
+            carbohydrates=round(float(nutrition_template.carbohydrates) * multiplier, 2),
+            dietary_fiber=round(float(nutrition_template.dietary_fiber) * multiplier, 2),
+            sugar=round(float(nutrition_template.sugar) * multiplier, 2),
+            sodium=round(float(nutrition_template.sodium) * multiplier, 2),
+            cholesterol=round(float(nutrition_template.cholesterol) * multiplier, 2),
+            vitamin_a=round(float(nutrition_template.vitamin_a) * multiplier, 2),
+            vitamin_c=round(float(nutrition_template.vitamin_c) * multiplier, 2),
+            vitamin_d=round(float(nutrition_template.vitamin_d) * multiplier, 2),
+            calcium=round(float(nutrition_template.calcium) * multiplier, 2),
+            iron=round(float(nutrition_template.iron) * multiplier, 2),
+            potassium=round(float(nutrition_template.potassium) * multiplier, 2),
+            analysis_method="saved_meal_template",
+        )
+        db.add(nutrition_detail)
+
+        # 增加使用计数
+        meal.usage_count += 1
+
+        db.commit()
+        db.refresh(food_record)
+
+        # 构建营养响应
+        nutrition_response = SavedMealNutritionCreate(
+            serving_size=float(nutrition_template.serving_size),
+            serving_unit=nutrition_template.serving_unit,
+            calories=round(float(nutrition_template.calories) * multiplier, 2),
+            protein=round(float(nutrition_template.protein) * multiplier, 2),
+            fat=round(float(nutrition_template.fat) * multiplier, 2),
+            carbohydrates=round(float(nutrition_template.carbohydrates) * multiplier, 2),
+            dietary_fiber=round(float(nutrition_template.dietary_fiber) * multiplier, 2),
+            sugar=round(float(nutrition_template.sugar) * multiplier, 2),
+            sodium=round(float(nutrition_template.sodium) * multiplier, 2),
+            cholesterol=round(float(nutrition_template.cholesterol) * multiplier, 2),
+            vitamin_a=round(float(nutrition_template.vitamin_a) * multiplier, 2),
+            vitamin_c=round(float(nutrition_template.vitamin_c) * multiplier, 2),
+            vitamin_d=round(float(nutrition_template.vitamin_d) * multiplier, 2),
+            calcium=round(float(nutrition_template.calcium) * multiplier, 2),
+            iron=round(float(nutrition_template.iron) * multiplier, 2),
+            potassium=round(float(nutrition_template.potassium) * multiplier, 2),
+        )
+
+        response_data = FromSavedMealResponse(
+            food_record_id=food_record.id,
+            saved_meal_id=meal.id,
+            meal_name=meal.meal_name,
+            meal_type=request.meal_type,
+            record_date=record_date.isoformat(),
+            nutrition=nutrition_response,
+        )
+
+        return BaseResponse(success=True, data=response_data, message="快速选餐记录创建成功")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"从收藏菜品创建饮食记录失败: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="快速选餐失败")

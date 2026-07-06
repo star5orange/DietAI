@@ -38,11 +38,17 @@ class NutritionAnalysis(BaseModel):
     health_level: HealthLevelEnum = Field(description="健康等级：A最优，B良好，C一般，D较差，E很差")
 
 
+class ActionItem(BaseModel):
+    action: str = Field(default="", description="具体行动描述")
+    priority: str = Field(default="medium", description="优先级: high/medium/low")
+
+
 class NutritionAdvice(BaseModel):
-    recommendations: List[str] = Field(description="具体营养建议")
-    dietary_tips: List[str] = Field(description="饮食建议")
-    warnings: List[str] = Field(description="注意事项")
-    alternative_foods: List[str] = Field(description="推荐替代食物")
+    recommendations: List[str] = Field(default_factory=list, description="具体营养建议")
+    dietary_tips: List[str] = Field(default_factory=list, description="饮食建议")
+    warnings: List[str] = Field(default_factory=list, description="注意事项")
+    alternative_foods: List[str] = Field(default_factory=list, description="推荐替代食物")
+    action_items: List[ActionItem] = Field(default_factory=list, description="可执行行动项，含优先级")
 
 
 class AdviceDependencies(BaseModel):

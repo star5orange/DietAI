@@ -7,6 +7,10 @@ import '../../../../services/food_service.dart';
 import '../../../../services/saved_meal_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/presentation/widgets/food_image_preview.dart';
+import '../../../home/presentation/widgets/food_record_modal.dart';
+import '../../../camera/presentation/pages/camera_page.dart';
+import '../../../home/presentation/pages/meal_selection_page.dart';
+import '../../../home/presentation/pages/text_describe_page.dart';
 
 class HistoryPage extends ConsumerStatefulWidget {
   const HistoryPage({super.key});
@@ -20,11 +24,40 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   DateTime _selectedDate = DateTime.now();
   bool _isLoading = true;
   List<FoodRecord> _records = [];
+  String _searchQuery = '';
+  bool _showSearch = false;
+  int? _activeMealFilter;
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadRecords();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<FoodRecord> get _filteredRecords {
+    var records = _records;
+    if (_searchQuery.isNotEmpty) {
+      records = records
+          .where((r) =>
+              (r.foodName ?? '')
+                  .toLowerCase()
+                  .contains(_searchQuery.toLowerCase()) ||
+              (r.description ?? '')
+                  .toLowerCase()
+                  .contains(_searchQuery.toLowerCase()))
+          .toList();
+    }
+    if (_activeMealFilter != null) {
+      records = records.where((r) => r.mealType == _activeMealFilter).toList();
+    }
+    return records;
   }
 
   Future<void> _loadRecords() async {
@@ -67,29 +100,66 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('饮食记录'),
-        actions: [
-          IconButton(
-            icon: const Icon(LucideIcons.search),
-            onPressed: () {
-              // TODO: 搜索功能
-            },
-          ),
-          IconButton(
-            icon: const Icon(LucideIcons.filter),
-            onPressed: () {
-              // TODO: 筛选功能
-            },
-          ),
-          IconButton(
-            icon: const Icon(LucideIcons.testTube),
-            onPressed: () {
-              Navigator.pushNamed(context, '/history/test');
-            },
-          ),
-        ],
-      ),
+      appBar: _showSearch
+          ? AppBar(
+              title: TextField(
+                controller: _searchController,
+                autofocus: true,
+                style: const TextStyle(color: AppColors.textPrimary),
+                decoration: const InputDecoration(
+                  hintText: '搜索食物名称...',
+                  border: InputBorder.none,
+                  hintStyle: TextStyle(color: AppColors.textSecondary),
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _searchQuery = value;
+                  });
+                },
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(LucideIcons.x),
+                  onPressed: () {
+                    setState(() {
+                      _showSearch = false;
+                      _searchQuery = '';
+                      _searchController.clear();
+                    });
+                  },
+                ),
+              ],
+            )
+          : AppBar(
+              title: _activeMealFilter != null
+                  ? Text(_getMealName(_activeMealFilter!))
+                  : const Text('饮食记录'),
+              actions: [
+                IconButton(
+                  icon: const Icon(LucideIcons.search),
+                  onPressed: () {
+                    setState(() {
+                      _showSearch = true;
+                    });
+                  },
+                ),
+                IconButton(
+                  icon: Icon(
+                    _activeMealFilter != null
+                        ? LucideIcons.filterX
+                        : LucideIcons.filter,
+                    color: _activeMealFilter != null ? AppColors.primary : null,
+                  ),
+                  onPressed: () => _showFilterSheet(),
+                ),
+                IconButton(
+                  icon: const Icon(LucideIcons.testTube),
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/history/test');
+                  },
+                ),
+              ],
+            ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -159,8 +229,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                   ? const Center(child: CircularProgressIndicator())
                   : RefreshIndicator(
                       onRefresh: _loadRecords,
-                      child: _records.isEmpty
-                          ? const Center(
+                      child: _filteredRecords.isEmpty
+                          ? Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -171,7 +241,10 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                                   ),
                                   SizedBox(height: 16),
                                   Text(
-                                    '该日期暂无记录',
+                                    _searchQuery.isNotEmpty ||
+                                            _activeMealFilter != null
+                                        ? '没有匹配的记录'
+                                        : '该日期暂无记录',
                                     style: TextStyle(
                                       color: AppColors.textTertiary,
                                       fontSize: 16,
@@ -189,9 +262,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // TODO: 添加新记录
-        },
+        onPressed: () => _showFoodRecordModal(_getMealNameForNow()),
         child: const Icon(LucideIcons.plus),
       ),
     );
@@ -212,6 +283,201 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     }
   }
 
+  String _getMealNameForNow() {
+    final hour = DateTime.now().hour;
+    if (hour < 10) return '早餐';
+    if (hour < 14) return '午餐';
+    if (hour < 20) return '晚餐';
+    return '零食';
+  }
+
+  void _showFilterSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '按餐次筛选',
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _buildFilterChip(null, '全部'),
+                    _buildFilterChip(1, '早餐'),
+                    _buildFilterChip(2, '午餐'),
+                    _buildFilterChip(3, '晚餐'),
+                    _buildFilterChip(4, '零食'),
+                  ],
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFilterChip(int? mealType, String label) {
+    final isSelected = _activeMealFilter == mealType;
+    return GestureDetector(
+      onTap: () {
+        Navigator.pop(context);
+        setState(() {
+          _activeMealFilter = mealType;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.primary.withValues(alpha: 0.15)
+              : AppColors.backgroundSecondary,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.divider,
+            width: 1.5,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? AppColors.primary : AppColors.textSecondary,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+            fontSize: 14,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showFoodRecordModal(String mealName) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => FoodRecordModal(
+        mealName: mealName,
+        onRecordMethod: (method) {
+          Navigator.pop(context);
+          _handleRecordMethod(method, mealName);
+        },
+      ),
+    );
+  }
+
+  void _handleRecordMethod(String method, String mealName) {
+    final mealType = _getMealTypeFromName(mealName);
+    _showTimePicker(method, mealName, mealType);
+  }
+
+  Future<void> _showTimePicker(
+      String method, String mealName, int mealType) async {
+    final now = DateTime.now();
+    final initialTime = TimeOfDay(hour: now.hour, minute: now.minute);
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+      helpText: '选择用餐时间',
+      cancelText: '取消',
+      confirmText: '确定',
+    );
+
+    if (picked != null && mounted) {
+      final selectedTime = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        picked.hour,
+        picked.minute,
+      );
+      _executeRecordMethod(
+          method, mealName, mealType, selectedTime.toIso8601String());
+    }
+  }
+
+  Future<void> _executeRecordMethod(
+      String method, String mealName, int mealType,
+      [String? recordTime]) async {
+    final dateStr =
+        '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+    switch (method) {
+      case 'ai_scan':
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => CameraPage(
+                    mealName: mealName,
+                    mealType: mealType,
+                    recordDate: dateStr,
+                    recordTime: recordTime))).then((_) => _loadRecords());
+        break;
+      case 'text_describe':
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => TextDescribePage(
+                    mealName: mealName,
+                    mealType: mealType,
+                    recordDate: dateStr,
+                    recordTime: recordTime))).then((result) {
+          if (result == true) _loadRecords();
+        });
+        break;
+      case 'voice_record':
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('语音记录功能即将推出，敬请期待'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+        break;
+      case 'saved_meals':
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) =>
+                    MealSelectionPage(recordMethod: method))).then((result) {
+          if (result != null) {
+            // TODO: 处理从常用餐食选择的记录
+            _loadRecords();
+          }
+        });
+        break;
+    }
+  }
+
+  int _getMealTypeFromName(String name) {
+    switch (name) {
+      case '早餐':
+        return 1;
+      case '午餐':
+        return 2;
+      case '晚餐':
+        return 3;
+      case '零食':
+        return 4;
+      default:
+        return 4;
+    }
+  }
+
   Future<void> _selectDate() async {
     final pickedDate = await showDatePicker(
       context: context,
@@ -229,9 +495,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   }
 
   List<Widget> _buildMealSections() {
-    // 按餐次分组记录
+    final records = _filteredRecords;
     final Map<int, List<FoodRecord>> mealGroups = {};
-    for (final record in _records) {
+    for (final record in records) {
       if (!mealGroups.containsKey(record.mealType)) {
         mealGroups[record.mealType] = [];
       }
@@ -387,16 +653,19 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                   ),
                 ),
                 const Spacer(),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    LucideIcons.plus,
-                    color: color,
-                    size: 18,
+                GestureDetector(
+                  onTap: () => _showFoodRecordModal(title),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      LucideIcons.plus,
+                      color: color,
+                      size: 18,
+                    ),
                   ),
                 ),
               ],

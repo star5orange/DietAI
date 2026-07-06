@@ -5,6 +5,7 @@ from typing import Optional, List
 from shared.models.database import get_db
 from shared.utils.auth import get_current_user
 from shared.models.schemas.wellness import DailyWellnessRecommendation, SolarTermOut
+from shared.models.schemas.base import BaseResponse
 from shared.services.wellness_service import (
     get_daily_wellness_recommendation,
     generate_ai_wellness_recommendation,
@@ -56,9 +57,28 @@ async def wellness_tips_endpoint(
 ):
     """随机获取养生知识卡片。匹配用户体质优先返回。"""
     tips = get_wellness_tips(db, constitution_type, limit)
-    from shared.models.schemas.base import BaseResponse
     return BaseResponse(
         success=True,
         message=f"获取到 {len(tips)} 条养生知识",
         data=tips,
+    )
+
+
+@router.get("/current-solar-term", response_model=BaseResponse)
+async def current_solar_term(
+    user=Depends(get_current_user),
+):
+    """获取当前节气信息，包含节气名、季节、养生要点、下一节气。
+    前端可据此判断节气是否切换并展示通知。
+    """
+    from agent.common_utils.solar_term_utils import get_current_solar_term, get_upcoming_solar_term
+
+    info = get_current_solar_term()
+    # 附带即将到来的节气提醒
+    upcoming = get_upcoming_solar_term(days_ahead=3)
+    info["upcoming"] = upcoming
+    return BaseResponse(
+        success=True,
+        message="获取当前节气信息成功",
+        data=info,
     )

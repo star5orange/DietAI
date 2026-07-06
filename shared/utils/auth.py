@@ -10,7 +10,7 @@ import hashlib
 
 from ..config.settings import get_settings
 from ..models.database import get_db
-from ..models.user_models import User
+from ..models.user_models import User, _blind_index
 
 settings = get_settings()
 security = HTTPBearer()
@@ -221,9 +221,11 @@ def get_current_user_optional(
 def authenticate_user(db: Session, username: str, password: str) -> Optional[User]:
     """验证用户"""
     # 支持用户名或邮箱登录
-    user = db.query(User).filter(
-        (User.username == username) | (User.email == username)
-    ).first()
+    # 用户名明文可查，邮箱需走盲索引
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        email_hash = _blind_index(username)
+        user = db.query(User).filter(User.email_hash == email_hash).first()
     
     if not user:
         return None
@@ -243,15 +245,17 @@ def create_user(db: Session, username: str, email: str, password: str, phone: st
             detail="用户名已存在"
         )
     
-    # 检查邮箱是否已存在
-    if db.query(User).filter(User.email == email).first():
+    # 检查邮箱是否已存在（通过盲索引）
+    email_hash = _blind_index(email)
+    if db.query(User).filter(User.email_hash == email_hash).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="邮箱已存在"
         )
     
-    # 检查手机号是否已存在
-    if phone and db.query(User).filter(User.phone == phone).first():
+    # 检查手机号是否已存在（通过盲索引）
+    phone_hash = _blind_index(phone) if phone else None
+    if phone_hash and db.query(User).filter(User.phone_hash == phone_hash).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="手机号已存在"
@@ -262,7 +266,9 @@ def create_user(db: Session, username: str, email: str, password: str, phone: st
     user = User(
         username=username,
         email=email,
+        email_hash=email_hash,
         phone=phone,
+        phone_hash=phone_hash,
         password_hash=hashed_password
     )
     

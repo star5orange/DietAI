@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'dart:async';
 import '../../../../services/food_service.dart';
+import '../../../../services/goal_tracking_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/presentation/widgets/error_handler.dart';
 import '../../../chat/presentation/pages/chat_page.dart';
@@ -27,10 +28,12 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
     with TickerProviderStateMixin {
   int _servingCount = 1;
   final FoodService _foodService = FoodService();
+  final GoalTrackingService _goalService = GoalTrackingService();
   String? _imageUrl;
   bool _isLoading = true;
   bool _hasError = false;
   String _errorMessage = '';
+  double _targetCalories = 0; // 每日卡路里目标
   
   // 流式分析相关
   FoodRecord? _currentRecord;
@@ -87,11 +90,28 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
   }
 
   void _initializeAnalysis() {
+    _loadDailyTarget();
     if (widget.foodRecord != null) {
       _currentRecord = widget.foodRecord;
       _checkLoadingState();
     } else if (widget.analysisStream != null) {
       _listenToAnalysisStream();
+    }
+  }
+
+  Future<void> _loadDailyTarget() async {
+    try {
+      final result = await _goalService.getDailyStatus();
+      if (result.success && result.data != null) {
+        final targets = result.data!['daily_targets'] as Map<String, dynamic>?;
+        if (targets != null && mounted) {
+          setState(() {
+            _targetCalories = (targets['calories'] as num?)?.toDouble() ?? 0;
+          });
+        }
+      }
+    } catch (e) {
+      // 非关键功能，静默失败
     }
   }
 
@@ -277,6 +297,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
         'dietary_advice': recommendations['dietary_tips'] ?? [],
         'warnings': recommendations['warnings'] ?? [],
         'alternative_foods': recommendations['alternative_foods'] ?? [],
+        'action_items': recommendations['action_items'] ?? [],
       };
     }
   }
@@ -423,6 +444,9 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
         'dietary_advice': analysisResult.recommendations.dietaryTips ?? [],
         'warnings': analysisResult.recommendations.warnings ?? [],
         'alternative_foods': analysisResult.recommendations.alternativeFoods ?? [],
+        'action_items': (analysisResult.recommendations.actionItems ?? [])
+            .map((item) => {'action': item.action, 'priority': item.priority})
+            .toList(),
       };
     } else if (record.nutritionDetail != null) {
       // 如果没有AI分析结果，但有营养详情，则使用营养详情数据
@@ -445,6 +469,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
         'dietary_advice': ['请保持均衡饮食'],
         'warnings': [],
         'alternative_foods': [],
+        'action_items': [],
       };
     }
   }
@@ -1009,92 +1034,176 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
   }
   
   Widget _buildCaloriesAndServingCard() {
+    final actualCalories = (_totalCalories * _servingCount).round();
+    final budgetPercent = _targetCalories > 0
+        ? (actualCalories / _targetCalories * 100).round()
+        : 0;
+    final budgetColor = budgetPercent > 100
+        ? const Color(0xFFFF6B6B)
+        : budgetPercent > 70
+            ? const Color(0xFFFFA726)
+            : const Color(0xFF2BAF74);
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
         padding: const EdgeInsets.all(20),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Column(
           children: [
-            // 卡路里信息
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF2BAF74),
-                borderRadius: BorderRadius.circular(50),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    LucideIcons.flame,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${(_totalCalories * _servingCount).round()} 卡路里',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            
-            // 份量控制器
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  '份量',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF222222),
-                  ),
-                ),
-                const SizedBox(width: 12),
+                // 卡路里信息
                 Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE6FAF0),
+                    color: const Color(0xFF2BAF74),
                     borderRadius: BorderRadius.circular(50),
                   ),
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        onPressed: _servingCount > 1 ? () {
-                          setState(() => _servingCount--);
-                        } : null,
-                        icon: const Icon(LucideIcons.minus, size: 16),
-                        color: const Color(0xFF2BAF74),
+                      const Icon(
+                        LucideIcons.flame,
+                        color: Colors.white,
+                        size: 20,
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: Text(
-                          '$_servingCount',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF222222),
-                          ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$actualCalories 卡路里',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
                         ),
-                      ),
-                      IconButton(
-                        onPressed: () {
-                          setState(() => _servingCount++);
-                        },
-                        icon: const Icon(LucideIcons.plus, size: 16),
-                        color: const Color(0xFF2BAF74),
                       ),
                     ],
                   ),
                 ),
+                
+                // 份量控制器
+                Row(
+                  children: [
+                    const Text(
+                      '份量',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF222222),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE6FAF0),
+                        borderRadius: BorderRadius.circular(50),
+                      ),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            onPressed: _servingCount > 1 ? () {
+                              setState(() => _servingCount--);
+                            } : null,
+                            icon: const Icon(LucideIcons.minus, size: 16),
+                            color: const Color(0xFF2BAF74),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            child: Text(
+                              '$_servingCount',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF222222),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () {
+                              setState(() => _servingCount++);
+                            },
+                            icon: const Icon(LucideIcons.plus, size: 16),
+                            color: const Color(0xFF2BAF74),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
+            
+            // 热量预算占比
+            if (_targetCalories > 0) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: budgetColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          budgetPercent > 100
+                              ? LucideIcons.alertTriangle
+                              : LucideIcons.target,
+                          size: 16,
+                          color: budgetColor,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '占每日目标 ${_targetCalories.round()} kcal 的 $budgetPercent%',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: budgetColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: (budgetPercent / 100).clamp(0.0, 1.0),
+                        backgroundColor: const Color(0xFFE6FAF0),
+                        valueColor: AlwaysStoppedAnimation<Color>(budgetColor),
+                        minHeight: 6,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          budgetPercent > 100
+                              ? '已超出每日目标 ${actualCalories - _targetCalories.round()} kcal'
+                              : '剩余 ${_targetCalories.round() - actualCalories} kcal 可摄入',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: budgetColor,
+                          ),
+                        ),
+                        Text(
+                          '$budgetPercent%',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: budgetColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -1207,13 +1316,54 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
     );
   }
   
+  Map<String, dynamic> _getPriorityConfig(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'high':
+        return {
+          'label': '紧急',
+          'bgColor': const Color(0xFFFFEBEE),
+          'textColor': const Color(0xFFD32F2F),
+        };
+      case 'medium':
+        return {
+          'label': '建议',
+          'bgColor': const Color(0xFFFFF8E1),
+          'textColor': const Color(0xFFF57C00),
+        };
+      case 'low':
+        return {
+          'label': '可选',
+          'bgColor': const Color(0xFFE6FAF0),
+          'textColor': const Color(0xFF2BAF74),
+        };
+      default:
+        return {
+          'label': '建议',
+          'bgColor': const Color(0xFFFFF8E1),
+          'textColor': const Color(0xFFF57C00),
+        };
+    }
+  }
+
   Widget _buildAIRecommendationsCard() {
     final healthTips = _recommendations['health_tips'] as List? ?? [];
     final dietaryAdvice = _recommendations['dietary_advice'] as List? ?? [];
+    final actionItemsRaw = _recommendations['action_items'] as List? ?? [];
     
-    if (healthTips.isEmpty && dietaryAdvice.isEmpty) {
+    if (healthTips.isEmpty && dietaryAdvice.isEmpty && actionItemsRaw.isEmpty) {
       return const SizedBox.shrink();
     }
+    
+    // 解析行动项
+    final actionItems = actionItemsRaw.map((item) {
+      if (item is Map<String, dynamic>) {
+        return ActionItem(
+          action: item['action'] as String? ?? '',
+          priority: item['priority'] as String? ?? 'medium',
+        );
+      }
+      return null;
+    }).whereType<ActionItem>().toList();
     
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -1260,6 +1410,80 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                 ),
               ],
             ),
+            
+            // 行动项（优先展示）
+            if (actionItems.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF8E1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFFE082), width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          LucideIcons.listChecks,
+                          size: 16,
+                          color: Color(0xFFF57C00),
+                        ),
+                        const SizedBox(width: 6),
+                        const Text(
+                          '建议行动',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFF57C00),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ...actionItems.map((item) {
+                      final priorityConfig = _getPriorityConfig(item.priority);
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: priorityConfig['bgColor'],
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                priorityConfig['label'],
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: priorityConfig['textColor'],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                item.action,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF222222),
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ],
+                ),
+              ),
+            ],
             
             const SizedBox(height: 16),
             

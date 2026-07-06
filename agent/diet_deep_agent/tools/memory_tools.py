@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 def learn_preference(
     user_id: int,
     preference_type: Literal[
-        "allergy", "food_like", "food_dislike", "behavior", "style"
+        "allergy", "food_like", "food_dislike", "behavior", "style",
+        "constitution", "crowd_tag"
     ],
     value: str,
     confidence: float = 1.0,
@@ -37,6 +38,8 @@ def learn_preference(
             - food_dislike: 不喜欢的食物
             - behavior: 行为模式（如"常跳早餐"）
             - style: 沟通风格偏好
+            - constitution: 体质类型（如"气虚"、"痰湿"等九种体质之一）
+            - crowd_tag: 人群标签（如"减脂"、"健身"等，逗号分隔多选）
         value: 偏好内容
         confidence: 置信度（0-1，1.0=用户明确说的，<1.0=推断的）
         source: 来源（explicit=用户说的，inferred=推断的，observed=行为观察）
@@ -99,6 +102,34 @@ def _store_explicit_preference(db, user_id: int, ptype: str, value: str):
                 )
                 db.add(allergy)
                 logger.info(f"Added allergy for user {user_id}: {value}")
+
+        elif ptype == "constitution":
+            from shared.models.user_models import UserProfile
+
+            profile = db.query(UserProfile).filter(
+                UserProfile.user_id == user_id
+            ).first()
+            if profile:
+                profile.constitution_type = value
+                logger.info(f"Updated constitution for user {user_id}: {value}")
+
+        elif ptype == "crowd_tag":
+            from shared.models.user_models import UserProfile
+
+            profile = db.query(UserProfile).filter(
+                UserProfile.user_id == user_id
+            ).first()
+            if profile:
+                # Append to existing tags (comma-separated)
+                existing_tags = profile.crowd_tag or ""
+                if existing_tags:
+                    tag_list = [t.strip() for t in existing_tags.split(",")]
+                    if value not in tag_list:
+                        tag_list.append(value)
+                        profile.crowd_tag = ",".join(tag_list)
+                else:
+                    profile.crowd_tag = value
+                logger.info(f"Updated crowd_tag for user {user_id}: {profile.crowd_tag}")
 
         elif ptype in ("food_like", "food_dislike", "behavior", "style"):
             # 这些偏好目前通过 MD 文件管理，不写 DB

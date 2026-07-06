@@ -10,6 +10,7 @@ class ExerciseRecord {
   final String? notes;
   final String recordedAt;
   final String createdAt;
+  final Map<String, dynamic>? strengthDetail;
 
   ExerciseRecord({
     required this.id,
@@ -20,6 +21,7 @@ class ExerciseRecord {
     this.notes,
     required this.recordedAt,
     required this.createdAt,
+    this.strengthDetail,
   });
 
   factory ExerciseRecord.fromJson(Map<String, dynamic> json) {
@@ -33,6 +35,7 @@ class ExerciseRecord {
       notes: json['notes'] as String?,
       recordedAt: (json['recorded_at'] ?? json['record_date'] ?? '').toString(),
       createdAt: (json['created_at'] ?? '').toString(),
+      strengthDetail: json['strength_detail'] as Map<String, dynamic>?,
     );
   }
 
@@ -46,6 +49,7 @@ class ExerciseRecord {
       'notes': notes,
       'recorded_at': recordedAt,
       'created_at': createdAt,
+      if (strengthDetail != null) 'strength_detail': strengthDetail,
     };
   }
 

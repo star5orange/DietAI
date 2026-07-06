@@ -114,6 +114,7 @@ class ReminderService {
       hour: record.hour,
       minute: record.minute,
       repeatDays: record.repeatDays,
+      reminderType: record.type,
     );
   }
 

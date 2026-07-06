@@ -156,6 +156,8 @@ class SyncService:
                 height=float(profile.height) if profile.height else 170.0,
                 weight=float(profile.weight) if profile.weight else 70.0,
                 activity_level=ActivityLevel(profile.activity_level) if profile.activity_level else ActivityLevel.LIGHT,
+                crowd_tag=profile.crowd_tag if profile.crowd_tag else None,
+                constitution_type=profile.constitution_type if profile.constitution_type else None,
                 allergies=allergies,
                 diseases=diseases,
                 medications=[],  # Would need medication table
@@ -415,13 +417,71 @@ class SyncService:
                         health_level="A"  # Would need health level field
                     ))
 
+            # Calculate nutrition trends (current week vs last week)
+            nutrition_trends = []
+            fourteen_days_ago = date.today() - timedelta(days=14)
+            all_summaries = self.db.query(DailyNutritionSummary).filter(
+                DailyNutritionSummary.user_id == user_id,
+                DailyNutritionSummary.summary_date >= fourteen_days_ago
+            ).all()
+
+            if all_summaries:
+                seven_days_ago_date = date.today() - timedelta(days=7)
+                current_week = [s for s in all_summaries if s.summary_date >= seven_days_ago_date]
+                last_week = [s for s in all_summaries if s.summary_date < seven_days_ago_date]
+
+                def _avg(values: list, key: str) -> float:
+                    vals = [float(getattr(s, key, 0) or 0) for s in values]
+                    return round(sum(vals) / len(vals), 1) if vals else 0
+
+                # Calorie trend
+                if current_week:
+                    cur_cal = _avg(current_week, "total_calories")
+                    lst_cal = _avg(last_week, "total_calories") if last_week else cur_cal
+                    trend_arrow = "↑" if cur_cal > lst_cal * 1.05 else "↓" if cur_cal < lst_cal * 0.95 else "→"
+                    nutrition_trends.append(NutritionTrend(
+                        metric="日均热量", current_week=cur_cal, last_week=lst_cal, trend=trend_arrow
+                    ))
+
+                    # Protein trend
+                    cur_pro = _avg(current_week, "total_protein")
+                    lst_pro = _avg(last_week, "total_protein") if last_week else cur_pro
+                    trend_arrow = "↑" if cur_pro > lst_pro * 1.05 else "↓" if cur_pro < lst_pro * 0.95 else "→"
+                    nutrition_trends.append(NutritionTrend(
+                        metric="日均蛋白质", current_week=cur_pro, last_week=lst_pro, trend=trend_arrow
+                    ))
+
+                    # Carb trend
+                    cur_carb = _avg(current_week, "total_carbohydrates")
+                    lst_carb = _avg(last_week, "total_carbohydrates") if last_week else cur_carb
+                    trend_arrow = "↑" if cur_carb > lst_carb * 1.05 else "↓" if cur_carb < lst_carb * 0.95 else "→"
+                    nutrition_trends.append(NutritionTrend(
+                        metric="日均碳水", current_week=cur_carb, last_week=lst_carb, trend=trend_arrow
+                    ))
+
+                    # Fat trend
+                    cur_fat = _avg(current_week, "total_fat")
+                    lst_fat = _avg(last_week, "total_fat") if last_week else cur_fat
+                    trend_arrow = "↑" if cur_fat > lst_fat * 1.05 else "↓" if cur_fat < lst_fat * 0.95 else "→"
+                    nutrition_trends.append(NutritionTrend(
+                        metric="日均脂肪", current_week=cur_fat, last_week=lst_fat, trend=trend_arrow
+                    ))
+
+                    # Meal regularity trend (days with records / 7)
+                    cur_regularity = round(len(current_week) / 7 * 100, 0)
+                    lst_regularity = round(len(last_week) / 7 * 100, 0) if last_week else cur_regularity
+                    trend_arrow = "↑" if cur_regularity > lst_regularity else "↓" if cur_regularity < lst_regularity else "→"
+                    nutrition_trends.append(NutritionTrend(
+                        metric="饮食规律性(%)", current_week=cur_regularity, last_week=lst_regularity, trend=trend_arrow
+                    ))
+
             # Build nutrition workspace data
             nutrition_data = NutritionWorkspaceData(
                 user_id=user_id,
                 last_updated=datetime.now(),
                 diet_summary=diet_summary,
                 frequent_foods=frequent_foods,
-                nutrition_trends=[],  # Would need more complex calculation
+                nutrition_trends=nutrition_trends,
                 recent_analyses=recent_analyses
             )
 

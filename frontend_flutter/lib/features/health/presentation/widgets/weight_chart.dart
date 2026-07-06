@@ -73,16 +73,17 @@ class WeightChart extends ConsumerWidget {
 
         // 计算合适的Y轴范围
         final weightRange = maxWeight - minWeight;
-        final padding = weightRange * 0.1; // 10%的padding
+        final padding = weightRange == 0 ? 1.0 : weightRange * 0.1; // 单条数据时padding为1kg
         final yMin = (minWeight - padding).clamp(0.0, double.infinity).toDouble();
         final yMax = (maxWeight + padding).toDouble();
+        final yInterval = ((yMax - yMin) / 4).clamp(0.1, double.infinity);
 
         return LineChart(
           LineChartData(
             gridData: FlGridData(
               show: true,
               drawVerticalLine: false,
-              horizontalInterval: (yMax - yMin) / 4,
+              horizontalInterval: yInterval,
               getDrawingHorizontalLine: (value) {
                 return FlLine(
                   color: AppColors.divider.withValues(alpha: 0.3),
@@ -95,7 +96,7 @@ class WeightChart extends ConsumerWidget {
                 sideTitles: SideTitles(
                   showTitles: true,
                   reservedSize: 40,
-                  interval: (yMax - yMin) / 4,
+                  interval: yInterval,
                   getTitlesWidget: (value, meta) {
                     return Text(
                       '${value.toStringAsFixed(1)}kg',
@@ -111,7 +112,7 @@ class WeightChart extends ConsumerWidget {
                 sideTitles: SideTitles(
                   showTitles: true,
                   reservedSize: 30,
-                  interval: (filteredRecords.length / 4).clamp(1, double.infinity),
+                  interval: (filteredRecords.length / 4).ceilToDouble().clamp(1, double.infinity),
                   getTitlesWidget: (value, meta) {
                     final index = value.toInt();
                     if (index >= 0 && index < filteredRecords.length) {
@@ -143,7 +144,7 @@ class WeightChart extends ConsumerWidget {
               show: false,
             ),
             minX: 0,
-            maxX: (filteredRecords.length - 1).toDouble(),
+            maxX: (filteredRecords.length - 1).toDouble().clamp(0, double.infinity),
             minY: yMin,
             maxY: yMax,
             lineBarsData: [

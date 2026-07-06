@@ -171,6 +171,46 @@ class CacheManager {
     }
   }
 
+  /// 按前缀批量失效缓存（写操作后调用）
+  /// 例如：invalidateCacheByPrefix('daily_summary') 清除所有日常汇总缓存
+  Future<void> invalidateCacheByPrefix(String prefix) async {
+    // 清除内存缓存
+    _memoryCache.removeWhere((key, _) => key.contains(prefix));
+
+    // 清除本地缓存
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getKeys().where((k) => k.contains(prefix));
+      for (final key in keys) {
+        await prefs.remove(key);
+      }
+    } catch (e) {
+      debugPrint('按前缀失效缓存失败: $e');
+    }
+  }
+
+  /// 失效与饮食记录相关的缓存（添加/修改/删除饮食记录后调用）
+  Future<void> invalidateFoodCaches() async {
+    await invalidateCacheByPrefix('daily_summary');
+    await invalidateCacheByPrefix('food_records');
+    await invalidateCacheByPrefix('nutrition');
+    removeMemoryCache('home_data');
+  }
+
+  /// 失效与运动记录相关的缓存（添加/修改/删除运动记录后调用）
+  Future<void> invalidateExerciseCaches() async {
+    await invalidateCacheByPrefix('exercise');
+    await invalidateCacheByPrefix('daily_summary');
+    removeMemoryCache('home_data');
+  }
+
+  /// 失效与饮水记录相关的缓存（添加饮水记录后调用）
+  Future<void> invalidateWaterCaches() async {
+    await invalidateCacheByPrefix('water');
+    await invalidateCacheByPrefix('daily_summary');
+    removeMemoryCache('home_data');
+  }
+
   /// 获取缓存统计信息
   Map<String, dynamic> getCacheStats() {
     return {

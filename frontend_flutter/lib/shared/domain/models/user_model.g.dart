@@ -184,22 +184,24 @@ UserProfileUpdateRequest _$UserProfileUpdateRequestFromJson(
 Map<String, dynamic> _$UserProfileUpdateRequestToJson(
         UserProfileUpdateRequest instance) =>
     <String, dynamic>{
-      'real_name': instance.realName,
-      'gender': instance.gender,
-      'birth_date': instance.birthDate,
-      'height': instance.height,
-      'weight': instance.weight,
-      'activity_level': instance.activityLevel,
-      'occupation': instance.occupation,
-      'region': instance.region,
-      'dietary_preferences': instance.dietaryPreferences,
-      'food_dislikes': instance.foodDislikes,
-      'wake_up_time': instance.wakeUpTime,
-      'sleep_time': instance.sleepTime,
-      'meal_times': instance.mealTimes,
-      'health_status': instance.healthStatus,
-      'constitution_type': instance.constitutionType,
-      'crowd_tag': instance.crowdTag,
+      if (instance.realName case final value?) 'real_name': value,
+      if (instance.gender case final value?) 'gender': value,
+      if (instance.birthDate case final value?) 'birth_date': value,
+      if (instance.height case final value?) 'height': value,
+      if (instance.weight case final value?) 'weight': value,
+      if (instance.activityLevel case final value?) 'activity_level': value,
+      if (instance.occupation case final value?) 'occupation': value,
+      if (instance.region case final value?) 'region': value,
+      if (instance.dietaryPreferences case final value?)
+        'dietary_preferences': value,
+      if (instance.foodDislikes case final value?) 'food_dislikes': value,
+      if (instance.wakeUpTime case final value?) 'wake_up_time': value,
+      if (instance.sleepTime case final value?) 'sleep_time': value,
+      if (instance.mealTimes case final value?) 'meal_times': value,
+      if (instance.healthStatus case final value?) 'health_status': value,
+      if (instance.constitutionType case final value?)
+        'constitution_type': value,
+      if (instance.crowdTag case final value?) 'crowd_tag': value,
     };
 
 HealthGoal _$HealthGoalFromJson(Map<String, dynamic> json) => HealthGoal(

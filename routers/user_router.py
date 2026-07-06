@@ -95,9 +95,11 @@ def format_profile_data(profile: UserProfile) -> dict:
         "sleep_time": None,
         "meal_times": None,
         "health_status": 1,  # 默认健康状态
-        "onboarding_completed": False,  # 默认未完成引导
-        "onboarding_step": 0,  # 默认引导步骤
+        "onboarding_completed": profile.onboarding_completed if profile.onboarding_completed is not None else False,
+        "onboarding_step": profile.onboarding_step if profile.onboarding_step is not None else 0,
         "constitution_type": profile.constitution_type,
+        "crowd_tag": profile.crowd_tag,
+        "daily_water_goal": profile.daily_water_goal,
     }
 
 

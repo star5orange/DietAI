@@ -3,16 +3,31 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
 from .database import Base
+from .encrypted_columns import EncryptedString, EncryptedText
+from ..utils.field_encryption import encrypt_field
+import hashlib
+
+
+def _blind_index(value: str | None) -> str | None:
+    """对明文做 HMAC-SHA256 盲索引，用于加密字段的唯一约束和查询"""
+    if value is None:
+        return None
+    from ..config.settings import get_settings
+    settings = get_settings()
+    key = settings.field_encryption_key.encode()
+    return hashlib.sha256(key + value.encode()).hexdigest()[:64]
 
 
 class User(Base):
     """用户表"""
     __tablename__ = "users"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
-    email = Column(String(100), unique=True, index=True, nullable=True)
-    phone = Column(String(20), unique=True, index=True, nullable=True)
+    email = Column(EncryptedString(100), nullable=True)
+    email_hash = Column(String(64), unique=True, nullable=True, index=True)  # 盲索引，用于唯一约束和查询
+    phone = Column(EncryptedString(20), nullable=True)
+    phone_hash = Column(String(64), unique=True, nullable=True, index=True)  # 盲索引
     password_hash = Column(String(255), nullable=False)
     avatar_url = Column(String(500), nullable=True)
     status = Column(Integer, default=1)  # 1:正常 2:禁用 3:删除
@@ -38,15 +53,15 @@ class UserProfile(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
-    real_name = Column(String(100), nullable=True)
+    real_name = Column(EncryptedString(100), nullable=True)
     gender = Column(Integer, nullable=True)  # 1:男 2:女 3:其他
     birth_date = Column(Date, nullable=True)
     height = Column(Numeric(5, 2), nullable=True)  # 身高(cm)
     weight = Column(Numeric(5, 2), nullable=True)  # 体重(kg)
     bmi = Column(Numeric(4, 2), nullable=True)  # BMI
     activity_level = Column(Integer, default=2)  # 1:久坐 2:轻度 3:中度 4:重度 5:超重度
-    occupation = Column(String(100), nullable=True)
-    region = Column(String(100), nullable=True)
+    occupation = Column(EncryptedString(100), nullable=True)
+    region = Column(EncryptedString(100), nullable=True)
     
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
@@ -84,12 +99,12 @@ class Disease(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    disease_code = Column(String(20), nullable=True)  # ICD-10编码
-    disease_name = Column(String(200), nullable=False)
+    disease_code = Column(EncryptedString(20), nullable=True)  # ICD-10编码
+    disease_name = Column(EncryptedString(200), nullable=False)
     severity_level = Column(Integer, nullable=True)  # 1:轻度 2:中度 3:重度
     diagnosed_date = Column(Date, nullable=True)
     is_current = Column(Boolean, default=True)
-    notes = Column(Text, nullable=True)
+    notes = Column(EncryptedText, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     
@@ -104,9 +119,9 @@ class Allergy(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     allergen_type = Column(Integer, nullable=False)  # 1:食物 2:药物 3:环境 4:其他
-    allergen_name = Column(String(100), nullable=False)
+    allergen_name = Column(EncryptedString(100), nullable=False)
     severity_level = Column(Integer, nullable=True)  # 1:轻度 2:中度 3:重度
-    reaction_description = Column(Text, nullable=True)
+    reaction_description = Column(EncryptedText, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     
@@ -125,7 +140,7 @@ class WeightRecord(Base):
     muscle_mass = Column(Numeric(5, 2), nullable=True)  # 肌肉量
     bmi = Column(Numeric(4, 2), nullable=True)
     measured_at = Column(DateTime, default=func.now())
-    notes = Column(Text, nullable=True)
+    notes = Column(EncryptedText, nullable=True)
     device_type = Column(String(50), nullable=True)  # 测量设备类型
     created_at = Column(DateTime, default=func.now())
     

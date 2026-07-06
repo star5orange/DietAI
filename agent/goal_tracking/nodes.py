@@ -235,6 +235,10 @@ async def generate_suggestions_node(state: GoalTrackingState) -> GoalTrackingSta
 
 请根据用户的数据提供3-5条具体、可执行的建议。如果有需要警告的情况（如营养不足、超标等），也请指出。
 
+如果提供了人群标签或体质类型，请结合这些信息给出针对性建议：
+- 人群标签（如减脂、健身、孕妇等）：调整建议方向
+- 体质类型（如气虚、痰湿、阴虚等）：结合中医体质调理思路
+
 回答格式：
 建议：
 1. [具体建议]
@@ -387,6 +391,16 @@ def _build_suggestion_context(state: GoalTrackingState) -> str:
         parts.append(f"当前目标: {goal_name}")
         if goal.get("target_weight"):
             parts.append(f"目标体重: {goal['target_weight']} kg")
+
+    # 体质与人群标签
+    user_memory = state.get("user_memory", "")
+    if user_memory:
+        for line in user_memory.split("\n"):
+            line = line.strip()
+            if line.startswith("- 人群标签:"):
+                parts.append(f"人群标签: {line.split(':', 1)[1].strip()}")
+            elif line.startswith("- 体质类型:"):
+                parts.append(f"体质类型: {line.split(':', 1)[1].strip()}")
 
     # Daily targets
     if state.get("macro_targets"):

@@ -53,6 +53,7 @@ class WaterService {
   Future<ApiResponse<WaterIntakeRecord>> addWaterIntake({
     required int amountMl,
     String? notes,
+    String? drinkType,
     DateTime? recordedAt,
   }) async {
     try {
@@ -60,7 +61,7 @@ class WaterService {
       final data = <String, dynamic>{
         'amount_ml': amountMl,
         'record_time': recordTime.toIso8601String(),
-        'drink_type': notes ?? '水',
+        'drink_type': drinkType ?? notes ?? '水',
       };
 
       debugPrint('[WaterService] POST /water/records data=$data');

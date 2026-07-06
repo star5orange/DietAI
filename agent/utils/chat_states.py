@@ -9,7 +9,7 @@ class ChatState(TypedDict):
     # 输入信息
     user_message: str
     session_id: Optional[str]
-    session_type: int  # 1:营养咨询 2:健康评估 3:食物识别 4:运动建议
+    session_type: int  # 1:营养咨询 2:健康评估 3:食物识别 4:运动建议 5:养生咨询
     user_id: int
     
     # 上下文信息
@@ -17,6 +17,9 @@ class ChatState(TypedDict):
     user_context: Optional[Dict]  # 用户档案、健康目标等
     recent_meals: Optional[List[Dict]]  # 最近的饮食记录
     health_goals: Optional[Dict]  # 健康目标
+    weekly_trends: Optional[Dict]  # 一周饮食趋势数据
+    crowd_tag: Optional[str]  # 人群标签（如"减脂,健身"）
+    constitution_type: Optional[str]  # 体质类型（如"气虚","痰湿"）
     
     # 处理过程
     context_analysis: Optional[str]  # 上下文分析结果
@@ -41,3 +44,4 @@ class ChatInputState(TypedDict):
     user_context: Optional[Dict]
     recent_meals: Optional[List[Dict]]
     health_goals: Optional[Dict]
+    weekly_trends: Optional[Dict]

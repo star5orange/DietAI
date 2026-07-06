@@ -101,6 +101,7 @@ android/local.properties
 android/**/GeneratedPluginRegistrant.java
 android/key.properties
 *.aab
+android_sdk/
 
 # Web
 web/icons/Icon-192.png
@@ -191,10 +192,15 @@ $RECYCLE.BIN/
 # ==========================================
 # Documentation & Personal Files
 # ==========================================
-docs/
+# docs/
 CLAUDE.local.md
 *.draft.md
 notes/
+
+# ==========================================
+# ESP32 Firmware (暂不上传)
+# ==========================================
+firmware/
 
 # ==========================================
 # Logs & Runtime
@@ -231,6 +237,11 @@ coverage/
 *.tar.gz
 *.zip
 *.7z
+
+# ==========================================
+# AI Agent User Memory (用户隐私数据)
+# ==========================================
+agent/UserMemory/
 nul
 .claude/
 .mcp.json

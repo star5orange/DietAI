@@ -76,42 +76,44 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
         ),
       ),
       child: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 16,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-          ),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 头部
-                _buildHeader(isEditing),
-                const SizedBox(height: 24),
-                
-                // 体重输入
-                _buildWeightSection(),
-                const SizedBox(height: 20),
-                
-                // 可选数据输入
-                _buildOptionalDataSection(),
-                const SizedBox(height: 20),
-                
-                // 测量时间
-                _buildTimeSection(),
-                const SizedBox(height: 20),
-                
-                // 备注
-                _buildNotesSection(),
-                const SizedBox(height: 32),
-                
-                // 底部按钮
-                _buildActionButtons(isEditing),
-              ],
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 16,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+            ),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 头部
+                  _buildHeader(isEditing),
+                  const SizedBox(height: 24),
+                  
+                  // 体重输入
+                  _buildWeightSection(),
+                  const SizedBox(height: 20),
+                  
+                  // 可选数据输入
+                  _buildOptionalDataSection(),
+                  const SizedBox(height: 20),
+                  
+                  // 测量时间
+                  _buildTimeSection(),
+                  const SizedBox(height: 20),
+                  
+                  // 备注
+                  _buildNotesSection(),
+                  const SizedBox(height: 32),
+                  
+                  // 底部按钮
+                  _buildActionButtons(isEditing),
+                ],
+              ),
             ),
           ),
         ),

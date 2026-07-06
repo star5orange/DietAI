@@ -7,9 +7,11 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../services/food_service.dart';
 import '../../../../services/exercise_service.dart';
 import '../../../../services/wellness_service.dart';
+import '../../../../services/water_service.dart';
 import '../../../../shared/domain/models/api_response.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
@@ -30,6 +32,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
   final FoodService _foodService = FoodService();
   final ExerciseService _exerciseService = ExerciseService();
   final WellnessService _wellnessService = WellnessService();
+  final WaterService _waterService = WaterService();
 
   NutritionTrends? _nutritionTrends;
   List<DailyNutritionSummary> _weeklySummaries = [];
@@ -38,10 +41,14 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
   String? _crowdTag;
   bool _isLoading = true;
 
+  // 规律统计数据
+  Map<String, dynamic>? _waterStats;
+  Map<String, dynamic>? _mealRegularity;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadAllData();
   }
 
@@ -69,6 +76,8 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
         _loadWeeklySummaries(now),
         _exerciseService.getExerciseStatistics(period: '7d'),
         _loadConstitutionType(),
+        _waterService.getWaterStatistics(period: '7d'),
+        _loadMealRegularity(),
       ]);
 
       if (mounted) {
@@ -78,6 +87,9 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
           _exerciseStats =
               (results[2] as ApiResponse<Map<String, dynamic>>).data;
           _constitutionType = results[3] as String?;
+          _waterStats =
+              (results[4] as ApiResponse<Map<String, dynamic>>).data;
+          _mealRegularity = results[5] as Map<String, dynamic>?;
           _isLoading = false;
         });
       }
@@ -105,9 +117,30 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
 
   Future<String?> _loadConstitutionType() async {
     try {
-      final profile = ref.read(userProfileProvider).value;
-      _crowdTag = profile?.crowdTag;
-      return profile?.constitutionType;
+      // 直接调API获取最新数据，避免provider缓存问题
+      final userService = UserService(ApiService());
+      final result = await userService.getUserProfile();
+      if (result.success && result.data != null) {
+        _crowdTag = result.data!.crowdTag;
+        return result.data!.constitutionType;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _loadMealRegularity() async {
+    try {
+      final ApiService apiService = ApiService();
+      final response = await apiService.get(
+        '/health/meal-regularity',
+        queryParameters: {'days': 14},
+      );
+      if (response.success && response.data != null) {
+        return response.data as Map<String, dynamic>;
+      }
+      return null;
     } catch (_) {
       return null;
     }
@@ -139,6 +172,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
             Tab(text: '周度摘要'),
             Tab(text: '营养趋势'),
             Tab(text: '健康画像'),
+            Tab(text: '规律统计'),
           ],
         ),
       ),
@@ -153,6 +187,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
                   _buildWeeklySummaryTab(),
                   _buildNutritionTrendsTab(),
                   _buildPersonaDashboardTab(),
+                  _buildRegularityTab(),
                 ],
               ),
             ),
@@ -200,11 +235,104 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
     final waterDisplay =
         totalWater.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionHeader('本周营养总览', LucideIcons.clipboardList),
-        const SizedBox(height: 12),
+    // 根据人群标签差异化展示统计卡片
+    final tag = _crowdTag ?? '普通';
+    List<Widget> statRows;
+    if (tag == '减脂') {
+      // 减脂：突出热量缺口和运动消耗
+      final calorieDeficit = (avgCal > 0 && totalCal > 0)
+          ? (2000 * _weeklySummaries.length - totalCal).toInt()
+          : 0;
+      statRows = [
+        Row(
+          children: [
+            _buildStatCard('总热量', '${totalCal.toInt()}', 'kcal',
+                AppColors.caloriesColor, LucideIcons.flame),
+            const SizedBox(width: 10),
+            _buildStatCard('热量缺口', '$calorieDeficit', 'kcal',
+                const Color(0xFF43A047), LucideIcons.trendingDown),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _buildStatCard('运动消耗', '${totalExercise.toInt()}', 'kcal',
+                const Color(0xFFFF6B6B), LucideIcons.dumbbell),
+            const SizedBox(width: 10),
+            _buildStatCard('蛋白质', '${totalProtein.toStringAsFixed(0)}g', '本周',
+                AppColors.proteinColor, LucideIcons.fish),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _buildStatCard('脂肪', '${totalFat.toStringAsFixed(0)}g', '本周',
+                AppColors.fatColor, LucideIcons.droplets),
+            const SizedBox(width: 10),
+            _buildStatCard('饮水量', '${waterDisplay}L', '本周', AppColors.info,
+                LucideIcons.glassWater),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _buildStatCard('碳水', '${totalCarbs.toStringAsFixed(0)}g', '本周',
+                AppColors.carbsColor, LucideIcons.wheat),
+            const SizedBox(width: 10),
+            _buildStatCard('记录天数', '${_weeklySummaries.length}', '天',
+                AppColors.success, LucideIcons.calendarCheck),
+          ],
+        ),
+      ];
+    } else if (tag == '健身') {
+      // 健身：突出蛋白质和碳水
+      final avgProtein = _weeklySummaries.isNotEmpty
+          ? totalProtein / _weeklySummaries.length
+          : 0.0;
+      statRows = [
+        Row(
+          children: [
+            _buildStatCard('蛋白质', '${totalProtein.toStringAsFixed(0)}g', '本周',
+                AppColors.proteinColor, LucideIcons.fish),
+            const SizedBox(width: 10),
+            _buildStatCard('日均蛋白', '${avgProtein.toStringAsFixed(0)}', 'g',
+                AppColors.proteinColor, LucideIcons.target),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _buildStatCard('碳水', '${totalCarbs.toStringAsFixed(0)}g', '本周',
+                AppColors.carbsColor, LucideIcons.wheat),
+            const SizedBox(width: 10),
+            _buildStatCard('运动消耗', '${totalExercise.toInt()}', 'kcal',
+                const Color(0xFF667EEA), LucideIcons.dumbbell),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _buildStatCard('总热量', '${totalCal.toInt()}', 'kcal',
+                AppColors.caloriesColor, LucideIcons.flame),
+            const SizedBox(width: 10),
+            _buildStatCard('脂肪', '${totalFat.toStringAsFixed(0)}g', '本周',
+                AppColors.fatColor, LucideIcons.droplets),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _buildStatCard('饮水量', '${waterDisplay}L', '本周', AppColors.info,
+                LucideIcons.glassWater),
+            const SizedBox(width: 10),
+            _buildStatCard('记录天数', '${_weeklySummaries.length}', '天',
+                AppColors.success, LucideIcons.calendarCheck),
+          ],
+        ),
+      ];
+    } else {
+      // 普通/养生：均衡展示
+      statRows = [
         Row(
           children: [
             _buildStatCard('总热量', '${totalCal.toInt()}', 'kcal',
@@ -244,6 +372,15 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
                 AppColors.success, LucideIcons.calendarCheck),
           ],
         ),
+      ];
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader('本周营养总览', LucideIcons.clipboardList),
+        const SizedBox(height: 12),
+        ...statRows,
       ],
     );
   }
@@ -337,44 +474,102 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
     }
 
     final points = _nutritionTrends!.data;
+    final tag = _crowdTag ?? '普通';
+
+    // 根据人群标签调整图表顺序和重点
+    List<Widget> trendCharts;
+    if (tag == '减脂') {
+      // 减脂：热量趋势优先，蛋白质次之
+      trendCharts = [
+        _buildSectionHeader('热量趋势 (30天)', LucideIcons.flame),
+        const SizedBox(height: 12),
+        _buildLineChart(points, 'calories', AppColors.caloriesColor, 'kcal'),
+        const SizedBox(height: 24),
+        _buildSectionHeader('蛋白质趋势', LucideIcons.beef),
+        const SizedBox(height: 12),
+        _buildLabeledChart(points, 'protein', AppColors.proteinColor, 'g'),
+        const SizedBox(height: 12),
+        _buildLabeledChart(points, 'fat', AppColors.fatColor, 'g'),
+        const SizedBox(height: 12),
+        _buildLabeledChart(points, 'carbohydrates', AppColors.carbsColor, 'g'),
+      ];
+    } else if (tag == '健身') {
+      // 健身：蛋白质趋势优先，碳水次之
+      trendCharts = [
+        _buildSectionHeader('蛋白质趋势 (30天)', LucideIcons.beef),
+        const SizedBox(height: 12),
+        _buildLineChart(points, 'protein', AppColors.proteinColor, 'g'),
+        const SizedBox(height: 24),
+        _buildSectionHeader('碳水趋势', LucideIcons.wheat),
+        const SizedBox(height: 12),
+        _buildLabeledChart(points, 'carbohydrates', AppColors.carbsColor, 'g'),
+        const SizedBox(height: 12),
+        _buildLabeledChart(points, 'calories', AppColors.caloriesColor, 'kcal'),
+        const SizedBox(height: 12),
+        _buildLabeledChart(points, 'fat', AppColors.fatColor, 'g'),
+      ];
+    } else {
+      // 普通/养生：均衡展示
+      trendCharts = [
+        _buildSectionHeader('热量趋势 (30天)', LucideIcons.flame),
+        const SizedBox(height: 12),
+        _buildLineChart(points, 'calories', AppColors.caloriesColor, 'kcal'),
+        const SizedBox(height: 24),
+        _buildSectionHeader('三大营养素趋势', LucideIcons.pieChart),
+        const SizedBox(height: 12),
+        _buildLabeledChart(points, 'protein', AppColors.proteinColor, 'g'),
+        const SizedBox(height: 12),
+        _buildLabeledChart(points, 'fat', AppColors.fatColor, 'g'),
+        const SizedBox(height: 12),
+        _buildLabeledChart(points, 'carbohydrates', AppColors.carbsColor, 'g'),
+      ];
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSectionHeader('热量趋势 (30天)', LucideIcons.flame),
-          const SizedBox(height: 12),
-          _buildLineChart(
-            points,
-            'calories',
-            AppColors.caloriesColor,
-            'kcal',
-          ),
-          const SizedBox(height: 24),
-          _buildSectionHeader('三大营养素趋势', LucideIcons.pieChart),
-          const SizedBox(height: 12),
-          _buildLineChart(
-            points,
-            'protein',
-            AppColors.proteinColor,
-            'g',
-          ),
-          const SizedBox(height: 12),
-          _buildLineChart(
-            points,
-            'fat',
-            AppColors.fatColor,
-            'g',
-          ),
-          const SizedBox(height: 12),
-          _buildLineChart(
-            points,
-            'carbohydrates',
-            AppColors.carbsColor,
-            'g',
-          ),
-        ],
+        children: trendCharts,
       ),
+    );
+  }
+
+  Widget _buildLabeledChart(
+    List<NutritionTrendPoint> points,
+    String metric,
+    Color color,
+    String unit,
+  ) {
+    final label = _metricLabel(metric);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 6),
+          child: Row(
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '$label ($unit)',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+        _buildLineChart(points, metric, color, unit),
+      ],
     );
   }
 
@@ -593,12 +788,50 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
     final avgProtein =
         _weeklySummaries.fold<double>(0, (sum, s) => sum + s.totalProtein) /
             _weeklySummaries.length;
+    final avgCarbs = _weeklySummaries.fold<double>(
+            0, (sum, s) => sum + s.totalCarbohydrates) /
+        _weeklySummaries.length;
     final avgWater =
         _weeklySummaries.fold<double>(0, (sum, s) => sum + s.waterIntake) /
             _weeklySummaries.length;
+    final avgExercise = _weeklySummaries.fold<double>(
+            0, (sum, s) => sum + s.exerciseCalories) /
+        _weeklySummaries.length;
 
-    return Row(
-      children: [
+    // 根据人群标签差异化展示健康指标
+    final tag = _crowdTag ?? '普通';
+    List<Widget> gauges;
+    if (tag == '减脂') {
+      // 减脂：热量缺口 + 运动消耗 + 体重变化(用饮水占位)
+      gauges = [
+        Expanded(
+            child: _gaugeCard(
+                '热量缺口', 2000 - avgCal, 500, 'kcal', AppColors.caloriesColor)),
+        const SizedBox(width: 10),
+        Expanded(
+            child: _gaugeCard(
+                '运动消耗', avgExercise, 300, 'kcal', const Color(0xFFFF6B6B))),
+        const SizedBox(width: 10),
+        Expanded(
+            child: _gaugeCard('饮水', avgWater / 1000, 2, 'L', AppColors.info)),
+      ];
+    } else if (tag == '健身') {
+      // 健身：蛋白质达标 + 碳水摄入 + 训练消耗
+      gauges = [
+        Expanded(
+            child:
+                _gaugeCard('蛋白质', avgProtein, 120, 'g', AppColors.proteinColor)),
+        const SizedBox(width: 10),
+        Expanded(
+            child: _gaugeCard('碳水', avgCarbs, 300, 'g', AppColors.carbsColor)),
+        const SizedBox(width: 10),
+        Expanded(
+            child: _gaugeCard(
+                '训练消耗', avgExercise, 400, 'kcal', const Color(0xFF667EEA))),
+      ];
+    } else {
+      // 普通/养生：均衡展示
+      gauges = [
         Expanded(
             child: _gaugeCard(
                 '热量', avgCal, 2000, 'kcal', AppColors.caloriesColor)),
@@ -609,8 +842,10 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
         const SizedBox(width: 10),
         Expanded(
             child: _gaugeCard('饮水', avgWater / 1000, 2, 'L', AppColors.info)),
-      ],
-    );
+      ];
+    }
+
+    return Row(children: gauges);
   }
 
   Widget _gaugeCard(
@@ -762,7 +997,9 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
   }
 
   Widget _buildPersonaAdvice() {
-    final advice = _personaAdvice(_constitutionType);
+    final constitutionAdvice = _personaAdvice(_constitutionType);
+    final crowdAdvice = _crowdTagAdvice(_crowdTag);
+    final allAdvice = [...crowdAdvice, ...constitutionAdvice];
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -787,7 +1024,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
             ],
           ),
           const SizedBox(height: 10),
-          ...advice.map((item) => Padding(
+          ...allAdvice.map((item) => Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1102,6 +1339,27 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
     return map[_constitutionName(type)] ?? '完成体质测评，了解您的体质类型';
   }
 
+  List<String> _crowdTagAdvice(String? tag) {
+    const map = {
+      '减脂': [
+        '保持每日热量缺口在300-500kcal，避免过度节食',
+        '优先选择高蛋白低脂食物，增加饱腹感',
+        '每周至少150分钟有氧运动，配合力量训练效果更佳',
+      ],
+      '健身': [
+        '训练后30分钟内补充蛋白质和碳水，促进肌肉修复',
+        '蛋白质摄入建议1.6-2.2g/kg体重，分多餐摄入',
+        '保证充足碳水为训练供能，避免低碳水影响训练质量',
+      ],
+      '养生': [
+        '根据节气选择当季食材，顺应自然饮食',
+        '饮食定时定量，避免暴饮暴食',
+        '注意体质调理，饮食温和均衡',
+      ],
+    };
+    return map[tag ?? ''] ?? [];
+  }
+
   List<String> _personaAdvice(String? type) {
     const map = {
       '平和质': [
@@ -1155,5 +1413,365 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
           '完成体质测评，获取个性化建议',
           '点击上方"重新测评"按钮进行体质自测',
         ];
+  }
+
+  // ==================== Tab 4: 规律统计 ====================
+
+  Widget _buildRegularityTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildWaterRegularityCard(),
+          const SizedBox(height: 20),
+          _buildMealRegularityCard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWaterRegularityCard() {
+    final stats = _waterStats;
+    if (stats == null) {
+      return _buildEmptyCard('暂无饮水统计数据\n开始记录饮水量吧！', LucideIcons.droplets);
+    }
+
+    final goalMetDays = stats['goal_met_days'] as int? ?? 0;
+    final totalDays = stats['total_days'] as int? ?? 7;
+    final complianceRate = stats['compliance_rate'] as num? ?? 0;
+    final avgDailyMl = stats['average_daily_ml'] as num? ?? 0;
+    final dailyData = stats['daily_data'] as Map<String, dynamic>? ?? {};
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader('饮水规律', LucideIcons.droplets),
+        const SizedBox(height: 12),
+        // 概览卡片
+        Row(
+          children: [
+            _buildStatCard('达标天数', '$goalMetDays', '/$totalDays天',
+                AppColors.info, LucideIcons.checkCircle2),
+            const SizedBox(width: 10),
+            _buildStatCard('达标率', '${(complianceRate.toDouble() * 100).toStringAsFixed(0)}', '%',
+                AppColors.info, LucideIcons.target),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _buildStatCard('日均饮水', '${avgDailyMl.toInt()}', 'ml',
+                AppColors.info, LucideIcons.glassWater),
+            const SizedBox(width: 10),
+            _buildStatCard('记录天数', '${dailyData.length}', '天',
+                AppColors.info, LucideIcons.calendarCheck),
+          ],
+        ),
+        const SizedBox(height: 16),
+        // 7天饮水柱状图
+        if (dailyData.isNotEmpty) ...[
+          _buildSectionHeader('近7天饮水量', LucideIcons.barChart3),
+          const SizedBox(height: 12),
+          Container(
+            height: 200,
+            padding: const EdgeInsets.fromLTRB(8, 16, 16, 8),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundCard,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: AppColors.lightShadow,
+            ),
+            child: _buildWaterBarChart(dailyData),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildWaterBarChart(Map<String, dynamic> dailyData) {
+    // 排序并取最近7天
+    final sortedKeys = dailyData.keys.toList()..sort();
+    final recentKeys = sortedKeys.length > 7
+        ? sortedKeys.sublist(sortedKeys.length - 7)
+        : sortedKeys;
+
+    if (recentKeys.isEmpty) {
+      return const Center(child: Text('暂无数据'));
+    }
+
+    final maxMl = dailyData.values
+        .map((v) => (v as num).toDouble())
+        .reduce(max);
+
+    return BarChart(
+      BarChartData(
+        alignment: BarChartAlignment.spaceAround,
+        maxY: maxMl > 0 ? maxMl * 1.3 : 3000,
+        barGroups: recentKeys.asMap().entries.map((e) {
+          final ml = (dailyData[e.value] as num).toDouble();
+          final isGoalMet = ml >= 2000; // 默认目标2000ml
+          return BarChartGroupData(
+            x: e.key,
+            barRods: [
+              BarChartRodData(
+                toY: ml,
+                color: isGoalMet ? AppColors.success : AppColors.info,
+                width: 20,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(4)),
+              ),
+            ],
+          );
+        }).toList(),
+        titlesData: FlTitlesData(
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 40,
+              getTitlesWidget: (value, meta) {
+                if (value >= 1000) {
+                  return Text('${(value / 1000).toStringAsFixed(1)}L',
+                      style: const TextStyle(
+                          fontSize: 10, color: AppColors.textTertiary));
+                }
+                return Text('${value.toInt()}',
+                    style: const TextStyle(
+                        fontSize: 10, color: AppColors.textTertiary));
+              },
+            ),
+          ),
+          rightTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                final idx = value.toInt();
+                if (idx < 0 || idx >= recentKeys.length) {
+                  return const SizedBox.shrink();
+                }
+                final dateStr = recentKeys[idx];
+                final parsed = DateTime.tryParse(dateStr);
+                return Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    parsed != null ? DateFormat('MM/dd').format(parsed) : '',
+                    style: const TextStyle(
+                        fontSize: 10, color: AppColors.textTertiary),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        gridData: const FlGridData(show: false),
+        borderData: FlBorderData(show: false),
+        barTouchData: BarTouchData(
+          touchTooltipData: BarTouchTooltipData(
+            tooltipBgColor: AppColors.cardBackground,
+            tooltipRoundedRadius: 8,
+            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              final dateStr = recentKeys[group.x.toInt()];
+              return BarTooltipItem(
+                '$dateStr\n${rod.toY.toInt()} ml',
+                const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMealRegularityCard() {
+    final data = _mealRegularity;
+    if (data == null) {
+      return _buildEmptyCard('暂无饮食规律数据\n记录更多餐食后即可分析', LucideIcons.utensilsCrossed);
+    }
+
+    final overallScore = data['overall_score'] as num? ?? 0;
+    final overallGrade = data['overall_grade'] as String? ?? '--';
+    final daysAnalyzed = data['days_analyzed'] as int? ?? 0;
+    final meals = data['meals'] as Map<String, dynamic>? ?? {};
+    final suggestions = data['suggestions'] as List? ?? [];
+
+    // 规律度颜色
+    Color scoreColor;
+    if (overallScore >= 90) {
+      scoreColor = AppColors.success;
+    } else if (overallScore >= 75) {
+      scoreColor = AppColors.info;
+    } else if (overallScore >= 60) {
+      scoreColor = AppColors.warning;
+    } else {
+      scoreColor = AppColors.error;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader('饮食规律', LucideIcons.utensilsCrossed),
+        const SizedBox(height: 12),
+        // 总体评分
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [scoreColor, scoreColor.withValues(alpha: 0.7)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    overallGrade,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '分析周期: $daysAnalyzed 天',
+                    style: const TextStyle(fontSize: 13, color: Colors.white70),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              Text(
+                '${overallScore.toInt()}',
+                style: const TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Text('分',
+                  style: TextStyle(fontSize: 16, color: Colors.white70)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        // 各餐详情
+        ...meals.entries.map((entry) {
+          final meal = entry.value as Map<String, dynamic>;
+          final mealName = meal['meal_name'] as String? ?? '';
+          final score = meal['regularity_score'] as num? ?? 0;
+          final grade = meal['grade'] as String? ?? '';
+          final recordedDays = meal['recorded_days'] as int? ?? 0;
+          final missedDays = meal['missed_days'] as int? ?? 0;
+          final completionRate = meal['completion_rate'] as num? ?? 0;
+
+          Color mealColor;
+          if (score >= 90) {
+            mealColor = AppColors.success;
+          } else if (score >= 75) {
+            mealColor = AppColors.info;
+          } else if (score >= 60) {
+            mealColor = AppColors.warning;
+          } else {
+            mealColor = AppColors.error;
+          }
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.backgroundCard,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: AppColors.lightShadow,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(mealName,
+                          style: AppTextStyles.h6.copyWith(
+                              fontWeight: FontWeight.w600)),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: mealColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(grade,
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: mealColor,
+                                fontWeight: FontWeight.w600)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // 进度条
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: score.toDouble() / 100,
+                      backgroundColor: AppColors.divider.withValues(alpha: 0.3),
+                      color: mealColor,
+                      minHeight: 8,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('规律度 ${score.toInt()}分',
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary)),
+                      Text('记录$recordedDays天 / 缺餐$missedDays天',
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary)),
+                      Text('完成率${completionRate.toDouble().toStringAsFixed(0)}%',
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
+        // 建议
+        if (suggestions.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          _buildSectionHeader('改善建议', LucideIcons.lightbulb),
+          const SizedBox(height: 8),
+          ...suggestions.map((s) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('• ', style: TextStyle(fontSize: 14)),
+                    Expanded(
+                      child: Text(s.toString(),
+                          style: const TextStyle(
+                              fontSize: 13, color: AppColors.textSecondary)),
+                    ),
+                  ],
+                ),
+              )),
+        ],
+      ],
+    );
   }
 }

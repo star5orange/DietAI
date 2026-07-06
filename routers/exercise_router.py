@@ -26,6 +26,7 @@ def _record_to_dict(record) -> dict:
         "calories_burned": record.calories_burned,
         "record_date": record.record_date.isoformat() if hasattr(record.record_date, 'isoformat') else str(record.record_date),
         "notes": record.notes,
+        "strength_detail": getattr(record, 'strength_detail', None),
         "created_at": record.created_at.isoformat() if hasattr(record.created_at, 'isoformat') else str(record.created_at),
     }
 

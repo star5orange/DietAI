@@ -241,6 +241,36 @@ class ChatService {
     }
   }
 
+  /// 删除当前用户的所有会话（可按类型筛选）
+  Future<ApiResponse<void>> deleteAllSessions({
+    int? sessionType,
+  }) async {
+    try {
+      final queryParams = <String, String>{};
+      if (sessionType != null) {
+        queryParams['session_type'] = sessionType.toString();
+      }
+      final response = await _apiService.delete(
+        '/chat/sessions',
+        queryParameters: queryParams,
+      );
+
+      if (response.success) {
+        return ApiResponse<void>.success(
+          message: response.message.isNotEmpty ? response.message : '所有会话已删除',
+        );
+      } else {
+        return ApiResponse<void>.failure(
+          message: response.message.isNotEmpty ? response.message : '删除会话失败',
+        );
+      }
+    } catch (e) {
+      return ApiResponse<void>.failure(
+        message: '删除会话失败: $e',
+      );
+    }
+  }
+
   /// 基于食物分析结果的聊天
   Future<ApiResponse<ChatResponse>> chatWithFoodAnalysis({
     required String message,

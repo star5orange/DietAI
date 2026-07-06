@@ -18,7 +18,8 @@ class WeightTrackingPage extends ConsumerStatefulWidget {
   ConsumerState<WeightTrackingPage> createState() => _WeightTrackingPageState();
 }
 
-class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage> with TickerProviderStateMixin {
+class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage>
+    with TickerProviderStateMixin {
   late TabController _tabController;
   int _selectedDays = 30;
 
@@ -52,12 +53,6 @@ class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage> with Ti
           ),
         ),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(LucideIcons.plus),
-            onPressed: () => _showAddWeightModal(),
-          ),
-        ],
       ),
       body: Column(
         children: [
@@ -110,8 +105,8 @@ class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage> with Ti
               children: [
                 // 趋势分析页面
                 _buildTrendAnalysisTab(weightTrendAsync, latestRecordAsync),
-                
-                // 记录列表页面  
+
+                // 记录列表页面
                 _buildRecordsListTab(weightRecordsAsync),
               ],
             ),
@@ -123,28 +118,16 @@ class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage> with Ti
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         elevation: 4,
-        extendedPadding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         label: const Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '记录',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-                height: 1.2,
-              ),
-            ),
-            Text(
-              '体重',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-                height: 1.2,
-              ),
-            ),
+            Text('记录',
+                style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600, height: 1.2)),
+            Text('体重',
+                style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600, height: 1.2)),
           ],
         ),
       ),
@@ -152,7 +135,8 @@ class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage> with Ti
     );
   }
 
-  Widget _buildTrendAnalysisTab(AsyncValue<WeightTrend?> trendAsync, AsyncValue<WeightRecord?> latestAsync) {
+  Widget _buildTrendAnalysisTab(AsyncValue<WeightTrend?> trendAsync,
+      AsyncValue<WeightRecord?> latestAsync) {
     return RefreshIndicator(
       onRefresh: () => ref.read(weightRecordsProvider.notifier).refresh(),
       child: SingleChildScrollView(
@@ -191,7 +175,7 @@ class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage> with Ti
           if (records.isEmpty) {
             return _buildEmptyState();
           }
-          
+
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: records.length,
@@ -233,7 +217,8 @@ class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage> with Ti
               ),
               const SizedBox(height: 16),
               ElevatedButton.icon(
-                onPressed: () => ref.read(weightRecordsProvider.notifier).refresh(),
+                onPressed: () =>
+                    ref.read(weightRecordsProvider.notifier).refresh(),
                 icon: const Icon(LucideIcons.refreshCw),
                 label: const Text('重试'),
               ),
@@ -372,7 +357,7 @@ class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage> with Ti
                   ),
                 );
               }
-              
+
               return Column(
                 children: [
                   Row(
@@ -485,7 +470,8 @@ class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage> with Ti
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
             ),
           ],
@@ -535,13 +521,16 @@ class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage> with Ti
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              final result = await ref.read(weightRecordsProvider.notifier).deleteWeightRecord(record.id);
-              
+              final result = await ref
+                  .read(weightRecordsProvider.notifier)
+                  .deleteWeightRecord(record.id);
+
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(result.message),
-                    backgroundColor: result.success ? AppColors.success : AppColors.error,
+                    backgroundColor:
+                        result.success ? AppColors.success : AppColors.error,
                   ),
                 );
               }

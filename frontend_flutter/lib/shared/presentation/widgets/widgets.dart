@@ -15,3 +15,10 @@ export 'modern_button.dart';
 // 工具类组件
 export 'responsive_utils.dart';
 export 'animation_utils.dart';
+
+// 功能组件
+export 'exercise_quick_add.dart';
+export 'wellness_card.dart';
+export 'habit_streak_badge.dart';
+export 'reminder_notification_card.dart';
+export 'solar_term_today_widget.dart';

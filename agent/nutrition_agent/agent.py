@@ -1,4 +1,4 @@
-﻿from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from agent.common_utils.configuration import Configuration
 from agent.nutrition_agent.utils.nodes import *
@@ -17,6 +17,7 @@ workflow.add_node("analyze_image", analyze_image)
 workflow.add_node("extract_nutrition", extract_nutrition_info)
 workflow.add_node("retrieve_nutrition_knowledge", retrieve_nutrition_knowledge)
 workflow.add_node("generate_advice", generate_nutrition_advice)
+workflow.add_node("check_allergy", check_allergy_cross_contamination)
 workflow.add_node("format_response", format_final_response)
 workflow.add_node("generate_dependencies", generate_dependencies)
 
@@ -27,6 +28,7 @@ workflow.add_edge("analyze_image", "extract_nutrition")
 workflow.add_edge("extract_nutrition", "retrieve_nutrition_knowledge")
 workflow.add_edge("retrieve_nutrition_knowledge", "generate_dependencies")
 workflow.add_edge("generate_dependencies", "generate_advice")
-workflow.add_edge("generate_advice", "format_response")
+workflow.add_edge("generate_advice", "check_allergy")
+workflow.add_edge("check_allergy", "format_response")
 workflow.add_edge("format_response", END)
 graph = workflow.compile()

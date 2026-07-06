@@ -1,4 +1,4 @@
-﻿"""
+"""
 DietDeepAgent 主入口
 
 基于 LangChain Deep Agents 构建统一的"私人营养师"。
@@ -30,6 +30,10 @@ from agent.diet_deep_agent.tools.user_data import (
     get_diet_history,
     get_health_summary,
     get_user_profile,
+)
+from agent.diet_deep_agent.tools.wellness_rag import (
+    get_current_season_wellness,
+    query_wellness_knowledge,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,6 +93,9 @@ def create_diet_deep_agent(config: DietDeepConfig | None = None, use_custom_pers
         record_weight,
         # RAG 知识检索
         query_nutrition_knowledge,
+        # 养生知识检索
+        query_wellness_knowledge,
+        get_current_season_wellness,
         # 用户数据
         get_user_profile,
         get_diet_history,

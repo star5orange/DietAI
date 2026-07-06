@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
@@ -7,15 +8,16 @@ import '../../../../core/services/api_service.dart';
 import '../../../../shared/domain/models/api_response.dart';
 import '../../../../shared/domain/models/user_model.dart';
 import '../../../../features/profile/domain/services/user_service.dart';
+import '../../../../features/profile/presentation/providers/profile_provider.dart';
 
-class ConstitutionQuizPage extends StatefulWidget {
+class ConstitutionQuizPage extends ConsumerStatefulWidget {
   const ConstitutionQuizPage({super.key});
 
   @override
-  State<ConstitutionQuizPage> createState() => _ConstitutionQuizPageState();
+  ConsumerState<ConstitutionQuizPage> createState() => _ConstitutionQuizPageState();
 }
 
-class _ConstitutionQuizPageState extends State<ConstitutionQuizPage> {
+class _ConstitutionQuizPageState extends ConsumerState<ConstitutionQuizPage> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
   final Map<int, int> _answers = {};
@@ -275,12 +277,16 @@ class _ConstitutionQuizPageState extends State<ConstitutionQuizPage> {
       );
       if (mounted) {
         if (result.success) {
+          // 刷新用户资料缓存
+          ref.invalidate(userProfileProvider);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('体质类型已保存'),
               backgroundColor: AppColors.success,
             ),
           );
+          // 返回上一页
+          Navigator.pop(context);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
