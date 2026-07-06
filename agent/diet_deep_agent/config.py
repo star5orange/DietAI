@@ -41,7 +41,7 @@ class DietDeepConfig:
 
     # vision 模型配置（传递给子代理）
     vision_model_provider: str = "qwen"
-    vision_model: str = "qwen-vl-max"
+    vision_model: str = "qwen3.7-plus"
     analysis_model_provider: str = "deepseek"
     analysis_model: str = "deepseek-v4-flash"
 
