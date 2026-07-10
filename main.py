@@ -12,7 +12,7 @@ from datetime import datetime
 # 导入配置
 from shared.config.settings import get_settings
 from shared.models.database import create_tables, engine
-from shared.models import user_models, food_models, conversation_models, saved_meal_models, exercise_models, water_models, reminder_models, notification_models, wellness_models
+from shared.models import user_models, food_models, conversation_models, saved_meal_models, exercise_models, water_models, reminder_models, notification_models, wellness_models, pet_models, advisor_models, fasting_models
 
 # 导入路由 - 核心路由
 from routers.auth_router import router as auth_router
@@ -25,6 +25,10 @@ from routers.water_router import router as water_router
 from routers.reminder_router import router as reminder_router
 from routers.notification_router import router as notification_router
 from routers.wellness_router import router as wellness_router
+from routers.cost_router import router as cost_router
+from routers.pet_router import router as pet_router
+from routers.advisor_router import router as advisor_router
+from routers.fasting_router import router as fasting_router
 
 # AI 依赖路由器 — 无 AI 包时优雅降级
 _food_router = None
@@ -305,6 +309,12 @@ app.include_router(water_router)
 app.include_router(reminder_router)
 app.include_router(notification_router)
 app.include_router(wellness_router)
+
+# Milestone 2 新增路由
+app.include_router(cost_router, prefix="/api", tags=["消费统计"])
+app.include_router(pet_router, prefix="/api", tags=["虚拟宠物"])
+app.include_router(advisor_router, prefix="/api", tags=["AI顾问设置"])
+app.include_router(fasting_router, prefix="/api", tags=["轻断食"])
 
 # 启动服务器
 if __name__ == "__main__":

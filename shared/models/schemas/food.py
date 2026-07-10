@@ -18,6 +18,9 @@ class FoodRecordCreate(BaseModel):
     recording_method: Optional[int] = Field(1, ge=1, le=4, description="记录方式：1手动2拍照3语音4已保存菜品")
     # Milestone 1 新增
     from_source: Optional[str] = Field("camera", description="记录来源：camera/manual/voice/barcode/saved_meal/suggestion")
+    # Milestone 2 新增
+    cost: Optional[float] = Field(None, ge=0, le=99999.99, description="消费金额(元)")
+    source_tag: Optional[str] = Field(None, max_length=20, description="消费来源: canteen/delivery/home/restaurant/snack/other")
 
 
 class FoodRecordResponse(BaseModel):
@@ -32,6 +35,8 @@ class FoodRecordResponse(BaseModel):
     recording_method: int
     analysis_status: int
     from_source: Optional[str]
+    cost: Optional[float] = None
+    source_tag: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

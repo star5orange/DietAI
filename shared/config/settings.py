@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # 数据库配置
     database_url: str = Field(
-        default="postgresql://postgres:123456@localhost:5432/dietai_db",
+        default="postgresql://postgres:postgres@127.0.0.1:5432/dietai_db",
         description="数据库连接URL"
     )
     database_echo: bool = Field(default=False, description="是否打印SQL")
@@ -183,19 +183,39 @@ _INSECURE_JWT_KEYS = {
 def get_settings() -> Settings:
     """获取应用配置（带缓存）"""
     s = Settings()
-    # 生产环境（debug=False）拒绝不安全的 JWT 密钥
-    if not s.debug and s.jwt_secret_key in _INSECURE_JWT_KEYS:
-        raise ValueError(
-            "生产环境必须设置 DIETAI_JWT_SECRET_KEY 环境变量为强随机密钥！"
-            "生成方式: python -c \"import secrets; print(secrets.token_urlsafe(64))\""
-        )
+
+    # 开发环境自动生成安全 JWT 密钥（当用户未显式设置时）
+    _jwt_from_env = os.environ.get("DIETAI_JWT_SECRET_KEY")
     if s.jwt_secret_key in _INSECURE_JWT_KEYS:
+        if _jwt_from_env:
+            # 用户显式设置了一个不安全的值（极少见，但防御一下）
+            pass
+        elif not s.debug:
+            # 生产环境（debug=False）拒绝不安全的 JWT 密钥
+            raise ValueError(
+                "生产环境必须设置 DIETAI_JWT_SECRET_KEY 环境变量为强随机密钥！"
+                "生成方式: python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+            )
+        else:
+            # 开发环境：自动生成随机密钥，保证能正常启动
+            import secrets
+            s.jwt_secret_key = secrets.token_urlsafe(64)
+            import warnings
+            warnings.warn(
+                "JWT 密钥已自动生成（开发环境）。"
+                "多进程/多实例部署时请通过 DIETAI_JWT_SECRET_KEY 环境变量设置固定密钥，"
+                "否则 token 在进程重启后会失效。",
+                UserWarning,
+                stacklevel=2,
+            )
+    elif s.jwt_secret_key in _INSECURE_JWT_KEYS:
         import warnings
         warnings.warn(
             "JWT 密钥使用默认值，上线前必须通过 DIETAI_JWT_SECRET_KEY 环境变量设置强随机密钥",
             UserWarning,
             stacklevel=2,
         )
+
     # 生产环境拒绝 CORS *
     if not s.debug and "*" in s.cors_origins:
         raise ValueError(

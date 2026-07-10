@@ -25,6 +25,14 @@ def create_water_record(db: Session, user_id: int,
 
     db.commit()
     db.refresh(db_record)
+
+    # Milestone 2: 触发宠物状态更新
+    try:
+        from shared.services.pet_service import update_pet_status_on_record
+        update_pet_status_on_record(db, user_id)
+    except Exception as e:
+        logger.warning(f"宠物状态更新失败 (非致命): {e}")
+
     return db_record
 
 

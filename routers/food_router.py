@@ -216,7 +216,10 @@ async def create_food_record_traditional(
             description=food_data.description,
             image_url=food_data.image_url,
             recording_method=food_data.recording_method or 1,
-            analysis_status=1
+            analysis_status=1,
+            # Milestone 2: 消费字段
+            cost=food_data.cost,
+            source_tag=food_data.source_tag,
         )
 
         db.add(food_record)
@@ -242,6 +245,13 @@ async def create_food_record_traditional(
 
         cache_key = f"nutrition:daily:{current_user.id}:{food_data.record_date}"
         cache_service.redis.delete(cache_key)
+
+        # Milestone 2: 触发宠物状态更新
+        try:
+            from shared.services.pet_service import update_pet_status_on_record
+            update_pet_status_on_record(db, current_user.id)
+        except Exception as e:
+            pass  # 非致命
 
         response_data = {
             "id": food_record.id,
@@ -297,6 +307,9 @@ async def update_food_record(
         food_record.description = food_data.description
         food_record.image_url = food_data.image_url
         food_record.recording_method = food_data.recording_method or food_record.recording_method
+        # Milestone 2: 消费字段
+        food_record.cost = food_data.cost
+        food_record.source_tag = food_data.source_tag
 
         db.commit()
         db.refresh(food_record)
@@ -315,6 +328,9 @@ async def update_food_record(
             "image_url": food_record.image_url,
             "recording_method": food_record.recording_method,
             "analysis_status": food_record.analysis_status,
+            # Milestone 2: 消费字段
+            "cost": float(food_record.cost) if food_record.cost else None,
+            "source_tag": food_record.source_tag,
             "created_at": food_record.created_at.isoformat(),
             "updated_at": food_record.updated_at.isoformat() if hasattr(food_record, 'updated_at') else None,
         }
@@ -472,6 +488,8 @@ async def confirm_food_record(
             "image_url": record.image_url,
             "recording_method": record.recording_method,
             "analysis_status": record.analysis_status,
+            "cost": float(record.cost) if record.cost else None,
+            "source_tag": record.source_tag,
             "created_at": record.created_at.isoformat(),
             "updated_at": record.updated_at.isoformat(),
             "nutrition_detail": None
@@ -786,6 +804,9 @@ async def get_food_records(
                 "image_url": record.image_url,
                 "recording_method": record.recording_method,
                 "analysis_status": record.analysis_status,
+                # Milestone 2: 消费字段
+                "cost": float(record.cost) if record.cost else None,
+                "source_tag": record.source_tag,
                 "created_at": record.created_at.isoformat(),
                 "updated_at": record.updated_at.isoformat()
             }
@@ -876,6 +897,8 @@ async def get_food_record(
             "analysis_status": record.analysis_status,
             "created_at": record.created_at.isoformat(),
             "updated_at": record.updated_at.isoformat(),
+            "cost": float(record.cost) if record.cost else None,
+            "source_tag": record.source_tag,
             "nutrition_detail": None
         }
 
@@ -983,6 +1006,13 @@ async def add_nutrition_detail(
         # 清除相关缓存
         cache_key = f"nutrition:daily:{current_user.id}:{record.record_date}"
         cache_service.redis.delete(cache_key)
+
+        # Milestone 2: 触发宠物状态更新
+        try:
+            from shared.services.pet_service import update_pet_status_on_record
+            update_pet_status_on_record(db, current_user.id)
+        except Exception:
+            pass
 
         return BaseResponse(
             success=True,

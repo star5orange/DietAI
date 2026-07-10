@@ -20,12 +20,18 @@ config = context.config
 
 # Read database URL from .env file (same as the application uses)
 _env_path = Path(__file__).resolve().parent.parent / ".env"
+_env_dev_path = Path(__file__).resolve().parent.parent / ".env.dev"
 _db_url = os.environ.get("DIETAI_DATABASE_URL", "")
-if not _db_url and _env_path.exists():
-    for line in _env_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line.startswith("DIETAI_DATABASE_URL="):
-            _db_url = line.split("=", 1)[1].strip()
+if not _db_url:
+    # Try .env.dev first (development), then .env (production)
+    for _path in (_env_dev_path, _env_path):
+        if _path.exists():
+            for line in _path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line.startswith("DIETAI_DATABASE_URL="):
+                    _db_url = line.split("=", 1)[1].strip()
+                    break
+        if _db_url:
             break
 if _db_url:
     config.set_main_option("sqlalchemy.url", _db_url)

@@ -24,6 +24,10 @@ class FoodRecord(Base):
 
     from_source = Column(String(20), default="camera")  # camera/manual/voice/barcode/saved_meal/suggestion
 
+    # Milestone 2: 消费金额与来源标签
+    cost = Column(Numeric(10, 2), nullable=True, comment="消费金额(元)")
+    source_tag = Column(String(20), nullable=True, comment="消费来源: canteen/delivery/home/restaurant/snack/other")
+
     # 关系
     user = relationship("User", back_populates="food_records")
     nutrition_detail = relationship("NutritionDetail", back_populates="food_record", uselist=False)
@@ -32,6 +36,7 @@ class FoodRecord(Base):
     __table_args__ = (
         Index('idx_food_records_user_date', 'user_id', 'record_date'),
         Index('idx_food_records_user_meal', 'user_id', 'meal_type'),
+        Index('idx_food_records_source_tag', 'source_tag'),
     )
 
 
