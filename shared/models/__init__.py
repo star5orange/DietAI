@@ -9,44 +9,53 @@ from .water_models import WaterIntakeRecord
 from .reminder_models import Reminder
 from .notification_models import NotificationResponse
 from .wellness_models import WellnessKnowledge
+from .advisor_models import AiAdvisorSettings
+from .fasting_models import FastingPlan, FastingCheckin
+from .pet_models import VirtualPetState, PetUnlockable
 # 导入所有Pydantic模型
 from . import schemas
 
 __all__ = [
     # 数据库相关
     "Base",
-    "get_db", 
+    "get_db",
     "create_tables",
     "drop_tables",
-    
+
     # 用户模型
     "User",
-    "UserProfile", 
+    "UserProfile",
     "HealthGoal",
     "Disease",
     "Allergy",
     "WeightRecord",
-    
+
     # 食物模型
     "FoodRecord",
     "NutritionDetail",
-    "DailyNutritionSummary", 
+    "DailyNutritionSummary",
     "FoodDatabase",
-    
+
     # 对话模型
     "ConversationSession",
     "ConversationMessage",
     "ConversationContext",
 
+    # 其他模型
     "ExerciseRecord",
     "WaterIntakeRecord",
     "Reminder",
     "NotificationResponse",
     "WellnessKnowledge",
+    "AiAdvisorSettings",
+    "FastingPlan",
+    "FastingCheckin",
+    "VirtualPetState",
+    "PetUnlockable",
 
     # Pydantic模型
     #"schemas"
-    
+
     #"SavedMeal",
     #"SavedMealNutrition",
     #"UserSavedMealFavorite"

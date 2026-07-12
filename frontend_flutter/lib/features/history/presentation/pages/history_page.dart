@@ -373,7 +373,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       backgroundColor: Colors.transparent,
       builder: (context) => FoodRecordModal(
         mealName: mealName,
-        onRecordMethod: (method) {
+        onRecordMethod: (method, {double? cost, String? sourceTag}) {
           Navigator.pop(context);
           _handleRecordMethod(method, mealName);
         },
@@ -1633,7 +1633,11 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     final nameController = TextEditingController(text: record.foodName ?? '');
     final descController =
         TextEditingController(text: record.description ?? '');
+    final costController = TextEditingController(
+      text: record.cost != null ? record.cost.toString() : '',
+    );
     int selectedMealType = record.mealType;
+    String? selectedSourceTag = record.sourceTag;
 
     showDialog(
       context: context,
@@ -1675,7 +1679,39 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     labelText: '描述',
                     border: OutlineInputBorder(),
                   ),
-                  maxLines: 3,
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 16),
+                // M2: 消费金额
+                TextField(
+                  controller: costController,
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: '消费金额（选填）',
+                    suffixText: '元',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // M2: 消费来源
+                DropdownButtonFormField<String?>(
+                  value: selectedSourceTag,
+                  decoration: const InputDecoration(
+                    labelText: '消费来源（选填）',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: null, child: Text('不选择')),
+                    DropdownMenuItem(value: 'canteen', child: Text('食堂')),
+                    DropdownMenuItem(value: 'delivery', child: Text('外卖')),
+                    DropdownMenuItem(value: 'home', child: Text('自制')),
+                    DropdownMenuItem(value: 'restaurant', child: Text('餐厅')),
+                    DropdownMenuItem(value: 'snack', child: Text('零食')),
+                    DropdownMenuItem(value: 'other', child: Text('其他')),
+                  ],
+                  onChanged: (value) {
+                    setDialogState(() => selectedSourceTag = value);
+                  },
                 ),
               ],
             ),
@@ -1687,6 +1723,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
             ),
             ElevatedButton(
               onPressed: () async {
+                final costValue = costController.text.trim().isEmpty
+                    ? null
+                    : double.tryParse(costController.text.trim());
                 final foodData = FoodRecordCreate(
                   recordDate: record.recordDate,
                   recordTime: record.recordTime,
@@ -1697,6 +1736,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                       : descController.text.trim(),
                   imageUrl: record.imageUrl,
                   recordingMethod: record.recordingMethod,
+                  cost: costValue,
+                  sourceTag: selectedSourceTag,
                 );
 
                 final result =

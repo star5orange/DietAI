@@ -33,6 +33,12 @@ _analysis_chat_router = None
 _goal_router = None
 _deep_router = None
 
+# Milestone 2 新增路由器
+_cost_router = None
+_pet_router = None
+_fasting_router = None
+_advisor_router = None
+
 try:
     from routers.food_router import router as food_router
     _food_router = food_router
@@ -60,6 +66,31 @@ except ImportError:
 try:
     from routers.deep_router import router as deep_router
     _deep_router = deep_router
+except ImportError:
+    pass
+
+# Milestone 2: 消费统计、虚拟宠物、轻断食、AI顾问路由器
+try:
+    from routers.cost_router import router as cost_router
+    _cost_router = cost_router
+except ImportError:
+    pass
+
+try:
+    from routers.pet_router import router as pet_router
+    _pet_router = pet_router
+except ImportError:
+    pass
+
+try:
+    from routers.fasting_router import router as fasting_router
+    _fasting_router = fasting_router
+except ImportError:
+    pass
+
+try:
+    from routers.advisor_router import router as advisor_router
+    _advisor_router = advisor_router
 except ImportError:
     pass
 
@@ -305,6 +336,16 @@ app.include_router(water_router)
 app.include_router(reminder_router)
 app.include_router(notification_router)
 app.include_router(wellness_router)
+
+# Milestone 2 新增路由 - 消费统计、虚拟宠物、轻断食、AI顾问
+if _cost_router is not None:
+    app.include_router(_cost_router, prefix="/api", tags=["消费统计"])
+if _pet_router is not None:
+    app.include_router(_pet_router, prefix="/api", tags=["虚拟宠物"])
+if _fasting_router is not None:
+    app.include_router(_fasting_router, prefix="/api", tags=["轻断食"])
+if _advisor_router is not None:
+    app.include_router(_advisor_router, prefix="/api", tags=["AI顾问设置"])
 
 # 启动服务器
 if __name__ == "__main__":

@@ -30,6 +30,10 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
   bool _isLoading = false;
   String? _errorMessage;
 
+  // 消息级搜索结果
+  List<ChatMessageSearchResult> _messageResults = [];
+  bool _isDeepSearching = false;
+
   DateTime? _startDate;
   DateTime? _endDate;
   bool _showSearchBar = false;
@@ -47,6 +51,7 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
   }
 
   Future<void> _loadSessions() async {
+    final keyword = _searchController.text.trim();
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -55,9 +60,7 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
     try {
       final response = await _chatService.getSessions(
         sessionType: widget.sessionType,
-        keyword: _searchController.text.trim().isNotEmpty
-            ? _searchController.text.trim()
-            : null,
+        keyword: keyword.isNotEmpty ? keyword : null,
         startDate: _startDate != null
             ? DateFormat('yyyy-MM-dd').format(_startDate!)
             : null,
@@ -84,12 +87,57 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
         _isLoading = false;
       });
     }
+
+    // 有关键词时，同时搜索消息内容
+    if (keyword.isNotEmpty) {
+      _deepSearch();
+    } else {
+      setState(() => _messageResults = []);
+    }
+  }
+
+  Future<void> _deepSearch() async {
+    final keyword = _searchController.text.trim();
+    if (keyword.isEmpty) return;
+
+    setState(() => _isDeepSearching = true);
+
+    try {
+      final response = await _chatService.searchMessages(
+        keyword: keyword,
+        sessionType: widget.sessionType > 0 ? widget.sessionType : null,
+        startDate: _startDate != null
+            ? DateFormat('yyyy-MM-dd').format(_startDate!)
+            : null,
+        endDate: _endDate != null
+            ? DateFormat('yyyy-MM-dd').format(_endDate!)
+            : null,
+      );
+
+      setState(() => _isDeepSearching = false);
+      if (response.success && response.data != null) {
+        _messageResults = response.data!;
+      }
+    } catch (_) {
+      setState(() => _isDeepSearching = false);
+    }
+  }
+
+  void _clearFiltersAndSearch() {
+    setState(() {
+      _startDate = null;
+      _endDate = null;
+      _searchController.clear();
+      _messageResults = [];
+    });
+    _loadSessions();
   }
 
   Future<void> _pickStartDate() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _startDate ?? DateTime.now().subtract(const Duration(days: 30)),
+      initialDate:
+          _startDate ?? DateTime.now().subtract(const Duration(days: 30)),
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
     );
@@ -117,12 +165,7 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
   }
 
   void _clearFilters() {
-    setState(() {
-      _startDate = null;
-      _endDate = null;
-      _searchController.clear();
-    });
-    _loadSessions();
+    _clearFiltersAndSearch();
   }
 
   Future<void> _deleteSession(ChatSessionSummary session) async {
@@ -273,6 +316,7 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
                 _showSearchBar = !_showSearchBar;
                 if (!_showSearchBar) {
                   _searchController.clear();
+                  _messageResults = [];
                   _loadSessions();
                 }
               });
@@ -300,7 +344,8 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
         decoration: InputDecoration(
           hintText: '搜索对话内容...',
           hintStyle: const TextStyle(color: Color(0xFF999999), fontSize: 15),
-          prefixIcon: const Icon(Icons.search, color: Color(0xFF2BAF74), size: 22),
+          prefixIcon:
+              const Icon(Icons.search, color: Color(0xFF2BAF74), size: 22),
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear, size: 20),
@@ -399,7 +444,8 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
             GestureDetector(
               onTap: _clearFilters,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.red.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(16),
@@ -420,19 +466,26 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_errorMessage != null) {
+    if (_errorMessage != null && _sessions.isEmpty && _messageResults.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Icon(Icons.error_outline, size: 64, color: Colors.red),
             const SizedBox(height: 16),
-            Text(_errorMessage!, style: const TextStyle(fontSize: 16), textAlign: TextAlign.center),
+            Text(_errorMessage!,
+                style: const TextStyle(fontSize: 16),
+                textAlign: TextAlign.center),
             const SizedBox(height: 24),
             ElevatedButton(onPressed: _loadSessions, child: const Text('重试')),
           ],
         ),
       );
+    }
+
+    // 消息搜索结果存在时，优先展示消息搜索结果
+    if (_messageResults.isNotEmpty) {
+      return _buildSearchResultsList();
     }
 
     if (_filteredSessions.isEmpty) {
@@ -444,7 +497,10 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
             const SizedBox(height: 16),
             const Text(
               '暂无对话记录',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey),
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey),
             ),
             const SizedBox(height: 8),
             const Text('开始新的对话吧', style: TextStyle(color: Colors.grey)),
@@ -463,6 +519,126 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
           final session = _filteredSessions[index];
           return _buildSessionTile(session);
         },
+      ),
+    );
+  }
+
+  /// 消息搜索结果列表
+  Widget _buildSearchResultsList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: const Color(0xFF2BAF74).withValues(alpha: 0.05),
+          child: Row(
+            children: [
+              const Icon(Icons.search, size: 16, color: Color(0xFF2BAF74)),
+              const SizedBox(width: 6),
+              Text(
+                '找到 ${_messageResults.length} 条相关消息',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF2BAF74),
+                ),
+              ),
+              if (_isDeepSearching) ...[
+                const SizedBox(width: 8),
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ],
+              const Spacer(),
+              GestureDetector(
+                onTap: () => setState(() => _messageResults = []),
+                child:
+                    const Icon(Icons.close, size: 18, color: Color(0xFF999999)),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            itemCount: _messageResults.length,
+            itemBuilder: (context, index) {
+              final result = _messageResults[index];
+              return _buildSearchResultTile(result);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSearchResultTile(ChatMessageSearchResult result) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: InkWell(
+        onTap: () => _openSession(ChatSessionSummary(
+          id: result.sessionId,
+          title: result.sessionTitle,
+          lastMessage: result.contentSnippet,
+          lastMessageTime: result.createdAt,
+          sessionType: result.sessionType,
+          sessionTypeName: result.sessionTypeName,
+          messageCount: 0,
+        )),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(_getSessionTypeIcon(result.sessionType),
+                      size: 16,
+                      color: _getSessionTypeColor(result.sessionType)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      result.sessionTitle,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: Color(0xFF222222)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                result.contentSnippet,
+                style: const TextStyle(
+                    color: Color(0xFF666666), fontSize: 13, height: 1.4),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _formatTime(result.createdAt),
+                style: const TextStyle(fontSize: 11, color: Color(0xFFBBBBBB)),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -492,7 +668,8 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: _getSessionTypeColor(session.sessionType).withValues(alpha: 0.1),
+                  color: _getSessionTypeColor(session.sessionType)
+                      .withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -521,15 +698,18 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
                       session.lastMessage,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Color(0xFF999999), fontSize: 13),
+                      style: const TextStyle(
+                          color: Color(0xFF999999), fontSize: 13),
                     ),
                     const SizedBox(height: 6),
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: _getSessionTypeColor(session.sessionType).withValues(alpha: 0.1),
+                            color: _getSessionTypeColor(session.sessionType)
+                                .withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -544,19 +724,22 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
                         const SizedBox(width: 8),
                         Text(
                           _formatTime(session.lastMessageTime),
-                          style: const TextStyle(fontSize: 11, color: Color(0xFFBBBBBB)),
+                          style: const TextStyle(
+                              fontSize: 11, color: Color(0xFFBBBBBB)),
                         ),
                         if (session.messageCount > 0) ...[
                           const Spacer(),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: const Color(0xFFF0F0F0),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               '${session.messageCount}条',
-                              style: const TextStyle(fontSize: 11, color: Color(0xFF999999)),
+                              style: const TextStyle(
+                                  fontSize: 11, color: Color(0xFF999999)),
                             ),
                           ),
                         ],
@@ -566,7 +749,8 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.delete_outline, size: 20, color: Color(0xFFCCCCCC)),
+                icon: const Icon(Icons.delete_outline,
+                    size: 20, color: Color(0xFFCCCCCC)),
                 onPressed: () => _deleteSession(session),
               ),
             ],

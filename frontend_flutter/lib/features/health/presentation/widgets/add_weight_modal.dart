@@ -26,14 +26,14 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
   final _bodyFatController = TextEditingController();
   final _muscleMassController = TextEditingController();
   final _notesController = TextEditingController();
-  
+
   DateTime _measuredAt = DateTime.now();
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    
+
     if (widget.existingRecord != null) {
       final record = widget.existingRecord!;
       _weightController.text = record.weight.toString();
@@ -66,7 +66,7 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.existingRecord != null;
-    
+
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.background,
@@ -76,14 +76,14 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
         ),
       ),
       child: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 16,
-              right: 16,
-              top: 16,
-              bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-            ),
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          ),
+          child: SingleChildScrollView(
             child: Form(
               key: _formKey,
               child: Column(
@@ -93,23 +93,23 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
                   // 头部
                   _buildHeader(isEditing),
                   const SizedBox(height: 24),
-                  
+
                   // 体重输入
                   _buildWeightSection(),
                   const SizedBox(height: 20),
-                  
+
                   // 可选数据输入
                   _buildOptionalDataSection(),
                   const SizedBox(height: 20),
-                  
+
                   // 测量时间
                   _buildTimeSection(),
                   const SizedBox(height: 20),
-                  
+
                   // 备注
                   _buildNotesSection(),
                   const SizedBox(height: 32),
-                  
+
                   // 底部按钮
                   _buildActionButtons(isEditing),
                 ],
@@ -223,14 +223,14 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
           ),
         ),
         const SizedBox(height: 12),
-        
         Row(
           children: [
             // 体脂率
             Expanded(
               child: TextFormField(
                 controller: _bodyFatController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
                   labelText: '体脂率',
                   hintText: '0.0',
@@ -261,14 +261,15 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
                 },
               ),
             ),
-            
+
             const SizedBox(width: 12),
-            
+
             // 肌肉量
             Expanded(
               child: TextFormField(
                 controller: _muscleMassController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
                   labelText: '肌肉量',
                   hintText: '0.0',
@@ -291,7 +292,9 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
                 validator: (value) {
                   if (value != null && value.isNotEmpty) {
                     final muscleMass = double.tryParse(value);
-                    if (muscleMass == null || muscleMass <= 0 || muscleMass > 200) {
+                    if (muscleMass == null ||
+                        muscleMass <= 0 ||
+                        muscleMass > 200) {
                       return '肌肉量范围：1-200kg';
                     }
                   }
@@ -414,15 +417,15 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
               padding: const EdgeInsets.symmetric(vertical: 16),
             ),
             child: _isLoading
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                )
-              : Text(isEditing ? '更新' : '保存'),
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : Text(isEditing ? '更新' : '保存'),
           ),
         ),
       ],
@@ -441,13 +444,13 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
       firstDate: DateTime.now().subtract(const Duration(days: 365)),
       lastDate: DateTime.now(),
     );
-    
+
     if (date != null) {
       final time = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.fromDateTime(_measuredAt),
       );
-      
+
       if (time != null) {
         setState(() {
           _measuredAt = DateTime(
@@ -467,22 +470,24 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
       debugPrint('[AddWeightModal] 表单验证失败');
       return;
     }
-    
+
     setState(() => _isLoading = true);
-    
+
     try {
       final weight = double.parse(_weightController.text);
-      final bodyFat = _bodyFatController.text.isNotEmpty 
-        ? double.parse(_bodyFatController.text) 
-        : null;
-      final muscleMass = _muscleMassController.text.isNotEmpty 
-        ? double.parse(_muscleMassController.text) 
-        : null;
-      final notes = _notesController.text.isNotEmpty ? _notesController.text : null;
+      final bodyFat = _bodyFatController.text.isNotEmpty
+          ? double.parse(_bodyFatController.text)
+          : null;
+      final muscleMass = _muscleMassController.text.isNotEmpty
+          ? double.parse(_muscleMassController.text)
+          : null;
+      final notes =
+          _notesController.text.isNotEmpty ? _notesController.text : null;
       final measuredAtString = _measuredAt.toIso8601String();
-      
-      debugPrint('[AddWeightModal] 提交数据: weight=$weight, measuredAt=$measuredAtString');
-      
+
+      debugPrint(
+          '[AddWeightModal] 提交数据: weight=$weight, measuredAt=$measuredAtString');
+
       if (widget.existingRecord != null) {
         // 更新记录
         final request = UpdateWeightRecordRequest(
@@ -492,21 +497,24 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
           measuredAt: measuredAtString,
           notes: notes,
         );
-        
+
         debugPrint('[AddWeightModal] 更新记录 id=${widget.existingRecord!.id}');
-        final result = await ref.read(weightRecordsProvider.notifier)
-          .updateWeightRecord(widget.existingRecord!.id, request);
-        
-        debugPrint('[AddWeightModal] 更新结果: success=${result.success}, message=${result.message}');
-        
+        final result = await ref
+            .read(weightRecordsProvider.notifier)
+            .updateWeightRecord(widget.existingRecord!.id, request);
+
+        debugPrint(
+            '[AddWeightModal] 更新结果: success=${result.success}, message=${result.message}');
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(result.message),
-              backgroundColor: result.success ? AppColors.success : AppColors.error,
+              backgroundColor:
+                  result.success ? AppColors.success : AppColors.error,
             ),
           );
-          
+
           if (result.success) {
             Navigator.pop(context);
             widget.onRecordAdded?.call();
@@ -521,21 +529,24 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
           measuredAt: measuredAtString,
           notes: notes,
         );
-        
+
         debugPrint('[AddWeightModal] 创建新记录');
-        final result = await ref.read(weightRecordsProvider.notifier)
-          .createWeightRecord(request);
-        
-        debugPrint('[AddWeightModal] 创建结果: success=${result.success}, message=${result.message}, data=${result.data}');
-        
+        final result = await ref
+            .read(weightRecordsProvider.notifier)
+            .createWeightRecord(request);
+
+        debugPrint(
+            '[AddWeightModal] 创建结果: success=${result.success}, message=${result.message}, data=${result.data}');
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(result.message),
-              backgroundColor: result.success ? AppColors.success : AppColors.error,
+              backgroundColor:
+                  result.success ? AppColors.success : AppColors.error,
             ),
           );
-          
+
           if (result.success) {
             debugPrint('[AddWeightModal] 创建成功，关闭弹窗并刷新');
             Navigator.pop(context);

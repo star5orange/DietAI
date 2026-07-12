@@ -9,11 +9,13 @@ import '../../../services/water_service.dart';
 
 class WaterIntakeWidget extends StatefulWidget {
   final VoidCallback? onTapDetails;
+  final VoidCallback? onWaterRecorded;
   final DateTime selectedDate;
 
   const WaterIntakeWidget({
     super.key,
     this.onTapDetails,
+    this.onWaterRecorded,
     required this.selectedDate,
   });
 
@@ -74,6 +76,7 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
 
     if (result.success) {
       await _loadData();
+      widget.onWaterRecorded?.call();
       if (mounted) {
         final msg = drinkType != null && drinkType != '水'
             ? '已添加 ${amountMl}ml $drinkType'

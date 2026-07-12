@@ -215,9 +215,26 @@ def generate_advice_with_context(state: EnhancedNutritionState) -> EnhancedNutri
         crowd_desc = f"人群标签: {crowd_tag}" if crowd_tag else "人群标签: 普通日常"
         constitution_desc = f"体质类型: {constitution_type}" if constitution_type else "体质类型: 未设定"
 
+        # M2: Build advisor style context
+        advisor_context = user_prefs.get("advisor_context", {})
+        advisor_prompt_block = ""
+        if advisor_context:
+            from agent.diet_deep_agent.tools.advisor_style_prompt_manager import build_style_prompt
+            try:
+                advisor_prompt_block = build_style_prompt(
+                    advisor_style=advisor_context.get("advisor_style", "nutritionist"),
+                    focus_goal=advisor_context.get("focus_goal"),
+                    focus_nutrient=advisor_context.get("focus_nutrient"),
+                    response_style=advisor_context.get("response_style", "detailed")
+                )
+            except Exception:
+                pass
+
         # Build enhanced prompt with memory context
         prompt = f"""
 你是一位专业的营养师，请根据以下信息提供个性化的营养建议。
+
+{"=== AI 顾问风格 ===" + chr(10) + advisor_prompt_block if advisor_prompt_block else ""}
 
 === 用户长期画像 ===
 {user_memory[:2000] if user_memory else "暂无用户画像数据"}

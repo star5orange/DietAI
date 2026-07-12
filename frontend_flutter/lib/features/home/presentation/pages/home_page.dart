@@ -10,6 +10,7 @@ import '../../../../services/exercise_service.dart';
 import '../../../../services/saved_meal_service.dart';
 import '../../../../services/goal_tracking_service.dart';
 import '../../../../services/wellness_service.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/domain/models/saved_meal_model.dart';
 import '../../../../shared/presentation/widgets/error_handler.dart';
@@ -23,10 +24,14 @@ import '../../../camera/presentation/pages/camera_page.dart';
 import '../../../chat/presentation/pages/chat_page.dart';
 import '../../../health/presentation/pages/exercise_record_page.dart';
 import '../../../pet/presentation/providers/pet_provider.dart';
+import '../../../pet/presentation/widgets/pet_widget.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
+import '../../../cost/data/services/cost_service.dart';
+import '../../../cost/presentation/widgets/budget_progress_card.dart';
 import 'meal_selection_page.dart';
 import 'text_describe_page.dart';
 import '../../../saved_meals/presentation/pages/saved_meals_page.dart';
+import '../../../pet/presentation/pages/pet_detail_page.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -37,8 +42,7 @@ class HomePage extends ConsumerStatefulWidget {
 
 class _HomePageState extends ConsumerState<HomePage> {
   Offset _fabOffset = const Offset(0, 0);
-  bool _fabSnapRight = true;
-  double _fabRelativeY = 0.85;
+  bool _fabInitialized = false;
   final FoodService _foodService = FoodService();
   List<FoodRecord> _todayRecords = [];
   DailyNutritionSummary? _dailySummary;
@@ -47,6 +51,8 @@ class _HomePageState extends ConsumerState<HomePage> {
   double _targetCalories = 2000.0;
   double _targetProtein = 150.0;
   double _targetCarbs = 250.0;
+  double? _pendingCostAmount;
+  String? _pendingCostSource;
   double _targetFat = 65.0;
   final GoalTrackingService _goalTrackingService = GoalTrackingService();
   int _streakDays = 0;
@@ -56,9 +62,12 @@ class _HomePageState extends ConsumerState<HomePage> {
   Map<String, dynamic>? _upcomingSolarTerm; // 即将到来的节气（3天内）
   final ExerciseService _exerciseService = ExerciseService();
   final SavedMealService _savedMealService = SavedMealService();
+  final CostService _costService = CostService(ApiService());
   double _todayExerciseCalories = 0.0;
   int _todayExerciseDuration = 0;
   List<SavedMeal> _favoriteMeals = [];
+  CostStats? _weekCostStats;
+  CostStats? _monthCostStats; // 月度统计（用于预算显示）
 
   @override
   void initState() {
@@ -120,6 +129,8 @@ class _HomePageState extends ConsumerState<HomePage> {
         startDate: dateStr,
         endDate: dateStr,
       );
+      print(
+          '📋 Records API: success=${result.success}, records=${result.data?.records.length ?? 0}');
       DailyNutritionSummary? summary;
       try {
         final summaryResult =
@@ -144,6 +155,15 @@ class _HomePageState extends ConsumerState<HomePage> {
           _todayExerciseDuration = exerciseResult.data!.totalDurationMinutes;
         }
       } catch (_) {}
+
+      // 加载本周消费统计（仅在今日加载）
+      if (DateFormat('yyyy-MM-dd').format(date) ==
+          DateFormat('yyyy-MM-dd').format(DateTime.now())) {
+        try {
+          _weekCostStats = await _costService.getCostStats(period: 'week');
+          _monthCostStats = await _costService.getCostStats(period: 'month');
+        } catch (_) {}
+      }
 
       // 加载收藏餐食（取前6个常用）
       try {
@@ -172,8 +192,35 @@ class _HomePageState extends ConsumerState<HomePage> {
       } catch (_) {}
 
       if (mounted) {
+        final records = result.data?.records ?? [];
+
+        // M2: 如果汇总有热量但记录列表为空，重试一次 records API
+        if (records.isEmpty && summary != null && summary!.totalCalories > 0) {
+          print('⚠️ 汇总有热量(${summary!.totalCalories})但记录为空，重试records API...');
+          await Future.delayed(const Duration(milliseconds: 500));
+          try {
+            final retryResult = await _foodService.getFoodRecords(
+              startDate: dateStr,
+              endDate: dateStr,
+            );
+            final retryRecords = retryResult.data?.records ?? [];
+            if (retryRecords.isNotEmpty) {
+              print('✅ 重试成功，获取到 ${retryRecords.length} 条记录');
+              setState(() {
+                _todayRecords = retryRecords;
+                _dailySummary = summary;
+                _isLoading = false;
+              });
+              _updatePetState();
+              return;
+            }
+          } catch (e) {
+            print('⚠️ 重试失败: $e');
+          }
+        }
+
         setState(() {
-          _todayRecords = result.data?.records ?? [];
+          _todayRecords = records;
           _dailySummary = summary;
           _isLoading = false;
         });
@@ -202,6 +249,10 @@ class _HomePageState extends ConsumerState<HomePage> {
     ref.read(petProvider.notifier).onFoodRecorded();
   }
 
+  void _onWaterRecorded() {
+    ref.read(petProvider.notifier).onFoodRecorded();
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentCalories = _dailySummary?.totalCalories ?? 0.0;
@@ -213,11 +264,14 @@ class _HomePageState extends ConsumerState<HomePage> {
       backgroundColor: AppColors.backgroundSecondary,
       floatingActionButton: LayoutBuilder(
         builder: (context, constraints) {
-          final fabX = _fabSnapRight ? constraints.maxWidth - 72 : 16.0;
-          final fabY = (_fabRelativeY * (constraints.maxHeight - 56))
-              .clamp(0.0, constraints.maxHeight - 56);
-          _fabOffset = Offset(fabX, fabY);
-
+          // 初始化位置：右下角默认FAB位置
+          if (!_fabInitialized) {
+            _fabOffset = Offset(
+              constraints.maxWidth - 64,
+              constraints.maxHeight - 160,
+            );
+            _fabInitialized = true;
+          }
           return Stack(
             children: [
               Positioned(
@@ -226,24 +280,22 @@ class _HomePageState extends ConsumerState<HomePage> {
                 child: GestureDetector(
                   onPanUpdate: (details) {
                     setState(() {
-                      final newDx = (_fabOffset.dx + details.delta.dx)
-                          .clamp(0.0, constraints.maxWidth - 56);
-                      final newDy = (_fabOffset.dy + details.delta.dy)
-                          .clamp(0.0, constraints.maxHeight - 56);
-                      _fabOffset = Offset(newDx, newDy);
-                      _fabSnapRight = newDx >= constraints.maxWidth / 2;
-                      _fabRelativeY = newDy / (constraints.maxHeight - 56);
+                      _fabOffset = Offset(
+                        (_fabOffset.dx + details.delta.dx)
+                            .clamp(0, constraints.maxWidth - 56),
+                        (_fabOffset.dy + details.delta.dy)
+                            .clamp(0, constraints.maxHeight - 56),
+                      );
                     });
                   },
                   onPanEnd: (_) {
+                    // 松手后吸附到左侧或右侧
                     setState(() {
                       final snapLeft = _fabOffset.dx < constraints.maxWidth / 2;
-                      _fabSnapRight = !snapLeft;
-                      final fabX =
-                          _fabSnapRight ? constraints.maxWidth - 72 : 16.0;
-                      _fabOffset = Offset(fabX, _fabOffset.dy);
-                      _fabRelativeY =
-                          _fabOffset.dy / (constraints.maxHeight - 56);
+                      _fabOffset = Offset(
+                        snapLeft ? 16.0 : constraints.maxWidth - 72,
+                        _fabOffset.dy,
+                      );
                     });
                   },
                   child: FloatingActionButton(
@@ -289,24 +341,41 @@ class _HomePageState extends ConsumerState<HomePage> {
                         _buildCalorieCard(
                             remainingCalories, currentCalories, crowdTag),
                         const SizedBox(height: 20),
-                        WaterIntakeWidget(
-                          onTapDetails: () {},
-                          selectedDate: _selectedDate,
-                        ),
-                        const SizedBox(height: 12),
-                        ExerciseQuickAdd(
-                          todayCalories: _todayExerciseCalories > 0
-                              ? _todayExerciseCalories
-                              : null,
-                          todayDuration: _todayExerciseDuration > 0
-                              ? _todayExerciseDuration
-                              : null,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) =>
-                                    const ExerciseRecordPage()),
-                          ).then((_) => _refreshData()),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 5,
+                              child: SizedBox(
+                                height: 300,
+                                child: WaterIntakeWidget(
+                                  onTapDetails: () {},
+                                  onWaterRecorded: _onWaterRecorded,
+                                  selectedDate: _selectedDate,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 3,
+                              child: SizedBox(
+                                height: 300,
+                                child: ExerciseQuickAdd(
+                                  todayCalories: _todayExerciseCalories > 0
+                                      ? _todayExerciseCalories
+                                      : null,
+                                  todayDuration: _todayExerciseDuration > 0
+                                      ? _todayExerciseDuration
+                                      : null,
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            const ExerciseRecordPage()),
+                                  ).then((_) => _refreshData()),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 20),
                         // 节气切换通知横幅
@@ -324,6 +393,12 @@ class _HomePageState extends ConsumerState<HomePage> {
                           crowdTag: crowdTag,
                         ),
                         const SizedBox(height: 24),
+                        // M2: 宠物Widget
+                        _buildPetCard(),
+                        const SizedBox(height: 20),
+                        // M2: 消费概览卡片
+                        _buildCostOverviewCard(),
+                        const SizedBox(height: 20),
                         if (_favoriteMeals.isNotEmpty) ...[
                           _buildFavoriteMealsSection(),
                           const SizedBox(height: 24),
@@ -1259,8 +1334,11 @@ class _HomePageState extends ConsumerState<HomePage> {
       backgroundColor: Colors.transparent,
       builder: (context) => FoodRecordModal(
         mealName: mealName,
-        onRecordMethod: (method) {
+        onRecordMethod: (method, {double? cost, String? sourceTag}) {
           Navigator.pop(context);
+          // 保存消费数据
+          _pendingCostAmount = cost;
+          _pendingCostSource = sourceTag;
           _handleRecordMethod(method, mealName);
         },
       ),
@@ -1348,20 +1426,32 @@ class _HomePageState extends ConsumerState<HomePage> {
             context,
             MaterialPageRoute(
                 builder: (context) => CameraPage(
-                    mealName: mealName,
-                    mealType: mealType,
-                    recordDate: dateStr,
-                    recordTime: recordTime))).then((_) => _refreshData());
+                      mealName: mealName,
+                      mealType: mealType,
+                      recordDate: dateStr,
+                      recordTime: recordTime,
+                      // TODO: Milestone 2 消费功能 - CameraPage 需要添加 costAmount/costSource 参数
+                      // costAmount: _pendingCostAmount,
+                      // costSource: _pendingCostSource,
+                    ))).then((_) {
+          _clearPendingCost();
+          _refreshData();
+        });
         break;
       case 'text_describe':
         Navigator.push(
             context,
             MaterialPageRoute(
                 builder: (context) => TextDescribePage(
-                    mealName: mealName,
-                    mealType: mealType,
-                    recordDate: dateStr,
-                    recordTime: recordTime))).then((result) {
+                      mealName: mealName,
+                      mealType: mealType,
+                      recordDate: dateStr,
+                      recordTime: recordTime,
+                      // TODO: Milestone 2 消费功能 - TextDescribePage 需要添加 costAmount/costSource 参数
+                      // costAmount: _pendingCostAmount,
+                      // costSource: _pendingCostSource,
+                    ))).then((result) {
+          _clearPendingCost();
           if (result == true) _refreshData();
         });
         break;
@@ -1375,6 +1465,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         break;
       case 'saved_meals':
         await _navigateToSavedMeals(mealName, mealType, recordTime);
+        _clearPendingCost();
         break;
     }
   }
@@ -1388,6 +1479,11 @@ class _HomePageState extends ConsumerState<HomePage> {
     if (meal != null && mounted) {
       _createFoodRecordFromSavedMeal(meal, mealName, mealType, recordTime);
     }
+  }
+
+  void _clearPendingCost() {
+    _pendingCostAmount = null;
+    _pendingCostSource = null;
   }
 
   Future<void> _createFoodRecordFromSavedMeal(
@@ -1405,6 +1501,8 @@ class _HomePageState extends ConsumerState<HomePage> {
         description: meal.description,
         imageUrl: meal.imageUrl,
         recordingMethod: 4,
+        cost: _pendingCostAmount,
+        sourceTag: _pendingCostSource,
       );
 
       final result = await foodService.createFoodRecord(record);
@@ -1997,6 +2095,238 @@ class _HomePageState extends ConsumerState<HomePage> {
       ],
     );
   }
+
+  /// 宠物卡片
+  Widget _buildPetCard() {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const PetDetailPage(),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.backgroundCard,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: AppColors.cardShadow,
+        ),
+        child: Row(
+          children: [
+            const PetWidget(
+              size: 80,
+              draggable: false,
+              showBubble: true,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('我的精灵', style: AppTextStyles.h5),
+                  const SizedBox(height: 4),
+                  Consumer(
+                    builder: (context, ref, child) {
+                      final petState = ref.watch(petProvider);
+                      return Text(
+                        petState.dialogue,
+                        style: AppTextStyles.bodySmall.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Consumer(
+                    builder: (context, ref, child) {
+                      final petState = ref.watch(petProvider);
+                      return Row(
+                        children: [
+                          _buildPetStat(
+                              'Lv.${petState.level}', AppColors.primary),
+                          const SizedBox(width: 12),
+                          _buildPetStat(
+                              '${petState.exp}/${petState.maxExp} EXP',
+                              AppColors.warning),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const Icon(LucideIcons.chevronRight, color: AppColors.textTertiary),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPetStat(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  /// 消费概览卡片
+  Widget _buildCostOverviewCard() {
+    // 计算今日消费（从今日记录中汇总）
+    final todayCost = _todayRecords.fold<double>(
+      0.0,
+      (sum, record) => sum + (record.cost ?? 0.0),
+    );
+
+    final weekCost = _weekCostStats?.totalCost ?? 0.0;
+    // 使用月度统计来获取预算信息
+    final monthCost = _monthCostStats?.totalCost ?? 0.0;
+    final budgetRemaining = _monthCostStats?.budgetRemaining;
+    final budget = _monthCostStats?.budget;
+    final budgetWarning = _monthCostStats?.budgetWarning;
+
+    return GestureDetector(
+      onTap: () => context.push('/cost-statistics'),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: budgetWarning != null &&
+                    budgetWarning['level'] == 'exceeded'
+                ? [
+                    AppColors.error.withValues(alpha: 0.1),
+                    AppColors.error.withValues(alpha: 0.05)
+                  ]
+                : budgetWarning != null && budgetWarning['level'] == 'warning'
+                    ? [
+                        AppColors.warning.withValues(alpha: 0.1),
+                        AppColors.warning.withValues(alpha: 0.05)
+                      ]
+                    : [
+                        AppColors.success.withValues(alpha: 0.1),
+                        AppColors.success.withValues(alpha: 0.05)
+                      ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: budgetWarning != null && budgetWarning['level'] == 'exceeded'
+                ? AppColors.error.withValues(alpha: 0.3)
+                : budgetWarning != null && budgetWarning['level'] == 'warning'
+                    ? AppColors.warning.withValues(alpha: 0.3)
+                    : AppColors.success.withValues(alpha: 0.3),
+          ),
+          boxShadow: AppColors.lightShadow,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: budgetWarning != null &&
+                              budgetWarning['level'] == 'exceeded'
+                          ? [
+                              AppColors.error,
+                              AppColors.error.withValues(alpha: 0.8)
+                            ]
+                          : budgetWarning != null &&
+                                  budgetWarning['level'] == 'warning'
+                              ? [
+                                  AppColors.warning,
+                                  AppColors.warning.withValues(alpha: 0.8)
+                                ]
+                              : [
+                                  const Color(0xFF2BAF74),
+                                  const Color(0xFF4ECDC4)
+                                ],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(LucideIcons.wallet,
+                      color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text('消费概览', style: AppTextStyles.h5),
+                          if (budgetWarning != null)
+                            Container(
+                              margin: const EdgeInsets.only(left: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: budgetWarning['level'] == 'exceeded'
+                                    ? AppColors.error.withValues(alpha: 0.2)
+                                    : AppColors.warning.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                budgetWarning['level'] == 'exceeded'
+                                    ? '已超预算'
+                                    : '接近预算',
+                                style: AppTextStyles.caption.copyWith(
+                                  color: budgetWarning['level'] == 'exceeded'
+                                      ? AppColors.error
+                                      : AppColors.warning,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '本周 ¥${weekCost.toStringAsFixed(1)} | 今日 ¥${todayCost.toStringAsFixed(1)}',
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(LucideIcons.chevronRight,
+                    color: AppColors.textTertiary),
+              ],
+            ),
+            if (budget != null && budget > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: BudgetProgressCard(
+                  budget: budget,
+                  used: monthCost,
+                  remaining: budgetRemaining ?? budget,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _CalorieGoalDialog extends StatefulWidget {
@@ -2076,7 +2406,6 @@ class _CalorieGoalDialogState extends State<_CalorieGoalDialog> {
   }
 }
 
-/// 宏量营养素环形图绘制器
 class _MacroDonutPainter extends CustomPainter {
   final double protein;
   final double carbs;

@@ -50,7 +50,9 @@ async def generate_sse_stream(
             description=food_data.description,
             image_url=food_data.image_url,
             recording_method=food_data.recording_method or 1,
-            analysis_status=1  # 待分析
+            analysis_status=1,  # 待分析
+            cost=food_data.cost,
+            source_tag=food_data.source_tag,
         )
 
         db.add(food_record)
@@ -75,6 +77,8 @@ async def generate_sse_stream(
             "image_url": food_record.image_url,
             "recording_method": food_record.recording_method,
             "analysis_status": food_record.analysis_status,
+            "cost": float(food_record.cost) if food_record.cost else None,
+            "source_tag": food_record.source_tag,
             "created_at": food_record.created_at.isoformat(),
         }
 
@@ -1365,6 +1369,61 @@ def _get_daily_water_intake(db: Session, user_id: int, summary_date: date) -> fl
         func.date(WaterIntakeRecord.record_time) == summary_date
     ).scalar()
     return round(float(total_ml) / 1000.0, 2)
+
+
+@router.post("/records/analyze-enhanced", response_model=BaseResponse)
+async def analyze_food_enhanced(
+        food_data: FoodRecordCreate,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """
+    M2: Enhanced nutrition analysis with AI advisor style personalization.
+
+    Analyzes food image/description using the enhanced_nutrition_agent
+    with personalized advisor settings context.
+    """
+    try:
+        from shared.services.agent_orchestrator import get_orchestrator
+        from shared.services.advisor_service import get_advisor_settings
+
+        # Pre-load advisor settings for personalized analysis
+        advisor_settings = get_advisor_settings(db, current_user.id)
+        advisor_context = None
+        if advisor_settings:
+            advisor_context = {
+                "advisor_style": advisor_settings.get("advisor_style"),
+                "focus_goal": advisor_settings.get("focus_goal"),
+                "focus_nutrient": advisor_settings.get("focus_nutrient"),
+                "response_style": advisor_settings.get("response_style"),
+            }
+
+        # Use orchestrator for enhanced analysis
+        orchestrator = get_orchestrator(db)
+        result = await orchestrator.analyze_food_with_goals(
+            user_id=current_user.id,
+            image_data=food_data.image_url or "",
+            food_description=food_data.description,
+            meal_type=food_data.meal_type,
+            advisor_context=advisor_context,
+        )
+
+        return BaseResponse(
+            success=True,
+            message="增强营养分析完成",
+            data={
+                "analysis": result.get("analysis"),
+                "nutrition_detail": result.get("nutrition_detail"),
+                "advisor_style": advisor_context.get("advisor_style") if advisor_context else None,
+                "recommendations": result.get("recommendations", []),
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"增强分析失败: {str(e)}"
+        )
 
 
 def _get_daily_exercise_calories(db: Session, user_id: int, summary_date: date) -> float:

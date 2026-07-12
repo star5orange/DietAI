@@ -126,21 +126,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               _buildLoginForm(),
               const SizedBox(height: 32),
               _buildRegisterPrompt(),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  context.go('/onboarding');
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.warning,
-                ),
-                child: Text(
-                  '测试引导流程',
-                  style: AppTextStyles.bodySmall.copyWith(
-                    color: Colors.white,
-                  ),
-                ),
-              ),
             ],
           ),
         ),

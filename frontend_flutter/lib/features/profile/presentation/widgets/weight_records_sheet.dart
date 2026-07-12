@@ -34,27 +34,29 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
   Widget build(BuildContext context) {
     final weightRecordsAsync = ref.watch(weightRecordsProvider);
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.8,
-      decoration: const BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      child: Column(
-        children: [
-          // 头部
-          _buildHeader(),
+    return SafeArea(
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.8,
+        decoration: const BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Column(
+          children: [
+            // 头部
+            _buildHeader(),
 
-          // 内容
-          Expanded(
-            child: _isAddingRecord
-                ? _buildAddRecordForm()
-                : _buildRecordsList(weightRecordsAsync),
-          ),
+            // 内容
+            Expanded(
+              child: _isAddingRecord
+                  ? _buildAddRecordForm()
+                  : _buildRecordsList(weightRecordsAsync),
+            ),
 
-          // 底部记录按钮（添加记录表单时不显示）
-          if (!_isAddingRecord) _buildBottomRecordButton(),
-        ],
+            // 底部记录按钮（添加记录表单时不显示）
+            if (!_isAddingRecord) _buildBottomRecordButton(),
+          ],
+        ),
       ),
     );
   }
@@ -179,27 +181,12 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
               ),
               elevation: 4,
             ),
-            child: const Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '记录',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    height: 1.2,
-                  ),
-                ),
-                Text(
-                  '体重',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    height: 1.2,
-                  ),
-                ),
-              ],
+            child: const Text(
+              '记录体重',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
             ),
           ),
         ],
@@ -233,26 +220,12 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
               ),
               elevation: 4,
             ),
-            child: const Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '记录',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    height: 1.2,
-                  ),
-                ),
-                Text(
-                  '体重',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    height: 1.2,
-                  ),
-                ),
-              ],
+            child: const Text(
+              '记录体重',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
             ),
           ),
         ),
@@ -637,7 +610,12 @@ class _AddRecordFormState extends ConsumerState<_AddRecordForm> {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
       child: Form(
         key: _formKey,
         child: Column(

@@ -4,6 +4,9 @@ import '../../../../services/chat_service.dart';
 import '../../../../shared/domain/models/api_response.dart';
 import '../../../../core/themes/app_colors.dart';
 import 'chat_history_page.dart';
+import '../../../advisor/presentation/pages/advisor_style_page.dart';
+import '../../../advisor/data/services/advisor_service.dart';
+import '../../../../core/services/api_service.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   final int? sessionId;
@@ -31,12 +34,82 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   bool _isLoading = false;
   bool _isSending = false;
   String? _errorMessage;
+  String _currentStyleName = '获取中...';
+
+  final Map<String, String> _styleLabels = {
+    'nutritionist': '专业营养师',
+    'fitness_coach': '健身教练',
+    'tcm_healer': '中医养生师',
+    'encouraging_friend': '鼓励伙伴',
+    'motivator': '励志伙伴',
+  };
 
   @override
   void initState() {
     super.initState();
     _currentSessionId = widget.sessionId;
     _initializeChat();
+    _loadAdvisorStyle();
+  }
+
+  Future<void> _loadAdvisorStyle() async {
+    try {
+      final advisorService = AdvisorService(ApiService());
+      final settings = await advisorService.getSettings();
+      if (mounted) {
+        setState(() {
+          _currentStyleName = _styleLabels[settings.advisorStyle] ?? '专业营养师';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _currentStyleName = '专业营养师');
+      }
+    }
+  }
+
+  Widget _buildStyleChip() {
+    return GestureDetector(
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const AdvisorStylePage(),
+          ),
+        );
+        _loadAdvisorStyle();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2BAF74).withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: const Color(0xFF2BAF74).withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.tune,
+              size: 11,
+              color: Color(0xFF2BAF74),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              _currentStyleName,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF2BAF74),
+                height: 1.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -236,13 +309,21 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
       appBar: AppBar(
-        title: Text(
-          widget.title ?? _chatService.getSessionTypeName(widget.sessionType),
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF222222),
-          ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.title ??
+                  _chatService.getSessionTypeName(widget.sessionType),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF222222),
+              ),
+            ),
+            const SizedBox(height: 2),
+            _buildStyleChip(),
+          ],
         ),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -251,6 +332,23 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(
+              Icons.tune,
+              size: 24,
+              color: Color(0xFF2BAF74),
+            ),
+            tooltip: 'AI顾问风格设置',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AdvisorStylePage(),
+                ),
+              );
+              _loadAdvisorStyle();
+            },
+          ),
           IconButton(
             icon: const Icon(
               Icons.delete_sweep_outlined,
