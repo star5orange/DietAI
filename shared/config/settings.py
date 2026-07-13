@@ -52,7 +52,26 @@ class Settings(BaseSettings):
         default="CHANGE-ME-generate-with-secrets-token-urlsafe-64",
         description="JWT密钥（生产环境必须通过环境变量 DIETAI_JWT_SECRET_KEY 设置强随机密钥）"
     )
-    jwt_algorithm: str = Field(default="HS256", description="JWT算法")
+    jwt_algorithm: str = Field(default="RS256", description="JWT算法（RS256=非对称，HS256=对称）")
+    jwt_private_key_file: str = Field(
+        default="jwtrs256-key.pem",
+        description="RS256 私钥 PEM 文件路径"
+    )
+    jwt_public_key_file: str = Field(
+        default="jwtrs256-key.pub",
+        description="RS256 公钥 PEM 文件路径"
+    )
+
+    @property
+    def jwt_private_key(self) -> str:
+        with open(self.jwt_private_key_file, "r", encoding="utf-8") as f:
+            return f.read()
+
+    @property
+    def jwt_public_key(self) -> str:
+        with open(self.jwt_public_key_file, "r", encoding="utf-8") as f:
+            return f.read()
+
     jwt_access_token_expire_minutes: int = Field(default=30, description="访问令牌过期时间(分钟)")
     jwt_refresh_token_expire_days: int = Field(default=7, description="刷新令牌过期时间(天)")
 
@@ -162,15 +181,22 @@ class Settings(BaseSettings):
             return [file_type.strip() for file_type in v.split(',')]
         return v
 
-    class Config:
-        env_file = ".env.dev"
-        # 如果 .env.dev 不存在，回退到 .env
-        if not os.path.exists(os.path.join(os.path.dirname(__file__), "..", "..", ".env.dev")):
-            env_file = ".env"
-        env_file_encoding = "utf-8"
-        env_prefix = "DIETAI_"
-        case_sensitive = False
-        extra = "ignore"  # 忽略额外字段
+    if os.path.exists(os.path.join(os.path.dirname(__file__), "..", "..", ".env.dev")):
+        model_config = {
+            "env_file": ".env.dev",
+            "env_file_encoding": "utf-8",
+            "env_prefix": "DIETAI_",
+            "case_sensitive": False,
+            "extra": "ignore",
+        }
+    else:
+        model_config = {
+            "env_file": ".env",
+            "env_file_encoding": "utf-8",
+            "env_prefix": "DIETAI_",
+            "case_sensitive": False,
+            "extra": "ignore",
+        }
 
 
 _INSECURE_JWT_KEYS = {
@@ -183,19 +209,53 @@ _INSECURE_JWT_KEYS = {
 def get_settings() -> Settings:
     """获取应用配置（带缓存）"""
     s = Settings()
-    # 生产环境（debug=False）拒绝不安全的 JWT 密钥
-    if not s.debug and s.jwt_secret_key in _INSECURE_JWT_KEYS:
-        raise ValueError(
-            "生产环境必须设置 DIETAI_JWT_SECRET_KEY 环境变量为强随机密钥！"
-            "生成方式: python -c \"import secrets; print(secrets.token_urlsafe(64))\""
-        )
-    if s.jwt_secret_key in _INSECURE_JWT_KEYS:
-        import warnings
-        warnings.warn(
-            "JWT 密钥使用默认值，上线前必须通过 DIETAI_JWT_SECRET_KEY 环境变量设置强随机密钥",
-            UserWarning,
-            stacklevel=2,
-        )
+
+    # RS256 非对称模式：校验私钥和公钥
+    if s.jwt_algorithm == "RS256":
+        if not s.jwt_private_key.strip() or not s.jwt_public_key.strip():
+            # 开发环境自动生成临时密钥对
+            if s.debug:
+                import warnings
+                from cryptography.hazmat.primitives.asymmetric import rsa
+                from cryptography.hazmat.primitives import serialization
+                warnings.warn(
+                    "RS256 模式下 JWT 密钥对文件为空，已自动生成临时密钥（仅限开发环境）",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                _key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+                _private_pem = _key.private_bytes(
+                    serialization.Encoding.PEM,
+                    serialization.PrivateFormat.PKCS8,
+                    serialization.NoEncryption(),
+                ).decode()
+                _public_pem = _key.public_key().public_bytes(
+                    serialization.Encoding.PEM,
+                    serialization.PublicFormat.SubjectPublicKeyInfo,
+                ).decode()
+                with open(s.jwt_private_key_file, "w", encoding="utf-8") as f:
+                    f.write(_private_pem)
+                with open(s.jwt_public_key_file, "w", encoding="utf-8") as f:
+                    f.write(_public_pem)
+            else:
+                raise ValueError(
+                    "RS256 模式下必须设置 JWT 密钥对文件："
+                    f"{s.jwt_private_key_file} 和 {s.jwt_public_key_file}"
+                )
+    else:
+        # HS256 对称模式：校验密钥
+        if not s.debug and s.jwt_secret_key in _INSECURE_JWT_KEYS:
+            raise ValueError(
+                "生产环境必须设置 DIETAI_JWT_SECRET_KEY 环境变量为强随机密钥！"
+                "生成方式: python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+            )
+        if s.jwt_secret_key in _INSECURE_JWT_KEYS:
+            import warnings
+            warnings.warn(
+                "JWT 密钥使用默认值，上线前必须通过 DIETAI_JWT_SECRET_KEY 环境变量设置强随机密钥",
+                UserWarning,
+                stacklevel=2,
+            )
     # 生产环境拒绝 CORS *
     if not s.debug and "*" in s.cors_origins:
         raise ValueError(

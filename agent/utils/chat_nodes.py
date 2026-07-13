@@ -15,6 +15,11 @@ def initialize_chat_session(state: ChatState, config: RunnableConfig) -> ChatSta
     
     # 根据会话类型获取系统提示词
     system_prompt = CHAT_SYSTEM_PROMPTS.get(state['session_type'], CHAT_SYSTEM_PROMPTS['default'])
+
+    # Milestone 2: 注入 AI 顾问风格 System Prompt
+    advisor_prompt = state.get('advisor_system_prompt', '')
+    if advisor_prompt:
+        system_prompt = system_prompt + "\n\n" + advisor_prompt
     
     # 初始化对话历史（如果是新会话）
     if not state.get('conversation_history'):

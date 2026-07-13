@@ -1,10 +1,18 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+
 import '../../../pet/presentation/providers/pet_provider.dart';
 import '../../../pet/data/pet_storage.dart';
 import '../../../pet/domain/pet_state_calculator.dart';
+import '../../../pet/presentation/widgets/pet_bubble.dart';
+import '../../../pet/presentation/widgets/pet_animation_widget.dart';
+import '../../../pet/domain/services/pet_service.dart';
 import '../../../../core/themes/app_colors.dart';
+import '../../../../core/themes/app_text_styles.dart';
+import '../../../../services/food_service.dart';
+import '../../../../services/water_service.dart';
 
 class MyPetPage extends ConsumerStatefulWidget {
   const MyPetPage({super.key});
@@ -13,7 +21,42 @@ class MyPetPage extends ConsumerStatefulWidget {
   ConsumerState<MyPetPage> createState() => _MyPetPageState();
 }
 
-class _MyPetPageState extends ConsumerState<MyPetPage> {
+class _MyPetPageState extends ConsumerState<MyPetPage>
+    with TickerProviderStateMixin {
+  // Animation controllers
+  late AnimationController _bounceController;
+  late AnimationController _bubbleController;
+  late AnimationController _pulseController;
+  late Animation<double> _bounceAnimation;
+  late Animation<double> _bubbleOpacity;
+  late Animation<double> _pulseAnimation;
+  late Animation<Offset> _bubbleSlide;
+
+  // Bubble state
+  bool _bubbleVisible = false;
+  String _bubbleText = '';
+  Timer? _autoBubbleTimer;
+  Timer? _bubbleHideTimer;
+
+  // Services
+  final PetService _petService = PetService();
+  final FoodService _foodService = FoodService();
+  final WaterService _waterService = WaterService();
+
+  // Unlockables
+  List<Map<String, dynamic>> _unlockables = [];
+  bool _unlockablesLoading = true;
+
+  // Stats
+  bool _statsLoading = true;
+  double _foodProgress = 0.0;
+  double _waterProgress = 0.0;
+  double _consumedCalories = 0;
+  double _targetCalories = 2000;
+  int _waterTotalMl = 0;
+  int _waterGoalMl = 2000;
+
+  // Pet types
   static const List<Map<String, dynamic>> _petTypes = [
     {
       'type': 'cat',
@@ -45,6 +88,329 @@ class _MyPetPageState extends ConsumerState<MyPetPage> {
     },
   ];
 
+  static const _interactions = [
+    {
+      'name': '抚摸',
+      'icon': LucideIcons.heartHandshake,
+      'effect': '+5经验',
+      'action': 'pet',
+    },
+    {
+      'name': '喂食',
+      'icon': LucideIcons.cookie,
+      'effect': '+10经验',
+      'action': 'feed',
+    },
+    {
+      'name': '玩耍',
+      'icon': LucideIcons.gamepad2,
+      'effect': '+8经验',
+      'action': 'play',
+    },
+    {
+      'name': '训练',
+      'icon': LucideIcons.graduationCap,
+      'effect': '+12经验',
+      'action': 'train',
+    },
+  ];
+
+  static const _defaultUnlockables = [
+    {
+      'name': '默认外观',
+      'description': '可爱的基础宠物形象',
+      'unlock_type': 'skin',
+      'unlock_key': 'default',
+      'required_level': 1,
+      'required_streak': null,
+      'is_unlocked': true,
+    },
+    {
+      'name': '夏日清凉',
+      'description': '夏日海滩风格外观',
+      'unlock_type': 'skin',
+      'unlock_key': 'summer',
+      'required_level': 3,
+      'required_streak': null,
+      'is_unlocked': false,
+    },
+    {
+      'name': '开心转圈',
+      'description': '达标后的开心转圈动作',
+      'unlock_type': 'action',
+      'unlock_key': 'happy_spin',
+      'required_level': null,
+      'required_streak': 3,
+      'is_unlocked': false,
+    },
+    {
+      'name': '金色光效',
+      'description': '升级时的金色闪光效果',
+      'unlock_type': 'effect',
+      'unlock_key': 'gold_sparkle',
+      'required_level': 10,
+      'required_streak': null,
+      'is_unlocked': false,
+    },
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _bounceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _bounceAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
+      CurvedAnimation(parent: _bounceController, curve: Curves.elasticOut),
+    );
+
+    _bubbleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _bubbleOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _bubbleController, curve: Curves.easeOut),
+    );
+    _bubbleSlide = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(parent: _bubbleController, curve: Curves.easeOut),
+    );
+
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.05).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+    _pulseController.repeat(reverse: true);
+
+    _startAutoBubble();
+    _loadStats();
+    _loadUnlockables();
+  }
+
+  @override
+  void dispose() {
+    _bounceController.dispose();
+    _bubbleController.dispose();
+    _pulseController.dispose();
+    _autoBubbleTimer?.cancel();
+    _bubbleHideTimer?.cancel();
+    super.dispose();
+  }
+
+  // ==================== Bubble ====================
+
+  void _startAutoBubble() {
+    _autoBubbleTimer?.cancel();
+    _autoBubbleTimer = Timer.periodic(
+      const Duration(minutes: 2, seconds: 30),
+      (_) {
+        final petState = ref.read(petProvider);
+        if (petState.expression == PetExpression.calm ||
+            petState.expression == PetExpression.happy) {
+          _showBubble(petState.dialogue);
+        }
+      },
+    );
+  }
+
+  void _showBubble(String text) {
+    if (!mounted) return;
+    setState(() {
+      _bubbleText = text;
+      _bubbleVisible = true;
+    });
+    _bubbleController.forward();
+
+    _bubbleHideTimer?.cancel();
+    _bubbleHideTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _bubbleController.reverse().then((_) {
+        if (mounted) setState(() => _bubbleVisible = false);
+      });
+    });
+  }
+
+  // ==================== Tap & Interact ====================
+
+  void _onTapPet() {
+    _bounceController.forward().then((_) => _bounceController.reverse());
+    ref.read(petProvider.notifier).onTap();
+    final petState = ref.read(petProvider);
+    _showBubble(petState.dialogue);
+  }
+
+  Future<void> _onInteract(String action) async {
+    try {
+      await _petService.petInteract(action: action);
+      final notifier = ref.read(petProvider.notifier);
+      switch (action) {
+        case 'feed':
+          notifier.addExp(10);
+          break;
+        case 'play':
+          notifier.addExp(8);
+          break;
+        case 'train':
+          notifier.addExp(12);
+          break;
+        default:
+          notifier.addExp(5);
+      }
+      if (mounted) _showFeedback(action);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('互动失败: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showFeedback(String action) {
+    final messages = {
+      'feed': '喂食成功！+10经验值',
+      'play': '玩耍成功！+8经验值',
+      'train': '训练成功！+12经验值',
+      'pet': '抚摸成功！+5经验值',
+    };
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(LucideIcons.sparkles, color: Colors.white),
+            const SizedBox(width: 12),
+            Text(messages[action] ?? '互动成功！'),
+          ],
+        ),
+        backgroundColor: AppColors.success,
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  // ==================== Load Data ====================
+
+  Future<void> _loadStats() async {
+    try {
+      final today = DateTime.now().toIso8601String().substring(0, 10);
+
+      final foodResult = await _foodService.getDailySummary(today);
+      if (foodResult.success && foodResult.data != null) {
+        final summary = foodResult.data!;
+        final consumed = summary.totalCalories;
+        const target = 2000.0;
+        if (mounted) {
+          setState(() {
+            _consumedCalories = consumed;
+            _targetCalories = target;
+            _foodProgress =
+                target > 0 ? (consumed / target).clamp(0.0, 1.0) : 0.0;
+          });
+        }
+      }
+
+      final waterResult = await _waterService.getDailySummary(today);
+      if (waterResult.success && waterResult.data != null) {
+        final summary = waterResult.data!;
+        if (mounted) {
+          setState(() {
+            _waterTotalMl = summary.totalMl;
+            _waterGoalMl = summary.goalMl;
+            _waterProgress = summary.progress;
+          });
+        }
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _statsLoading = false);
+    }
+  }
+
+  Future<void> _loadUnlockables() async {
+    try {
+      final response = await _petService.getUnlockables();
+      if (response.success && response.data != null) {
+        final items = response.data!['unlockables'] as List<dynamic>? ??
+            response.data!['items'] as List<dynamic>? ??
+            [];
+        final petState = ref.read(petProvider);
+        setState(() {
+          _unlockables = items.map((e) {
+            final requiredLevel = e['required_level'] as int?;
+            final requiredStreak = e['required_streak'] as int?;
+            bool isUnlocked = e['is_unlocked'] == true;
+            if (!isUnlocked) {
+              final levelOk =
+                  requiredLevel == null || petState.level >= requiredLevel;
+              final streakOk = requiredStreak == null ||
+                  petState.currentStreak >= requiredStreak;
+              isUnlocked = levelOk && streakOk;
+            }
+            return {
+              'name': e['name'] ?? '',
+              'unlock_type': e['unlock_type'] as String? ?? '',
+              'unlock_key': e['unlock_key'] as String? ?? '',
+              'description': e['description'] as String? ?? '',
+              'required_level': requiredLevel,
+              'required_streak': requiredStreak,
+              'is_unlocked': isUnlocked,
+            };
+          }).toList();
+        });
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _unlockablesLoading = false);
+    }
+  }
+
+  Future<void> _doUnlock(Map<String, dynamic> item) async {
+    setState(() {
+      final idx = _unlockables.indexOf(item);
+      if (idx >= 0) {
+        _unlockables[idx] = {...item, 'is_unlocked': true};
+      }
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(children: [
+            const Icon(LucideIcons.trophy, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text('${item['name']} 解锁成功！'),
+          ]),
+          backgroundColor: AppColors.warning,
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+
+    final unlockType = item['unlock_type'] as String;
+    try {
+      await _petService.petInteract(
+        action: 'unlock',
+        itemId: '${unlockType}:${item['unlock_key']}',
+      );
+    } catch (_) {}
+  }
+
+  // ==================== Build ====================
+
   @override
   Widget build(BuildContext context) {
     final petState = ref.watch(petProvider);
@@ -72,34 +438,36 @@ class _MyPetPageState extends ConsumerState<MyPetPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildCurrentPetCard(petState),
+            _buildPetDisplaySection(petState),
             const SizedBox(height: 20),
             _buildVisibilityToggle(petState),
             const SizedBox(height: 20),
             _buildPetTypeSelector(petState),
             const SizedBox(height: 20),
-            _buildPetInfoCard(petState),
+            _buildStatsPanel(petState),
+            const SizedBox(height: 20),
+            _buildAchievementsSection(),
+            const SizedBox(height: 20),
+            _buildInteractionPanel(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildCurrentPetCard(PetState petState) {
-    final currentPet = _petTypes.firstWhere(
-      (p) => p['type'] == petState.petType,
-      orElse: () => _petTypes[0],
-    );
+  // ==================== Pet Display (interactive) ====================
 
+  Widget _buildPetDisplaySection(PetState petState) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFF2BAF74), Color(0xFF4ECDC4)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF2BAF74).withValues(alpha: 0.3),
@@ -108,82 +476,106 @@ class _MyPetPageState extends ConsumerState<MyPetPage> {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
         children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Image.asset(
-              petState.gifPath,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => Icon(
-                currentPet['icon'] as IconData,
-                size: 40,
-                color: Colors.white,
+          // Name + Level
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              GestureDetector(
+                onTap: () => _showRenameDialog(petState),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        petState.petName,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(LucideIcons.pencil, size: 14, color: Colors.white70),
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Lv.${petState.level} ${petState.levelName}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            petState.dialogue,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.white.withValues(alpha: 0.8),
             ),
           ),
-          const SizedBox(width: 16),
-          Expanded(
+          const SizedBox(height: 16),
+
+          // Animated pet with bubble
+          GestureDetector(
+            onTap: _onTapPet,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-                  onTap: () => _showRenameDialog(petState),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          petState.petName,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      const Icon(
-                        LucideIcons.pencil,
-                        size: 14,
-                        color: Colors.white70,
-                      ),
-                    ],
+                if (_bubbleVisible)
+                  FadeTransition(
+                    opacity: _bubbleOpacity,
+                    child: SlideTransition(
+                      position: _bubbleSlide,
+                      child: PetBubble(text: _bubbleText),
+                    ),
+                  ),
+                if (_bubbleVisible) const SizedBox(height: 6),
+                ScaleTransition(
+                  scale: _bounceAnimation,
+                  child: ScaleTransition(
+                    scale: _pulseAnimation,
+                    child: PetAnimationWidget(
+                      size: 160,
+                      showLevelBadge: false,
+                      enableInteraction: false,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 4),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Tap hint
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(LucideIcons.hand, size: 14, color: Colors.white),
+                SizedBox(width: 6),
                 Text(
-                  'Lv.${petState.level} ${petState.levelName}',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white.withValues(alpha: 0.9),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: _getExpProgress(petState),
-                    backgroundColor: Colors.white.withValues(alpha: 0.3),
-                    valueColor:
-                        const AlwaysStoppedAnimation<Color>(Colors.white),
-                    minHeight: 6,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '经验值 ${petState.exp}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white.withValues(alpha: 0.8),
-                  ),
+                  '点击互动',
+                  style: TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -193,13 +585,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage> {
     );
   }
 
-  double _getExpProgress(PetState petState) {
-    final currentLevelExp = PetStorage.expForLevel(petState.level);
-    final nextLevelExp = PetStorage.expForLevel(petState.level + 1);
-    if (nextLevelExp <= currentLevelExp) return 1.0;
-    return ((petState.exp - currentLevelExp) / (nextLevelExp - currentLevelExp))
-        .clamp(0.0, 1.0);
-  }
+  // ==================== Visibility Toggle ====================
 
   Widget _buildVisibilityToggle(PetState petState) {
     return Container(
@@ -270,6 +656,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage> {
     );
   }
 
+  // ==================== Pet Type Selector ====================
+
   Widget _buildPetTypeSelector(PetState petState) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -287,10 +675,10 @@ class _MyPetPageState extends ConsumerState<MyPetPage> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 0.72,
+            crossAxisCount: 4,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio: 0.85,
           ),
           itemCount: _petTypes.length,
           itemBuilder: (context, index) {
@@ -298,9 +686,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage> {
             final isSelected = petState.petType == pet['type'];
             return GestureDetector(
               onTap: () {
-                ref
-                    .read(petProvider.notifier)
-                    .setPetType(pet['type'] as String);
+                ref.read(petProvider.notifier).setPetType(pet['type'] as String);
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
@@ -316,8 +702,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage> {
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
-                            color:
-                                (pet['color'] as Color).withValues(alpha: 0.2),
+                            color: (pet['color'] as Color).withValues(alpha: 0.2),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
@@ -328,82 +713,29 @@ class _MyPetPageState extends ConsumerState<MyPetPage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      width: 64,
-                      height: 64,
+                      width: 48,
+                      height: 48,
                       decoration: BoxDecoration(
                         color: (pet['color'] as Color).withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: isSelected
-                          ? Image.asset(
-                              petState.gifPath,
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => Icon(
-                                pet['icon'] as IconData,
-                                size: 30,
-                                color: pet['color'] as Color,
-                              ),
-                            )
-                          : Image.asset(
-                              'assets/pet/calm.gif',
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => Icon(
-                                pet['icon'] as IconData,
-                                size: 30,
-                                color: pet['color'] as Color,
-                              ),
-                            ),
+                      child: Icon(
+                        pet['icon'] as IconData,
+                        size: 28,
+                        color: pet['color'] as Color,
+                      ),
                     ),
-                    if (isSelected) ...[
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color:
-                              (pet['color'] as Color).withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              'Lv.${petState.level} ${petState.levelName}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: pet['color'] as Color,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '经验 ${petState.exp}',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: (pet['color'] as Color)
-                                    .withValues(alpha: 0.7),
-                              ),
-                            ),
-                          ],
-                        ),
+                    const SizedBox(height: 6),
+                    Text(
+                      pet['name'] as String,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                        color: isSelected
+                            ? (pet['color'] as Color)
+                            : const Color(0xFF666666),
                       ),
-                    ] else ...[
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '点击选择',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.withValues(alpha: 0.6),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ],
                 ),
               ),
@@ -414,9 +746,11 @@ class _MyPetPageState extends ConsumerState<MyPetPage> {
     );
   }
 
-  Widget _buildPetInfoCard(PetState petState) {
+  // ==================== Stats Panel ====================
+
+  Widget _buildStatsPanel(PetState petState) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -431,52 +765,505 @@ class _MyPetPageState extends ConsumerState<MyPetPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '精灵状态',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF222222),
-            ),
+          Row(
+            children: [
+              const Icon(LucideIcons.activity, color: AppColors.primary, size: 18),
+              const SizedBox(width: 8),
+              const Text('宠物状态',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF222222))),
+              if (_statsLoading) ...[
+                const SizedBox(width: 8),
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ],
+            ],
           ),
-          const SizedBox(height: 12),
-          _buildInfoRow(
-              LucideIcons.smile, '心情', _getExpressionName(petState.expression)),
-          const Divider(height: 20),
-          _buildInfoRow(LucideIcons.trendingUp, '等级',
-              'Lv.${petState.level} ${petState.levelName}'),
-          const Divider(height: 20),
-          _buildInfoRow(LucideIcons.zap, '经验值', '${petState.exp}'),
-          const Divider(height: 20),
-          _buildInfoRow(LucideIcons.messageCircle, '当前对话', petState.dialogue),
+          const SizedBox(height: 16),
+
+          // Food progress
+          _buildStatBar(
+            '饮食达标率',
+            _consumedCalories,
+            _targetCalories,
+            AppColors.caloriesColor,
+            LucideIcons.utensils,
+            progress: _foodProgress,
+          ),
+          const SizedBox(height: 14),
+
+          // Water progress
+          _buildStatBar(
+            '饮水达标率',
+            _waterTotalMl.toDouble(),
+            _waterGoalMl.toDouble(),
+            AppColors.info,
+            LucideIcons.droplet,
+            progress: _waterProgress,
+            unit: 'ml',
+          ),
+          const SizedBox(height: 16),
+
+          // Level + Exp
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppColors.primary, AppColors.primaryLight],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(LucideIcons.star, color: Colors.white, size: 22),
+                      const SizedBox(height: 6),
+                      Text('Lv.${petState.level}',
+                          style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(LucideIcons.zap, size: 14, color: AppColors.caloriesColor),
+                        const SizedBox(width: 6),
+                        const Text('经验值',
+                            style: TextStyle(fontSize: 14, color: Color(0xFF222222))),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: _getExpProgress(petState),
+                        backgroundColor: AppColors.caloriesColor.withValues(alpha: 0.15),
+                        valueColor: const AlwaysStoppedAnimation<Color>(AppColors.caloriesColor),
+                        minHeight: 8,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text('${petState.exp} EXP',
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.caloriesColor)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Streak
+          Row(
+            children: [
+              const Icon(LucideIcons.calendar, size: 16, color: AppColors.warning),
+              const SizedBox(width: 8),
+              const Text('连续达标', style: TextStyle(fontSize: 14, color: Color(0xFF222222))),
+              const Spacer(),
+              Text('${petState.currentStreak}天',
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.warning)),
+              if (petState.longestStreak > 0) ...[
+                const SizedBox(width: 14),
+                Text('最长 ${petState.longestStreak}天',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF999999))),
+              ],
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value) {
-    return Row(
+  Widget _buildStatBar(
+    String label,
+    double current,
+    double max,
+    Color color,
+    IconData icon, {
+    double? progress,
+    String unit = '%',
+  }) {
+    final p = progress ?? (max > 0 ? (current / max).clamp(0.0, 1.0) : 0.0);
+    final pct = (p * 100).toInt();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18, color: const Color(0xFF2BAF74)),
-        const SizedBox(width: 8),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 14,
-            color: Color(0xFF666666),
-          ),
+        Row(
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+            Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF444444))),
+            const Spacer(),
+            Text(
+              unit == 'ml'
+                  ? '${current.toInt()}/${max.toInt()} ml'
+                  : '${current.toInt()}/${max.toInt()} kcal',
+              style: const TextStyle(fontSize: 11, color: Color(0xFF888888)),
+            ),
+            const SizedBox(width: 6),
+            Text('$pct%',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+          ],
         ),
-        const Spacer(),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF222222),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: p,
+            backgroundColor: color.withValues(alpha: 0.15),
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+            minHeight: 8,
           ),
         ),
       ],
     );
+  }
+
+  // ==================== Unlockables ====================
+
+  Widget _buildAchievementsSection() {
+    if (_unlockablesLoading && _unlockables.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final displayItems =
+        _unlockables.isNotEmpty ? _unlockables : _defaultUnlockables;
+    final unlockedCount = displayItems.where((a) => a['is_unlocked'] == true).length;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  Icon(LucideIcons.trophy, color: AppColors.primary, size: 18),
+                  SizedBox(width: 8),
+                  Text('解锁内容',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF222222))),
+                ],
+              ),
+              Text('$unlockedCount/${displayItems.length}',
+                  style: const TextStyle(fontSize: 13, color: Color(0xFF999999))),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: displayItems.length,
+            itemBuilder: (context, index) {
+              return _buildUnlockableCard(displayItems[index] as Map<String, dynamic>);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUnlockableCard(Map<String, dynamic> item) {
+    final name = item['name'] as String;
+    final description = item['description'] as String? ?? '';
+    final unlockType = item['unlock_type'] as String;
+    final requiredLevel = item['required_level'] as int?;
+    final requiredStreak = item['required_streak'] as int?;
+    final isUnlocked = item['is_unlocked'] as bool;
+
+    final petState = ref.watch(petProvider);
+    final icon = _iconForType(unlockType);
+
+    double progress = 0.0;
+    String conditionText = '自动解锁';
+    String progressText = '';
+
+    if (requiredLevel != null) {
+      final currentLevel = petState.level;
+      progress = (currentLevel / requiredLevel).clamp(0.0, 1.0);
+      conditionText = '需要 Lv.$requiredLevel';
+      progressText = isUnlocked ? '已解锁' : 'Lv.$currentLevel / Lv.$requiredLevel';
+    } else if (requiredStreak != null) {
+      final currentStreak = petState.currentStreak;
+      progress = (currentStreak / requiredStreak).clamp(0.0, 1.0);
+      conditionText = '连续达标${requiredStreak}天';
+      progressText = isUnlocked ? '已解锁' : '${currentStreak}天 / ${requiredStreak}天';
+    }
+
+    final canUnlock = !isUnlocked && progress >= 1.0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: isUnlocked
+            ? AppColors.primarySurface
+            : const Color(0xFFF5F5F5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isUnlocked
+              ? AppColors.primary.withValues(alpha: 0.3)
+              : const Color(0xFFE8E8E8),
+          width: 1.5,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: isUnlocked
+                    ? AppColors.primary.withValues(alpha: 0.15)
+                    : const Color(0xFFE0E0E0),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                icon,
+                size: 22,
+                color: isUnlocked ? AppColors.primary : const Color(0xFFBDBDBD),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name,
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: isUnlocked ? const Color(0xFF222222) : const Color(0xFF888888))),
+                  if (description.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(description,
+                          style: const TextStyle(fontSize: 11, color: Color(0xFFAAAAAA)),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text(conditionText,
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: isUnlocked ? AppColors.success : const Color(0xFFAAAAAA),
+                              fontWeight: isUnlocked ? FontWeight.w600 : FontWeight.w400)),
+                      if (progressText.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Text(progressText,
+                            style: TextStyle(
+                                fontSize: 10,
+                                color: isUnlocked ? AppColors.success : const Color(0xFF999999))),
+                      ],
+                    ],
+                  ),
+                  if (!isUnlocked) ...[
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        backgroundColor: const Color(0xFFE8E8E8),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          canUnlock ? AppColors.warning : AppColors.info,
+                        ),
+                        minHeight: 4,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (canUnlock)
+              GestureDetector(
+                onTap: () => _doUnlock(item),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text('解锁',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12)),
+                ),
+              )
+            else if (isUnlocked)
+              const Icon(LucideIcons.checkCircle, color: AppColors.success, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _iconForType(String type) {
+    switch (type) {
+      case 'skin':
+        return LucideIcons.shirt;
+      case 'action':
+        return LucideIcons.sparkles;
+      case 'achievement':
+        return LucideIcons.trophy;
+      default:
+        return LucideIcons.gift;
+    }
+  }
+
+  // ==================== Interaction Panel ====================
+
+  Widget _buildInteractionPanel() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(LucideIcons.gamepad2, color: AppColors.primary, size: 18),
+              SizedBox(width: 8),
+              Text('互动面板',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF222222))),
+            ],
+          ),
+          const SizedBox(height: 14),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 2.5,
+            ),
+            itemCount: _interactions.length,
+            itemBuilder: (context, index) {
+              final item = _interactions[index];
+              return _buildInteractionButton(
+                  item['name'] as String,
+                  item['icon'] as IconData,
+                  item['effect'] as String,
+                  item['action'] as String);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInteractionButton(
+    String name,
+    IconData icon,
+    String effect,
+    String action,
+  ) {
+    return GestureDetector(
+      onTap: () => _onInteract(action),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.primarySurface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: AppColors.primary, size: 18),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF333333))),
+                  Text(effect,
+                      style: const TextStyle(fontSize: 11, color: AppColors.success)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==================== Helpers ====================
+
+  double _getExpProgress(PetState petState) {
+    final currentLevelExp = PetStorage.expForLevel(petState.level);
+    final nextLevelExp = PetStorage.expForLevel(petState.level + 1);
+    if (nextLevelExp <= currentLevelExp) return 1.0;
+    return ((petState.exp - currentLevelExp) / (nextLevelExp - currentLevelExp))
+        .clamp(0.0, 1.0);
   }
 
   String _getExpressionName(PetExpression expression) {
@@ -504,9 +1291,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage> {
           autofocus: true,
           decoration: InputDecoration(
             hintText: '输入新名字',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
             filled: true,
             fillColor: const Color(0xFFF5F7F6),
           ),

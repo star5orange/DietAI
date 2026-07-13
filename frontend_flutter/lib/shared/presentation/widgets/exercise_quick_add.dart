@@ -62,45 +62,31 @@ class ExerciseQuickAdd extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      hasData ? LucideIcons.flame : LucideIcons.footprints,
-                      color: AppColors.whiteWithOpacity(0.7),
-                      size: 36,
+            const SizedBox(height: 12),
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    hasData ? LucideIcons.flame : LucideIcons.footprints,
+                    color: AppColors.whiteWithOpacity(0.7),
+                    size: 28,
+                  ),
+                  const SizedBox(height: 6),
+                  if (hasData) ...[
+                    Text(
+                      '${todayCalories!.toInt()} kcal / ${todayDuration ?? 0}分钟',
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: AppColors.whiteWithOpacity(0.9),
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    if (hasData) ...[
-                      Text(
-                        '${todayCalories!.toInt()}',
-                        style: AppTextStyles.numberLarge.copyWith(
-                          color: AppColors.textInverse,
-                        ),
-                      ),
-                      Text(
-                        'kcal / ${todayDuration ?? 0}分钟',
-                        style: AppTextStyles.bodySmall.copyWith(
-                          color: AppColors.whiteWithOpacity(0.8),
-                        ),
-                      ),
-                    ] else ...[
-                      const Text('动起来！',
-                          style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.textInverse)),
-                      const SizedBox(height: 4),
-                      Text('记录你的运动',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.whiteWithOpacity(0.7))),
-                    ],
+                  ] else ...[
+                    Text('记录你的运动',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.whiteWithOpacity(0.7))),
                   ],
-                ),
+                ],
               ),
             ),
             const SizedBox(height: 12),

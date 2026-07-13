@@ -17,6 +17,7 @@ import '../../../../shared/domain/models/food_model.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
 import 'constitution_quiz_page.dart';
 import '../../../profile/domain/services/user_service.dart';
+import '../../../cost/presentation/pages/cost_statistics_page.dart';
 
 class DataVisualizationPage extends ConsumerStatefulWidget {
   const DataVisualizationPage({super.key});
@@ -48,8 +49,22 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
+    _tabController.addListener(_onTabChanged);
     _loadAllData();
+  }
+
+  void _onTabChanged() {
+    if (_tabController.index == 4) {
+      // 切换到上一个 tab 避免重复导航
+      _tabController.animateTo(_tabController.previousIndex.clamp(0, 3));
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const CostStatisticsPage(),
+        ),
+      );
+    }
   }
 
   @override
@@ -87,8 +102,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
           _exerciseStats =
               (results[2] as ApiResponse<Map<String, dynamic>>).data;
           _constitutionType = results[3] as String?;
-          _waterStats =
-              (results[4] as ApiResponse<Map<String, dynamic>>).data;
+          _waterStats = (results[4] as ApiResponse<Map<String, dynamic>>).data;
           _mealRegularity = results[5] as Map<String, dynamic>?;
           _isLoading = false;
         });
@@ -173,6 +187,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
             Tab(text: '营养趋势'),
             Tab(text: '健康画像'),
             Tab(text: '规律统计'),
+            Tab(text: '消费统计'),
           ],
         ),
       ),
@@ -188,6 +203,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
                   _buildNutritionTrendsTab(),
                   _buildPersonaDashboardTab(),
                   _buildRegularityTab(),
+                  _buildCostStatisticsTab(),
                 ],
               ),
             ),
@@ -794,9 +810,9 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
     final avgWater =
         _weeklySummaries.fold<double>(0, (sum, s) => sum + s.waterIntake) /
             _weeklySummaries.length;
-    final avgExercise = _weeklySummaries.fold<double>(
-            0, (sum, s) => sum + s.exerciseCalories) /
-        _weeklySummaries.length;
+    final avgExercise =
+        _weeklySummaries.fold<double>(0, (sum, s) => sum + s.exerciseCalories) /
+            _weeklySummaries.length;
 
     // 根据人群标签差异化展示健康指标
     final tag = _crowdTag ?? '普通';
@@ -819,8 +835,8 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
       // 健身：蛋白质达标 + 碳水摄入 + 训练消耗
       gauges = [
         Expanded(
-            child:
-                _gaugeCard('蛋白质', avgProtein, 120, 'g', AppColors.proteinColor)),
+            child: _gaugeCard(
+                '蛋白质', avgProtein, 120, 'g', AppColors.proteinColor)),
         const SizedBox(width: 10),
         Expanded(
             child: _gaugeCard('碳水', avgCarbs, 300, 'g', AppColors.carbsColor)),
@@ -1415,6 +1431,14 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
         ];
   }
 
+  // ==================== 消费统计 ====================
+
+  Widget _buildCostStatisticsTab() {
+    return const Center(
+      child: Text('正在跳转...', style: TextStyle(color: AppColors.textTertiary)),
+    );
+  }
+
   // ==================== Tab 4: 规律统计 ====================
 
   Widget _buildRegularityTab() {
@@ -1454,8 +1478,12 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
             _buildStatCard('达标天数', '$goalMetDays', '/$totalDays天',
                 AppColors.info, LucideIcons.checkCircle2),
             const SizedBox(width: 10),
-            _buildStatCard('达标率', '${(complianceRate.toDouble() * 100).toStringAsFixed(0)}', '%',
-                AppColors.info, LucideIcons.target),
+            _buildStatCard(
+                '达标率',
+                '${(complianceRate.toDouble() * 100).toStringAsFixed(0)}',
+                '%',
+                AppColors.info,
+                LucideIcons.target),
           ],
         ),
         const SizedBox(height: 10),
@@ -1464,8 +1492,8 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
             _buildStatCard('日均饮水', '${avgDailyMl.toInt()}', 'ml',
                 AppColors.info, LucideIcons.glassWater),
             const SizedBox(width: 10),
-            _buildStatCard('记录天数', '${dailyData.length}', '天',
-                AppColors.info, LucideIcons.calendarCheck),
+            _buildStatCard('记录天数', '${dailyData.length}', '天', AppColors.info,
+                LucideIcons.calendarCheck),
           ],
         ),
         const SizedBox(height: 16),
@@ -1499,9 +1527,8 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
       return const Center(child: Text('暂无数据'));
     }
 
-    final maxMl = dailyData.values
-        .map((v) => (v as num).toDouble())
-        .reduce(max);
+    final maxMl =
+        dailyData.values.map((v) => (v as num).toDouble()).reduce(max);
 
     return BarChart(
       BarChartData(
@@ -1592,7 +1619,8 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
   Widget _buildMealRegularityCard() {
     final data = _mealRegularity;
     if (data == null) {
-      return _buildEmptyCard('暂无饮食规律数据\n记录更多餐食后即可分析', LucideIcons.utensilsCrossed);
+      return _buildEmptyCard(
+          '暂无饮食规律数据\n记录更多餐食后即可分析', LucideIcons.utensilsCrossed);
     }
 
     final overallScore = data['overall_score'] as num? ?? 0;
@@ -1702,8 +1730,8 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
                   Row(
                     children: [
                       Text(mealName,
-                          style: AppTextStyles.h6.copyWith(
-                              fontWeight: FontWeight.w600)),
+                          style: AppTextStyles.h6
+                              .copyWith(fontWeight: FontWeight.w600)),
                       const Spacer(),
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -1741,7 +1769,8 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
                       Text('记录$recordedDays天 / 缺餐$missedDays天',
                           style: const TextStyle(
                               fontSize: 12, color: AppColors.textSecondary)),
-                      Text('完成率${completionRate.toDouble().toStringAsFixed(0)}%',
+                      Text(
+                          '完成率${completionRate.toDouble().toStringAsFixed(0)}%',
                           style: const TextStyle(
                               fontSize: 12, color: AppColors.textSecondary)),
                     ],

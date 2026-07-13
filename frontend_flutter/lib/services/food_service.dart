@@ -641,6 +641,8 @@ class FoodService {
     required String foodName,
     String? description,
     String? recordTime,
+    double? cost,
+    String? sourceTag,
   }) async* {
     try {
       print('🚀 开始创建带图片的食物记录（流式）');
@@ -684,6 +686,8 @@ class FoodService {
         description: description,
         imageUrl: uploadResult.data!.objectName, // 使用object_name而不是URL
         recordingMethod: 1, // AI扫描
+        cost: cost,
+        sourceTag: sourceTag,
       );
 
       print('📤 步骤2: 创建食物记录（流式）');
@@ -707,6 +711,8 @@ class FoodService {
     required String foodName,
     String? description,
     String? recordTime,
+    double? cost,
+    String? sourceTag,
   }) async {
     try {
       print('🚀 开始创建带图片的食物记录');
@@ -734,6 +740,8 @@ class FoodService {
         description: description,
         imageUrl: uploadResult.data!.objectName, // 使用object_name而不是URL
         recordingMethod: 1, // AI扫描
+        cost: cost,
+        sourceTag: sourceTag,
       );
 
       print('📤 步骤2: 创建食物记录');

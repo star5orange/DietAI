@@ -47,6 +47,10 @@ class FoodRecordCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 _buildNutritionSection(),
               ],
+              if (foodRecord.cost != null && foodRecord.cost! > 0) ...[
+                const SizedBox(height: 12),
+                _buildCostSection(),
+              ],
               const SizedBox(height: 8),
               _buildFooter(),
             ],
@@ -250,6 +254,72 @@ class FoodRecordCard extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  Widget _buildCostSection() {
+    final sourceLabel = _sourceLabel(foodRecord.sourceTag);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8E1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFFFE082)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.monetization_on, size: 16, color: Color(0xFFF57F17)),
+          const SizedBox(width: 6),
+          Text(
+            '消费',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[700],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '¥${foodRecord.cost!.toStringAsFixed(2)}',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFFF57F17),
+            ),
+          ),
+          if (sourceLabel != null) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF57F17).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                sourceLabel,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFFF57F17),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String? _sourceLabel(String? sourceTag) {
+    if (sourceTag == null) return null;
+    switch (sourceTag) {
+      case 'canteen': return '食堂';
+      case 'delivery': return '外卖';
+      case 'home': return '家里';
+      case 'restaurant': return '餐厅';
+      case 'snack': return '零食';
+      case 'other': return '其他';
+      default: return sourceTag;
+    }
   }
 
   Widget _buildFooter() {

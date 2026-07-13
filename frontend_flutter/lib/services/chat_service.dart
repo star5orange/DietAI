@@ -19,9 +19,10 @@ class ChatService {
       };
 
       // 使用ApiService的流式方法
-      await for (final chunk in _apiService.postStream('/chat/send-message-stream', data: requestData)) {
+      await for (final chunk in _apiService
+          .postStream('/chat/send-message-stream', data: requestData)) {
         if (chunk.trim().isEmpty) continue;
-        
+
         // 解析SSE数据
         if (chunk.startsWith('data: ')) {
           final jsonStr = chunk.substring(6); // 移除 "data: " 前缀
@@ -59,10 +60,10 @@ class ChatService {
         '/chat/send-message',
         data: requestData,
       );
-      
+
       if (response.success && response.data != null) {
         final chatResponse = ChatResponse.fromJson(response.data);
-        
+
         return ApiResponse<ChatResponse>.success(
           message: response.message.isNotEmpty ? response.message : '消息发送成功',
           data: chatResponse,
@@ -94,10 +95,10 @@ class ChatService {
         '/chat/start-session',
         data: requestData,
       );
-      
+
       if (response.success && response.data != null) {
         final session = ChatSession.fromJson(response.data);
-        
+
         return ApiResponse<ChatSession>.success(
           message: response.message.isNotEmpty ? response.message : '会话创建成功',
           data: session,
@@ -110,6 +111,49 @@ class ChatService {
     } catch (e) {
       return ApiResponse<ChatSession>.failure(
         message: '创建会话失败: $e',
+      );
+    }
+  }
+
+  /// 按关键词搜索消息内容 - 跨所有会话搜索
+  Future<ApiResponse<List<ChatMessageSearchResult>>> searchMessages({
+    required String keyword,
+    int? sessionType,
+    String? startDate,
+    String? endDate,
+    int limit = 20,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{
+        'keyword': keyword,
+        'limit': limit,
+        if (sessionType != null) 'session_type': sessionType,
+        if (startDate != null) 'start_date': startDate,
+        if (endDate != null) 'end_date': endDate,
+      };
+
+      final response =
+          await _apiService.get('/chat/search', queryParameters: queryParams);
+
+      if (response.success && response.data != null) {
+        final List<dynamic> dataList =
+            response.data is List ? response.data : [];
+        final results = dataList
+            .map((json) => ChatMessageSearchResult.fromJson(json))
+            .toList();
+
+        return ApiResponse<List<ChatMessageSearchResult>>.success(
+          message: response.message.isNotEmpty ? response.message : '搜索完成',
+          data: results,
+        );
+      } else {
+        return ApiResponse<List<ChatMessageSearchResult>>.failure(
+          message: response.message.isNotEmpty ? response.message : '搜索失败',
+        );
+      }
+    } catch (e) {
+      return ApiResponse<List<ChatMessageSearchResult>>.failure(
+        message: '搜索失败: $e',
       );
     }
   }
@@ -135,13 +179,13 @@ class ChatService {
         '/chat/sessions',
         queryParameters: queryParams,
       );
-      
+
       if (response.success && response.data != null) {
-        final List<dynamic> dataList = response.data is List 
-          ? response.data 
-          : [];
-        final sessions = dataList.map((json) => ChatSessionSummary.fromJson(json)).toList();
-        
+        final List<dynamic> dataList =
+            response.data is List ? response.data : [];
+        final sessions =
+            dataList.map((json) => ChatSessionSummary.fromJson(json)).toList();
+
         return ApiResponse<List<ChatSessionSummary>>.success(
           message: response.message.isNotEmpty ? response.message : '获取会话列表成功',
           data: sessions,
@@ -172,10 +216,10 @@ class ChatService {
         '/chat/sessions/$sessionId/messages',
         queryParameters: queryParams,
       );
-      
+
       if (response.success && response.data != null) {
         final sessionDetail = ChatSessionDetail.fromJson(response.data);
-        
+
         return ApiResponse<ChatSessionDetail>.success(
           message: response.message.isNotEmpty ? response.message : '获取消息历史成功',
           data: sessionDetail,
@@ -197,11 +241,12 @@ class ChatService {
     required int sessionId,
   }) async {
     try {
-      final response = await _apiService.get('/chat/sessions/$sessionId/context');
-      
+      final response =
+          await _apiService.get('/chat/sessions/$sessionId/context');
+
       if (response.success && response.data != null) {
         final context = SessionContext.fromJson(response.data);
-        
+
         return ApiResponse<SessionContext>.success(
           message: response.message.isNotEmpty ? response.message : '获取会话上下文成功',
           data: context,
@@ -224,7 +269,7 @@ class ChatService {
   }) async {
     try {
       final response = await _apiService.delete('/chat/sessions/$sessionId');
-      
+
       if (response.success) {
         return ApiResponse<void>.success(
           message: response.message.isNotEmpty ? response.message : '会话删除成功',
@@ -288,10 +333,10 @@ class ChatService {
         '/analysis-chat/chat-with-analysis',
         data: requestData,
       );
-      
+
       if (response.success && response.data != null) {
         final chatResponse = ChatResponse.fromJson(response.data);
-        
+
         return ApiResponse<ChatResponse>.success(
           message: response.message.isNotEmpty ? response.message : '分析聊天成功',
           data: chatResponse,
@@ -444,9 +489,8 @@ class ChatSessionDetail {
   factory ChatSessionDetail.fromJson(Map<String, dynamic> json) {
     final messagesList = <ChatMessageDetail>[];
     if (json['messages'] != null) {
-      messagesList.addAll(
-        (json['messages'] as List).map((item) => ChatMessageDetail.fromJson(item))
-      );
+      messagesList.addAll((json['messages'] as List)
+          .map((item) => ChatMessageDetail.fromJson(item)));
     }
 
     return ChatSessionDetail(
@@ -505,9 +549,48 @@ class SessionContext {
       userContext: Map<String, dynamic>.from(json['user_context'] ?? {}),
       recentMeals: List<Map<String, dynamic>>.from(json['recent_meals'] ?? []),
       healthGoals: Map<String, dynamic>.from(json['health_goals'] ?? {}),
-      cachedContext: json['cached_context'] != null 
-        ? Map<String, dynamic>.from(json['cached_context']) 
-        : null,
+      cachedContext: json['cached_context'] != null
+          ? Map<String, dynamic>.from(json['cached_context'])
+          : null,
+    );
+  }
+}
+
+// 消息搜索结果模型
+class ChatMessageSearchResult {
+  final int id;
+  final int sessionId;
+  final String sessionTitle;
+  final int sessionType;
+  final String sessionTypeName;
+  final int messageType;
+  final String contentSnippet;
+  final String highlightKeyword;
+  final String createdAt;
+
+  ChatMessageSearchResult({
+    required this.id,
+    required this.sessionId,
+    required this.sessionTitle,
+    required this.sessionType,
+    required this.sessionTypeName,
+    required this.messageType,
+    required this.contentSnippet,
+    required this.highlightKeyword,
+    required this.createdAt,
+  });
+
+  factory ChatMessageSearchResult.fromJson(Map<String, dynamic> json) {
+    return ChatMessageSearchResult(
+      id: json['id'] ?? 0,
+      sessionId: json['session_id'] ?? 0,
+      sessionTitle: json['session_title'] ?? '',
+      sessionType: json['session_type'] ?? 0,
+      sessionTypeName: json['session_type_name'] ?? '',
+      messageType: json['message_type'] ?? 1,
+      contentSnippet: json['content_snippet'] ?? '',
+      highlightKeyword: json['highlight_keyword'] ?? '',
+      createdAt: json['created_at'] ?? '',
     );
   }
 }

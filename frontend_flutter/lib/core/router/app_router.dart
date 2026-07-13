@@ -12,10 +12,20 @@ import '../../features/camera/presentation/pages/camera_page.dart';
 import '../../features/history/presentation/pages/history_page.dart';
 import '../../features/history/presentation/pages/food_history_test_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
+import '../../features/profile/presentation/pages/my_pet_page.dart';
 import '../../features/health/presentation/pages/main_health_page.dart';
 import '../../features/health/presentation/pages/reminder_settings_page.dart';
 import '../../features/health/presentation/pages/constitution_quiz_page.dart';
 import '../../features/health/presentation/pages/wellness_page.dart';
+import '../../features/cost/presentation/pages/cost_statistics_page.dart';
+import '../../features/advisor/presentation/pages/advisor_style_page.dart';
+import '../../features/pet/presentation/pages/pet_home_page.dart';
+import '../../features/fast/presentation/pages/fasting_plan_page.dart';
+import '../../features/fast/presentation/pages/fasting_assessment_page.dart';
+import '../../features/fast/presentation/pages/fasting_checkin_page.dart';
+import '../../features/fast/presentation/pages/fasting_checkin_history_page.dart';
+import '../../features/fast/presentation/pages/fasting_refeed_page.dart';
+import '../../features/fast/presentation/pages/fasting_progress_page.dart';
 import '../../features/onboarding/presentation/pages/onboarding_welcome_page.dart';
 import '../../features/onboarding/presentation/pages/onboarding_basic_info_page.dart';
 import '../../features/onboarding/presentation/pages/onboarding_physical_data_page.dart';
@@ -220,6 +230,69 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/wellness',
             name: 'wellness',
             builder: (context, state) => const WellnessPage(),
+          ),
+
+          // M2: 消费统计页
+          GoRoute(
+            path: '/cost-statistics',
+            name: 'cost_statistics',
+            builder: (context, state) => const CostStatisticsPage(),
+          ),
+
+          // M2: AI顾问风格设置页
+          GoRoute(
+            path: '/advisor-style',
+            name: 'advisor_style',
+            builder: (context, state) => const AdvisorStylePage(),
+          ),
+
+          // 我的精灵页（从"我的"页面进入）
+          GoRoute(
+            path: '/my-pet',
+            name: 'my_pet',
+            builder: (context, state) => const MyPetPage(),
+          ),
+
+          // M2: 轻断食 — 健康评估
+          GoRoute(
+            path: '/fasting-assessment',
+            name: 'fasting_assessment',
+            builder: (context, state) => const FastingAssessmentPage(),
+          ),
+
+          // M2: 轻断食 — 计划主页
+          GoRoute(
+            path: '/fasting-plan',
+            name: 'fasting_plan',
+            builder: (context, state) => const FastingPlanPage(),
+          ),
+
+          // M2: 轻断食 — 每日打卡
+          GoRoute(
+            path: '/fasting-checkin',
+            name: 'fasting_checkin',
+            builder: (context, state) => const FastingCheckinPage(),
+          ),
+
+          // M2: 轻断食 — 打卡记录历史
+          GoRoute(
+            path: '/fasting-checkin-history',
+            name: 'fasting_checkin_history',
+            builder: (context, state) => const FastingCheckinHistoryPage(),
+          ),
+
+          // M2: 轻断食 — 复食指导
+          GoRoute(
+            path: '/fasting-refeed',
+            name: 'fasting_refeed',
+            builder: (context, state) => const FastingRefeedPage(),
+          ),
+
+          // M2: 轻断食 — 进度追踪
+          GoRoute(
+            path: '/fasting-progress',
+            name: 'fasting_progress',
+            builder: (context, state) => const FastingProgressPage(),
           ),
         ],
       ),

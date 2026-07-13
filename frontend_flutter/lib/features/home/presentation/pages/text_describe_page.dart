@@ -11,6 +11,8 @@ class TextDescribePage extends StatefulWidget {
   final int mealType;
   final String recordDate;
   final String? recordTime;
+  final double? costAmount;
+  final String? costSource;
 
   const TextDescribePage({
     super.key,
@@ -18,6 +20,8 @@ class TextDescribePage extends StatefulWidget {
     required this.mealType,
     required this.recordDate,
     this.recordTime,
+    this.costAmount,
+    this.costSource,
   });
 
   @override
@@ -95,6 +99,8 @@ class _TextDescribePageState extends State<TextDescribePage> {
         foodName: foodName,
         description: fullDescription,
         recordingMethod: 2,
+        cost: widget.costAmount,
+        sourceTag: widget.costSource,
       );
 
       final result = await _foodService.createFoodRecord(record);

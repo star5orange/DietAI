@@ -14,9 +14,12 @@ import '../widgets/profile_edit_sheet.dart';
 import '../widgets/health_goals_sheet.dart';
 import '../widgets/weight_records_sheet.dart';
 import '../widgets/health_info_sheet.dart';
+import '../widgets/budget_setting_sheet.dart';
 import 'help_center_page.dart';
 import 'about_us_page.dart';
 import 'my_pet_page.dart';
+import 'settings_page.dart';
+import '../../../advisor/presentation/pages/advisor_style_page.dart';
 import '../../../../core/services/api_service.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
@@ -362,12 +365,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             title: '我的精灵',
             subtitle: '选择精灵和显示设置',
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const MyPetPage(),
-                ),
-              );
+              context.push('/my-pet');
             },
           ),
           _buildMenuItem(
@@ -413,6 +411,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 context,
                 MaterialPageRoute(
                     builder: (context) => const ReminderSettingsPage()),
+              );
+            },
+          ),
+          _buildMenuItem(
+            icon: LucideIcons.bot,
+            title: 'AI顾问风格',
+            subtitle: '选择您偏好的AI顾问对话风格',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AdvisorStylePage(),
+                ),
               );
             },
           ),
@@ -659,6 +670,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => const HealthInfoSheet(),
+    );
+  }
+
+  void _showBudgetSettingSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const BudgetSettingSheet(),
     );
   }
 

@@ -152,3 +152,24 @@ def get_upcoming_solar_term(days_ahead: int = 3, target_date: date | None = None
         }
 
     return None
+
+
+def get_solar_term_dates(year: int) -> list[dict]:
+    """获取指定年份所有 24 节气的日期列表
+
+    Args:
+        year: 目标年份
+
+    Returns:
+        list[dict]: 每个元素包含 name, date(YYYY-MM-DD), season, wellness
+    """
+    result = []
+    for month, day, name in SOLAR_TERMS:
+        term_date = date(year, month, day)
+        result.append({
+            "name": name,
+            "date": term_date.isoformat(),
+            "season": TERM_SEASON.get(name, ""),
+            "wellness": TERM_WELLNESS.get(name, ""),
+        })
+    return result

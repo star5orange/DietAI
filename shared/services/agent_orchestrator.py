@@ -54,7 +54,8 @@ class AgentOrchestrator:
         self,
         user_id: int,
         image_data: str,
-        db: Session
+        db: Session,
+        advisor_context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Orchestrated food analysis with goal tracking.
@@ -70,6 +71,7 @@ class AgentOrchestrator:
             user_id: User ID
             image_data: Base64 encoded food image
             db: Database session
+            advisor_context: Optional AI advisor settings (M2)
 
         Returns:
             Combined analysis result with goal context
@@ -96,6 +98,10 @@ class AgentOrchestrator:
 
             # Extract preferences from memory
             user_preferences = self._extract_preferences(shared_memory) if shared_memory else {}
+
+            # M2: Merge advisor context into user_preferences for enhanced nutrition agent
+            if advisor_context:
+                user_preferences["advisor_context"] = advisor_context
 
             # Step 2: Call Enhanced Nutrition Agent
             nutrition_result = await self._call_nutrition_agent(

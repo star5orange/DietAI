@@ -30,7 +30,7 @@ chunks = text_splitter.split_text(raw_text)
 # ✅ 转换为 Document 对象
 docs = [Document(page_content=chunk) for chunk in chunks]
 
-load_dotenv(f".env", override=True)
+load_dotenv(f".env", override=True, encoding="utf-8")
 # ✅ 初始化 Embeddings
 embeddings = OpenAIEmbeddings()  # 需要设置 OPENAI_API_KEY
 

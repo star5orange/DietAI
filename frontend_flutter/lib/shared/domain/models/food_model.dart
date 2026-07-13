@@ -229,6 +229,9 @@ class FoodRecord {
   final AgentAnalysisData? analysisResult;
   @JsonKey(name: 'nutrition_data')
   final Map<String, dynamic>? nutritionData;
+  final double? cost;
+  @JsonKey(name: 'source_tag')
+  final String? sourceTag;
 
   const FoodRecord({
     required this.id,
@@ -246,6 +249,8 @@ class FoodRecord {
     this.nutritionDetail,
     this.analysisResult,
     this.nutritionData,
+    this.cost,
+    this.sourceTag,
   });
 
   factory FoodRecord.fromJson(Map<String, dynamic> json) =>
@@ -302,6 +307,11 @@ class FoodRecordCreate {
   @JsonKey(name: 'recording_method')
   final int? recordingMethod;
 
+  // Milestone 2: 消费字段
+  final double? cost;
+  @JsonKey(name: 'source_tag')
+  final String? sourceTag;
+
   const FoodRecordCreate({
     required this.recordDate,
     this.recordTime,
@@ -310,6 +320,8 @@ class FoodRecordCreate {
     this.description,
     this.imageUrl,
     this.recordingMethod,
+    this.cost,
+    this.sourceTag,
   });
 
   factory FoodRecordCreate.fromJson(Map<String, dynamic> json) =>
