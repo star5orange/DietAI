@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import argparse
 from dotenv import load_dotenv
-load_dotenv(".env", override=True)
+load_dotenv(".env", override=True, encoding="utf-8")
 
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings

@@ -65,6 +65,9 @@ def get_cost_stats(db: Session, user_id: int, period: str = "week") -> Dict[str,
     ).all()
 
     if not records:
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        budget = float(profile.monthly_food_budget) if profile and profile.monthly_food_budget else 0
+        budget_remaining = round(budget, 2) if budget > 0 and period == "month" else None
         return {
             "period": period,
             "total_cost": 0,
@@ -74,7 +77,8 @@ def get_cost_stats(db: Session, user_id: int, period: str = "week") -> Dict[str,
             "by_meal_time": {},
             "by_source": {},
             "calorie_per_yuan": 0,
-            "budget_remaining": None,
+            "budget_remaining": budget_remaining,
+            "budget": budget if budget > 0 else None,
         }
 
     total_cost = sum(float(r.cost) for r in records if r.cost is not None)
@@ -118,6 +122,7 @@ def get_cost_stats(db: Session, user_id: int, period: str = "week") -> Dict[str,
         "by_source": by_source,
         "calorie_per_yuan": calorie_per_yuan,
         "budget_remaining": budget_remaining,
+        "budget": budget if budget > 0 else None,
     }
 
 

@@ -17,25 +17,6 @@ class FoodRecordModal extends StatefulWidget {
 }
 
 class _FoodRecordModalState extends State<FoodRecordModal> {
-  final _costController = TextEditingController();
-  String? _selectedSource;
-  bool _showCostInput = false;
-
-  final List<Map<String, String>> _sourceOptions = [
-    {'id': 'canteen', 'name': '食堂', 'icon': '🍳'},
-    {'id': 'delivery', 'name': '外卖', 'icon': '🛵'},
-    {'id': 'home', 'name': '自制', 'icon': '🏠'},
-    {'id': 'restaurant', 'name': '餐厅', 'icon': '🍽️'},
-    {'id': 'snack', 'name': '零食', 'icon': '🍪'},
-    {'id': 'other', 'name': '其他', 'icon': '📦'},
-  ];
-
-  @override
-  void dispose() {
-    _costController.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -86,146 +67,12 @@ class _FoodRecordModalState extends State<FoodRecordModal> {
 
               const SizedBox(height: 24),
 
-              // 消费金额输入（可展开）
-              _buildCostSection(),
-
-              const SizedBox(height: 20),
-
               // 记录方式选项
               ..._buildRecordOptions(),
 
               const SizedBox(height: 20),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCostSection() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          // 展开/收起按钮
-          InkWell(
-            onTap: () => setState(() => _showCostInput = !_showCostInput),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Icon(
-                    LucideIcons.wallet,
-                    size: 20,
-                    color: Colors.grey[700],
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '消费记录（可选）',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey[700],
-                      ),
-                    ),
-                  ),
-                  Icon(
-                    _showCostInput ? LucideIcons.chevronUp : LucideIcons.chevronDown,
-                    size: 20,
-                    color: Colors.grey[500],
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // 展开内容
-          if (_showCostInput) ...[
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 金额输入
-                  Row(
-                    children: [
-                      const Text('¥', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _costController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-                          ],
-                          decoration: InputDecoration(
-                            hintText: '输入金额',
-                            hintStyle: TextStyle(color: Colors.grey[400]),
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 来源选择
-                  Text(
-                    '来源',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _sourceOptions.map((source) => _buildSourceChip(source)).toList(),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSourceChip(Map<String, String> source) {
-    final isSelected = _selectedSource == source['id'];
-    return GestureDetector(
-      onTap: () => setState(() => _selectedSource = isSelected ? null : source['id']),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF3ECC7A) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF3ECC7A) : Colors.grey[300]!,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(source['icon']!, style: const TextStyle(fontSize: 14)),
-            const SizedBox(width: 4),
-            Text(
-              source['name']!,
-              style: TextStyle(
-                fontSize: 13,
-                color: isSelected ? Colors.white : Colors.grey[700],
-                fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
-              ),
-            ),
-          ],
         ),
       ),
     );
@@ -355,18 +202,8 @@ class _FoodRecordModalState extends State<FoodRecordModal> {
   }
 
   void _handleRecordMethod(String methodId) {
-    // 解析金额
-    double? cost;
-    if (_costController.text.isNotEmpty) {
-      cost = double.tryParse(_costController.text);
-    }
-
-    // 调用回调
-    widget.onRecordMethod(
-      methodId,
-      cost: cost,
-      sourceTag: _selectedSource,
-    );
+    // 直接调用回调，不再传递消费信息
+    widget.onRecordMethod(methodId);
   }
 }
 

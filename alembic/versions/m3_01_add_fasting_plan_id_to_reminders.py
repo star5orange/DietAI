@@ -1,7 +1,7 @@
 """add fasting_plan_id to reminders
 
 Revision ID: m3_01
-Revises: 202eacfdfa1e
+Revises: f1e2a3b4c5d6
 Create Date: 2026-07-12
 
 Milestone 2 补充: reminders 表添加 fasting_plan_id 列，

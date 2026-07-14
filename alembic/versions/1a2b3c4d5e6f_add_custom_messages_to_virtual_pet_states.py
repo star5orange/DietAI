@@ -1,7 +1,7 @@
 """add custom_messages to virtual_pet_states
 
 Revision ID: 1a2b3c4d5e6f
-Revises: 0da986e876fe
+Revises: m3_02
 Create Date: 2026-07-11 10:30:00.000000
 
 """
@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 # revision identifiers, used by Alembic.
 revision = '1a2b3c4d5e6f'
-down_revision = '0da986e876fe'
+down_revision = 'm3_01'
 branch_labels = None
 depends_on = None
 

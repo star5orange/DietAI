@@ -220,7 +220,9 @@ async def create_food_record_traditional(
             description=food_data.description,
             image_url=food_data.image_url,
             recording_method=food_data.recording_method or 1,
-            analysis_status=1
+            analysis_status=1,
+            cost=food_data.cost,
+            source_tag=food_data.source_tag,
         )
 
         db.add(food_record)
@@ -258,6 +260,8 @@ async def create_food_record_traditional(
             "image_url": food_record.image_url,
             "recording_method": food_record.recording_method,
             "analysis_status": food_record.analysis_status,
+            "cost": float(food_record.cost) if food_record.cost else None,
+            "source_tag": food_record.source_tag,
             "created_at": food_record.created_at.isoformat(),
         }
 
@@ -301,6 +305,8 @@ async def update_food_record(
         food_record.description = food_data.description
         food_record.image_url = food_data.image_url
         food_record.recording_method = food_data.recording_method or food_record.recording_method
+        food_record.cost = food_data.cost
+        food_record.source_tag = food_data.source_tag
 
         db.commit()
         db.refresh(food_record)
@@ -476,6 +482,8 @@ async def confirm_food_record(
             "image_url": record.image_url,
             "recording_method": record.recording_method,
             "analysis_status": record.analysis_status,
+            "cost": float(record.cost) if record.cost else None,
+            "source_tag": record.source_tag,
             "created_at": record.created_at.isoformat(),
             "updated_at": record.updated_at.isoformat(),
             "nutrition_detail": None
@@ -790,6 +798,8 @@ async def get_food_records(
                 "image_url": record.image_url,
                 "recording_method": record.recording_method,
                 "analysis_status": record.analysis_status,
+                "cost": float(record.cost) if record.cost else None,
+                "source_tag": record.source_tag,
                 "created_at": record.created_at.isoformat(),
                 "updated_at": record.updated_at.isoformat()
             }
@@ -878,6 +888,8 @@ async def get_food_record(
             "image_url": record.image_url,
             "recording_method": record.recording_method,
             "analysis_status": record.analysis_status,
+            "cost": float(record.cost) if record.cost else None,
+            "source_tag": record.source_tag,
             "created_at": record.created_at.isoformat(),
             "updated_at": record.updated_at.isoformat(),
             "nutrition_detail": None

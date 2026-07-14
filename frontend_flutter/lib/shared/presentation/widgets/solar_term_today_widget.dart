@@ -83,6 +83,7 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
     _currentTerm = _getCurrentSolarTerm();
   }
 
+
   Map<String, dynamic> _getCurrentSolarTerm() {
     final now = DateTime.now();
     final mmdd = now.month.toString().padLeft(2, '0') +
@@ -123,6 +124,7 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
       'next': nextName,
     };
   }
+
 
   Color _seasonColor(String season) {
     switch (season) {

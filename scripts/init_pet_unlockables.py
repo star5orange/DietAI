@@ -17,8 +17,13 @@ from shared.models.database import SessionLocal
 from shared.models.pet_models import PetUnlockable
 
 SEED_DATA = [
-    {"unlock_type": "skin", "unlock_key": "default", "name": "默认外观",
+    # 默认桌宠（原第一只桌宠）
+    {"unlock_type": "skin", "unlock_key": "default", "name": "默认桌宠",
      "description": "可爱的基础宠物形象", "required_level": 1, "required_streak": None, "required_habit_score": None},
+    # 克里斯汀（第二只桌宠）
+    {"unlock_type": "skin", "unlock_key": "christine", "name": "克里斯汀",
+     "description": "优雅的第二只桌宠形象", "required_level": 1, "required_streak": None, "required_habit_score": None},
+    # 其他皮肤和动作
     {"unlock_type": "skin", "unlock_key": "summer", "name": "夏日清凉",
      "description": "夏日海滩风格外观", "required_level": 3, "required_streak": None, "required_habit_score": None},
     {"unlock_type": "skin", "unlock_key": "sporty", "name": "运动活力",

@@ -28,6 +28,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   bool _showSearch = false;
   int? _activeMealFilter;
   final TextEditingController _searchController = TextEditingController();
+  double? _pendingCostAmount;
+  String? _pendingCostSource;
 
   @override
   void initState() {
@@ -375,6 +377,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         mealName: mealName,
         onRecordMethod: (method, {double? cost, String? sourceTag}) {
           Navigator.pop(context);
+          _pendingCostAmount = cost;
+          _pendingCostSource = sourceTag;
           _handleRecordMethod(method, mealName);
         },
       ),
@@ -426,7 +430,13 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     mealName: mealName,
                     mealType: mealType,
                     recordDate: dateStr,
-                    recordTime: recordTime))).then((_) => _loadRecords());
+                    recordTime: recordTime,
+                    costAmount: _pendingCostAmount,
+                    costSource: _pendingCostSource))).then((_) {
+          _pendingCostAmount = null;
+          _pendingCostSource = null;
+          _loadRecords();
+        });
         break;
       case 'text_describe':
         Navigator.push(
@@ -436,7 +446,11 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     mealName: mealName,
                     mealType: mealType,
                     recordDate: dateStr,
-                    recordTime: recordTime))).then((result) {
+                    recordTime: recordTime,
+                    costAmount: _pendingCostAmount,
+                    costSource: _pendingCostSource))).then((result) {
+          _pendingCostAmount = null;
+          _pendingCostSource = null;
           if (result == true) _loadRecords();
         });
         break;
@@ -784,6 +798,17 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     ),
                   ),
                 ),
+                // 消费金额
+                if (record != null && record.cost != null && record.cost! > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '¥${record.cost!.toStringAsFixed(1)}',
+                    style: AppTextStyles.bodySmall.copyWith(
+                      color: const Color(0xFFF57F17),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 6),
                 Text(
                   time,
@@ -969,6 +994,11 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     _buildDetailRow(
                         '记录时间', record.recordTime ?? record.createdAt),
                     _buildDetailRow('分析状态', record.analysisStatusName),
+                    if (record.cost != null && record.cost! > 0) ...[
+                      _buildDetailRow('消费金额', '¥${record.cost!.toStringAsFixed(2)}'),
+                      if (record.sourceTag != null)
+                        _buildDetailRow('消费来源', _sourceLabelName(record.sourceTag!)),
+                    ],
                   ]),
 
                   const SizedBox(height: 20),
@@ -1789,5 +1819,17 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         SnackBar(content: Text('删除失败: $e')),
       );
     }
+  }
+
+  String _sourceLabelName(String key) {
+    const labels = {
+      'canteen': '食堂',
+      'delivery': '外卖',
+      'home': '家里',
+      'restaurant': '餐厅',
+      'snack': '零食',
+      'other': '其他',
+    };
+    return labels[key] ?? key;
   }
 }

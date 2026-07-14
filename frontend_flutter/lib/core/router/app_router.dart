@@ -20,7 +20,6 @@ import '../../features/health/presentation/pages/wellness_page.dart';
 import '../../features/cost/presentation/pages/cost_statistics_page.dart';
 import '../../features/advisor/presentation/pages/advisor_style_page.dart';
 import '../../features/pet/presentation/pages/pet_home_page.dart';
-import '../../features/pet/presentation/pages/pet_detail_page.dart';
 import '../../features/fast/presentation/pages/fasting_plan_page.dart';
 import '../../features/fast/presentation/pages/fasting_assessment_page.dart';
 import '../../features/fast/presentation/pages/fasting_checkin_page.dart';
@@ -247,11 +246,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const AdvisorStylePage(),
           ),
 
-          // M2: 宠物详情页
+          // 我的精灵页（从"我的"页面进入）
           GoRoute(
-            path: '/pet-detail',
-            name: 'pet_detail',
-            builder: (context, state) => const PetDetailPage(),
+            path: '/my-pet',
+            name: 'my_pet',
+            builder: (context, state) => const MyPetPage(),
           ),
 
           // M2: 轻断食 — 健康评估

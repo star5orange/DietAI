@@ -248,15 +248,15 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
           AppInput(
             controller: _passwordController,
             label: '密码',
-            placeholder: '请输入密码（至少6位）',
+            placeholder: '请输入密码（至少8位）',
             prefixIcon: Icons.lock_outline,
             type: AppInputType.password,
             validator: (value) {
               if (value == null || value.isEmpty) {
                 return '请输入密码';
               }
-              if (value.length < 6) {
-                return '密码至少6位字符';
+              if (value.length < 8) {
+                return '密码至少8位字符';
               }
               return null;
             },

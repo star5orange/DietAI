@@ -365,12 +365,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             title: '我的精灵',
             subtitle: '选择精灵和显示设置',
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const MyPetPage(),
-                ),
-              );
+              context.push('/my-pet');
             },
           ),
           _buildMenuItem(

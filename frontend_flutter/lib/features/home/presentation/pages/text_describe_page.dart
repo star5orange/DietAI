@@ -5,12 +5,15 @@ import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../services/food_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
+import '../widgets/cost_input_widget.dart'; // 导入消费输入组件
 
 class TextDescribePage extends StatefulWidget {
   final String mealName;
   final int mealType;
   final String recordDate;
   final String? recordTime;
+  final double? costAmount;
+  final String? costSource;
 
   const TextDescribePage({
     super.key,
@@ -18,6 +21,8 @@ class TextDescribePage extends StatefulWidget {
     required this.mealType,
     required this.recordDate,
     this.recordTime,
+    this.costAmount,
+    this.costSource,
   });
 
   @override
@@ -34,6 +39,10 @@ class _TextDescribePageState extends State<TextDescribePage> {
   final TextEditingController _proteinController = TextEditingController();
   final TextEditingController _fatController = TextEditingController();
   final TextEditingController _carbsController = TextEditingController();
+
+  // 消费金额和来源
+  double? _costAmount;
+  String? _costSource;
 
   String _selectedPortionUnit = '份';
   bool _isSubmitting = false;
@@ -95,6 +104,8 @@ class _TextDescribePageState extends State<TextDescribePage> {
         foodName: foodName,
         description: fullDescription,
         recordingMethod: 2,
+        cost: _costAmount ?? widget.costAmount, // 优先使用用户输入的金额
+        sourceTag: _costSource ?? widget.costSource, // 优先使用用户输入的来源
       );
 
       final result = await _foodService.createFoodRecord(record);
@@ -375,6 +386,18 @@ class _TextDescribePageState extends State<TextDescribePage> {
             _buildDescriptionInput(),
             const SizedBox(height: 16),
             _buildNutritionSection(),
+            const SizedBox(height: 16),
+            // 消费输入组件
+            CostInputWidget(
+              initialAmount: widget.costAmount,
+              initialSource: widget.costSource,
+              onChanged: (amount, source) {
+                setState(() {
+                  _costAmount = amount;
+                  _costSource = source;
+                });
+              },
+            ),
             const SizedBox(height: 20),
             _buildCommonFoodsSection(),
             const SizedBox(height: 24),

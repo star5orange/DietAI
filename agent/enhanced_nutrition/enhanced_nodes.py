@@ -230,6 +230,7 @@ def generate_advice_with_context(state: EnhancedNutritionState) -> EnhancedNutri
             except Exception:
                 pass
 
+
         # Build enhanced prompt with memory context
         prompt = f"""
 你是一位专业的营养师，请根据以下信息提供个性化的营养建议。

@@ -242,6 +242,10 @@ class _FoodHistoryPageState extends ConsumerState<FoodHistoryPage> {
               const SizedBox(height: 12),
               _buildNutritionInfo(record.nutritionDetail!),
             ],
+            if (record.cost != null && record.cost! > 0) ...[
+              const SizedBox(height: 12),
+              _buildCostSection(record),
+            ],
             const SizedBox(height: 8),
             Text(
               '记录时间: ${record.createdAt}',
@@ -317,6 +321,72 @@ class _FoodHistoryPageState extends ConsumerState<FoodHistoryPage> {
         ),
       ],
     );
+  }
+
+  Widget _buildCostSection(FoodRecord record) {
+    final sourceLabel = _sourceLabel(record.sourceTag);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8E1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFFFE082)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.monetization_on, size: 16, color: Color(0xFFF57F17)),
+          const SizedBox(width: 6),
+          Text(
+            '消费',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[700],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '¥${record.cost!.toStringAsFixed(2)}',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFFF57F17),
+            ),
+          ),
+          if (sourceLabel != null) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF57F17).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                sourceLabel,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFFF57F17),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String? _sourceLabel(String? sourceTag) {
+    if (sourceTag == null) return null;
+    switch (sourceTag) {
+      case 'canteen': return '食堂';
+      case 'delivery': return '外卖';
+      case 'home': return '家里';
+      case 'restaurant': return '餐厅';
+      case 'snack': return '零食';
+      case 'other': return '其他';
+      default: return sourceTag;
+    }
   }
 
   Color _getStatusColor(int status) {

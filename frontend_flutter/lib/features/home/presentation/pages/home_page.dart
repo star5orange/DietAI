@@ -24,14 +24,12 @@ import '../../../camera/presentation/pages/camera_page.dart';
 import '../../../chat/presentation/pages/chat_page.dart';
 import '../../../health/presentation/pages/exercise_record_page.dart';
 import '../../../pet/presentation/providers/pet_provider.dart';
-import '../../../pet/presentation/widgets/pet_widget.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
 import '../../../cost/data/services/cost_service.dart';
 import '../../../cost/presentation/widgets/budget_progress_card.dart';
 import 'meal_selection_page.dart';
 import 'text_describe_page.dart';
 import '../../../saved_meals/presentation/pages/saved_meals_page.dart';
-import '../../../pet/presentation/pages/pet_detail_page.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -393,9 +391,6 @@ class _HomePageState extends ConsumerState<HomePage> {
                           crowdTag: crowdTag,
                         ),
                         const SizedBox(height: 24),
-                        // M2: 宠物Widget
-                        _buildPetCard(),
-                        const SizedBox(height: 20),
                         // M2: 消费概览卡片
                         _buildCostOverviewCard(),
                         const SizedBox(height: 20),
@@ -978,11 +973,134 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
 
     final mealNames = ['早餐', '午餐', '晚餐', '加餐'];
-    await _createFoodRecordFromSavedMeal(
-      meal,
-      mealNames[mealType - 1],
-      mealType,
-      DateTime.now().toIso8601String(),
+
+    // 显示消费输入对话框
+    await _showCostInputDialog(
+      mealName: meal.mealName,
+      onConfirm: (costAmount, costSource) async {
+        // 设置待处理的消费信息
+        setState(() {
+          _pendingCostAmount = costAmount;
+          _pendingCostSource = costSource;
+        });
+
+        // 创建记录
+        await _createFoodRecordFromSavedMeal(
+          meal,
+          mealNames[mealType - 1],
+          mealType,
+          DateTime.now().toIso8601String(),
+        );
+      },
+    );
+  }
+
+  /// 显示消费输入对话框
+  Future<void> _showCostInputDialog({
+    required String mealName,
+    required Function(double? costAmount, String? costSource) onConfirm,
+  }) async {
+    double? costAmount;
+    String? costSource;
+    final amountController = TextEditingController();
+    final sourceController = TextEditingController();
+
+    final commonSources = ['外卖', '食堂', '餐厅', '自制', '便利店', '其他'];
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text('记录 $mealName'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('消费金额（可选）', style: AppTextStyles.bodyLarge),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: amountController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    hintText: '请输入消费金额',
+                    prefixText: '¥ ',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (value) {
+                    costAmount = double.tryParse(value);
+                  },
+                ),
+                const SizedBox(height: 16),
+                Text('消费来源（可选）', style: AppTextStyles.bodyLarge),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: sourceController,
+                  decoration: const InputDecoration(
+                    hintText: '请输入消费来源',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (value) {
+                    costSource = value.trim().isEmpty ? null : value.trim();
+                  },
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: commonSources.map((source) {
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          sourceController.text = source;
+                          costSource = source;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: sourceController.text == source
+                              ? AppColors.primary.withValues(alpha: 0.1)
+                              : AppColors.backgroundSecondary,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: sourceController.text == source
+                                ? AppColors.primary
+                                : AppColors.borderLight,
+                          ),
+                        ),
+                        child: Text(
+                          source,
+                          style: AppTextStyles.caption.copyWith(
+                            color: sourceController.text == source
+                                ? AppColors.primary
+                                : AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                onConfirm(costAmount, costSource);
+              },
+              child: const Text('确认'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1248,6 +1366,12 @@ class _HomePageState extends ConsumerState<HomePage> {
                       Text('脂肪${fat.round()}g',
                           style: AppTextStyles.numberXSmall.copyWith(
                               color: AppColors.fatColor, fontSize: 9)),
+                    if (record.cost != null && record.cost! > 0)
+                      Text('¥${record.cost!.toStringAsFixed(1)}',
+                          style: AppTextStyles.numberXSmall.copyWith(
+                              color: const Color(0xFFF57F17),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 10)),
                   ],
                 ),
               ],
@@ -1430,9 +1554,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                       mealType: mealType,
                       recordDate: dateStr,
                       recordTime: recordTime,
-                      // TODO: Milestone 2 消费功能 - CameraPage 需要添加 costAmount/costSource 参数
-                      // costAmount: _pendingCostAmount,
-                      // costSource: _pendingCostSource,
+                      costAmount: _pendingCostAmount,
+                      costSource: _pendingCostSource,
                     ))).then((_) {
           _clearPendingCost();
           _refreshData();
@@ -1447,9 +1570,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                       mealType: mealType,
                       recordDate: dateStr,
                       recordTime: recordTime,
-                      // TODO: Milestone 2 消费功能 - TextDescribePage 需要添加 costAmount/costSource 参数
-                      // costAmount: _pendingCostAmount,
-                      // costSource: _pendingCostSource,
+                      costAmount: _pendingCostAmount,
+                      costSource: _pendingCostSource,
                     ))).then((result) {
           _clearPendingCost();
           if (result == true) _refreshData();
@@ -2097,94 +2219,6 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   /// 宠物卡片
-  Widget _buildPetCard() {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const PetDetailPage(),
-          ),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.backgroundCard,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: AppColors.cardShadow,
-        ),
-        child: Row(
-          children: [
-            const PetWidget(
-              size: 80,
-              draggable: false,
-              showBubble: true,
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('我的精灵', style: AppTextStyles.h5),
-                  const SizedBox(height: 4),
-                  Consumer(
-                    builder: (context, ref, child) {
-                      final petState = ref.watch(petProvider);
-                      return Text(
-                        petState.dialogue,
-                        style: AppTextStyles.bodySmall.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  Consumer(
-                    builder: (context, ref, child) {
-                      final petState = ref.watch(petProvider);
-                      return Row(
-                        children: [
-                          _buildPetStat(
-                              'Lv.${petState.level}', AppColors.primary),
-                          const SizedBox(width: 12),
-                          _buildPetStat(
-                              '${petState.exp}/${petState.maxExp} EXP',
-                              AppColors.warning),
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const Icon(LucideIcons.chevronRight, color: AppColors.textTertiary),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPetStat(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
-      ),
-    );
-  }
-
   /// 消费概览卡片
   Widget _buildCostOverviewCard() {
     // 计算今日消费（从今日记录中汇总）
@@ -2406,6 +2440,7 @@ class _CalorieGoalDialogState extends State<_CalorieGoalDialog> {
   }
 }
 
+/// 宏量营养素环形图绘制器
 class _MacroDonutPainter extends CustomPainter {
   final double protein;
   final double carbs;

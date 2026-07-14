@@ -104,6 +104,7 @@ class _PetHomePageState extends ConsumerState<PetHomePage> {
             showLevelBadge: true,
             showMoodIndicator: true,
             enableInteraction: true,
+            skin: petState.currentSkin, // 使用用户选择的皮肤
           ),
           const SizedBox(height: 16),
 
