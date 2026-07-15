@@ -6,6 +6,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../../pet/presentation/providers/pet_provider.dart';
 import '../../../pet/data/pet_storage.dart';
 import '../../../pet/domain/pet_state_calculator.dart';
+import '../../../pet/domain/pet_skin_config.dart'; // 导入桌宠皮肤配置
 import '../../../pet/presentation/widgets/pet_bubble.dart';
 import '../../../pet/presentation/widgets/pet_animation_widget.dart';
 import '../../../pet/domain/services/pet_service.dart';
@@ -499,7 +500,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                       ),
                     ),
                     const SizedBox(width: 4),
-                    const Icon(LucideIcons.pencil, size: 14, color: Colors.white70),
+                    const Icon(LucideIcons.pencil,
+                        size: 14, color: Colors.white70),
                   ],
                 ),
               ),
@@ -553,6 +555,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                       size: 160,
                       showLevelBadge: false,
                       enableInteraction: false,
+                      skin: petState.currentSkin, // 使用当前选择的桌宠皮肤
                     ),
                   ),
                 ),
@@ -575,7 +578,10 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                 SizedBox(width: 6),
                 Text(
                   '点击互动',
-                  style: TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -656,7 +662,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
     );
   }
 
-  // ==================== Pet Type Selector ====================
+  // ==================== Pet Type Selector (桌宠选择) ====================
 
   Widget _buildPetTypeSelector(PetState petState) {
     return Column(
@@ -671,38 +677,40 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
           ),
         ),
         const SizedBox(height: 12),
-        GridView.builder(
+        // 桌宠列表（每行显示2个）
+        ListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
-            childAspectRatio: 0.85,
-          ),
-          itemCount: _petTypes.length,
+          itemCount: PetSkin.values.length,
           itemBuilder: (context, index) {
-            final pet = _petTypes[index];
-            final isSelected = petState.petType == pet['type'];
+            final skin = PetSkin.values[index];
+            final isSelected = petState.currentSkin == skin;
+            final skinConfig = kPetSkinConfigs[skin];
+            // 显示每个桌宠的独立名称
+            final displayName = ref.read(petProvider.notifier).getPetName(skin);
+
             return GestureDetector(
               onTap: () {
-                ref.read(petProvider.notifier).setPetType(pet['type'] as String);
+                // 立即切换桌宠
+                ref.read(petProvider.notifier).setPetSkin(skin);
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: isSelected
-                        ? (pet['color'] as Color)
+                        ? AppColors.primary
                         : const Color(0xFFE8E8E8),
                     width: isSelected ? 2.5 : 1,
                   ),
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
-                            color: (pet['color'] as Color).withValues(alpha: 0.2),
+                            color: AppColors.primary.withValues(alpha: 0.2),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
@@ -710,32 +718,90 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                       : null,
                 ),
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: (pet['color'] as Color).withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        pet['icon'] as IconData,
-                        size: 28,
-                        color: pet['color'] as Color,
-                      ),
+                    // 标题行（包含名称和修改按钮）
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppColors.primary
+                                  : AppColors.backgroundSecondary,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    displayName,
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : AppColors.textPrimary,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                // 所有桌宠都显示修改按钮
+                                GestureDetector(
+                                  onTap: () =>
+                                      _showEditPetNameDialog(skin, displayName),
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(left: 8),
+                                    child: Icon(
+                                      LucideIcons.pencil,
+                                      size: 16,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        if (isSelected)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.success,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              '当前',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      pet['name'] as String,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                        color: isSelected
-                            ? (pet['color'] as Color)
-                            : const Color(0xFF666666),
+                    const SizedBox(height: 12),
+
+                    // 桌宠状态预览（显示各个状态的GIF）
+                    if (skinConfig != null)
+                      Row(
+                        children: [
+                          _buildPetStatePreview(skinConfig.happyGif, '开心'),
+                          const SizedBox(width: 8),
+                          _buildPetStatePreview(skinConfig.normalGif, '正常'),
+                          const SizedBox(width: 8),
+                          _buildPetStatePreview(skinConfig.hungryGif, '饥饿'),
+                          const SizedBox(width: 8),
+                          _buildPetStatePreview(skinConfig.anxiousGif, '焦虑'),
+                        ],
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -743,6 +809,91 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
           },
         ),
       ],
+    );
+  }
+
+  /// 显示修改桌宠名称的对话框
+  void _showEditPetNameDialog(PetSkin skin, String currentName) {
+    final TextEditingController nameController =
+        TextEditingController(text: currentName);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('修改${skin.defaultName}的名称'),
+          content: TextField(
+            controller: nameController,
+            decoration: const InputDecoration(
+              hintText: '请输入桌宠名称',
+              border: OutlineInputBorder(),
+            ),
+            maxLength: 10, // 限制最多10个字符
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                final newName = nameController.text.trim();
+                if (newName.isNotEmpty) {
+                  // 为指定皮肤设置名称
+                  ref
+                      .read(petProvider.notifier)
+                      .setPetName(newName, skin: skin);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('${skin.defaultName}的名称已更新')),
+                  );
+                }
+              },
+              child: const Text('确认'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 构建桌宠状态预览组件
+  Widget _buildPetStatePreview(String gifPath, String label) {
+    return Expanded(
+      child: Column(
+        children: [
+          Container(
+            height: 60,
+            decoration: BoxDecoration(
+              color: AppColors.backgroundCard,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                gifPath,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  color: AppColors.backgroundSecondary,
+                  child: const Icon(
+                    LucideIcons.image,
+                    size: 20,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              color: AppColors.textTertiary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -767,10 +918,14 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
         children: [
           Row(
             children: [
-              const Icon(LucideIcons.activity, color: AppColors.primary, size: 18),
+              const Icon(LucideIcons.activity,
+                  color: AppColors.primary, size: 18),
               const SizedBox(width: 8),
               const Text('宠物状态',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF222222))),
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF222222))),
               if (_statsLoading) ...[
                 const SizedBox(width: 8),
                 const SizedBox(
@@ -823,7 +978,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                   ),
                   child: Column(
                     children: [
-                      const Icon(LucideIcons.star, color: Colors.white, size: 22),
+                      const Icon(LucideIcons.star,
+                          color: Colors.white, size: 22),
                       const SizedBox(height: 6),
                       Text('Lv.${petState.level}',
                           style: const TextStyle(
@@ -842,10 +998,12 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                   children: [
                     Row(
                       children: [
-                        const Icon(LucideIcons.zap, size: 14, color: AppColors.caloriesColor),
+                        const Icon(LucideIcons.zap,
+                            size: 14, color: AppColors.caloriesColor),
                         const SizedBox(width: 6),
                         const Text('经验值',
-                            style: TextStyle(fontSize: 14, color: Color(0xFF222222))),
+                            style: TextStyle(
+                                fontSize: 14, color: Color(0xFF222222))),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -853,8 +1011,10 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                       borderRadius: BorderRadius.circular(6),
                       child: LinearProgressIndicator(
                         value: _getExpProgress(petState),
-                        backgroundColor: AppColors.caloriesColor.withValues(alpha: 0.15),
-                        valueColor: const AlwaysStoppedAnimation<Color>(AppColors.caloriesColor),
+                        backgroundColor:
+                            AppColors.caloriesColor.withValues(alpha: 0.15),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                            AppColors.caloriesColor),
                         minHeight: 8,
                       ),
                     ),
@@ -874,17 +1034,22 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
           // Streak
           Row(
             children: [
-              const Icon(LucideIcons.calendar, size: 16, color: AppColors.warning),
+              const Icon(LucideIcons.calendar,
+                  size: 16, color: AppColors.warning),
               const SizedBox(width: 8),
-              const Text('连续达标', style: TextStyle(fontSize: 14, color: Color(0xFF222222))),
+              const Text('连续达标',
+                  style: TextStyle(fontSize: 14, color: Color(0xFF222222))),
               const Spacer(),
               Text('${petState.currentStreak}天',
                   style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.warning)),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.warning)),
               if (petState.longestStreak > 0) ...[
                 const SizedBox(width: 14),
                 Text('最长 ${petState.longestStreak}天',
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF999999))),
+                    style: const TextStyle(
+                        fontSize: 12, color: Color(0xFF999999))),
               ],
             ],
           ),
@@ -912,7 +1077,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
           children: [
             Icon(icon, size: 14, color: color),
             const SizedBox(width: 6),
-            Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF444444))),
+            Text(label,
+                style: const TextStyle(fontSize: 13, color: Color(0xFF444444))),
             const Spacer(),
             Text(
               unit == 'ml'
@@ -922,7 +1088,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
             ),
             const SizedBox(width: 6),
             Text('$pct%',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600, color: color)),
           ],
         ),
         const SizedBox(height: 6),
@@ -962,7 +1129,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
 
     final displayItems =
         _unlockables.isNotEmpty ? _unlockables : _defaultUnlockables;
-    final unlockedCount = displayItems.where((a) => a['is_unlocked'] == true).length;
+    final unlockedCount =
+        displayItems.where((a) => a['is_unlocked'] == true).length;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -988,11 +1156,15 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                   Icon(LucideIcons.trophy, color: AppColors.primary, size: 18),
                   SizedBox(width: 8),
                   Text('解锁内容',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF222222))),
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF222222))),
                 ],
               ),
               Text('$unlockedCount/${displayItems.length}',
-                  style: const TextStyle(fontSize: 13, color: Color(0xFF999999))),
+                  style:
+                      const TextStyle(fontSize: 13, color: Color(0xFF999999))),
             ],
           ),
           const SizedBox(height: 16),
@@ -1001,7 +1173,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
             physics: const NeverScrollableScrollPhysics(),
             itemCount: displayItems.length,
             itemBuilder: (context, index) {
-              return _buildUnlockableCard(displayItems[index] as Map<String, dynamic>);
+              return _buildUnlockableCard(
+                  displayItems[index] as Map<String, dynamic>);
             },
           ),
         ],
@@ -1028,12 +1201,14 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
       final currentLevel = petState.level;
       progress = (currentLevel / requiredLevel).clamp(0.0, 1.0);
       conditionText = '需要 Lv.$requiredLevel';
-      progressText = isUnlocked ? '已解锁' : 'Lv.$currentLevel / Lv.$requiredLevel';
+      progressText =
+          isUnlocked ? '已解锁' : 'Lv.$currentLevel / Lv.$requiredLevel';
     } else if (requiredStreak != null) {
       final currentStreak = petState.currentStreak;
       progress = (currentStreak / requiredStreak).clamp(0.0, 1.0);
       conditionText = '连续达标${requiredStreak}天';
-      progressText = isUnlocked ? '已解锁' : '${currentStreak}天 / ${requiredStreak}天';
+      progressText =
+          isUnlocked ? '已解锁' : '${currentStreak}天 / ${requiredStreak}天';
     }
 
     final canUnlock = !isUnlocked && progress >= 1.0;
@@ -1041,9 +1216,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: isUnlocked
-            ? AppColors.primarySurface
-            : const Color(0xFFF5F5F5),
+        color: isUnlocked ? AppColors.primarySurface : const Color(0xFFF5F5F5),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isUnlocked
@@ -1080,12 +1253,15 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                       style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: isUnlocked ? const Color(0xFF222222) : const Color(0xFF888888))),
+                          color: isUnlocked
+                              ? const Color(0xFF222222)
+                              : const Color(0xFF888888))),
                   if (description.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(description,
-                          style: const TextStyle(fontSize: 11, color: Color(0xFFAAAAAA)),
+                          style: const TextStyle(
+                              fontSize: 11, color: Color(0xFFAAAAAA)),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis),
                     ),
@@ -1095,14 +1271,20 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                       Text(conditionText,
                           style: TextStyle(
                               fontSize: 11,
-                              color: isUnlocked ? AppColors.success : const Color(0xFFAAAAAA),
-                              fontWeight: isUnlocked ? FontWeight.w600 : FontWeight.w400)),
+                              color: isUnlocked
+                                  ? AppColors.success
+                                  : const Color(0xFFAAAAAA),
+                              fontWeight: isUnlocked
+                                  ? FontWeight.w600
+                                  : FontWeight.w400)),
                       if (progressText.isNotEmpty) ...[
                         const SizedBox(width: 8),
                         Text(progressText,
                             style: TextStyle(
                                 fontSize: 10,
-                                color: isUnlocked ? AppColors.success : const Color(0xFF999999))),
+                                color: isUnlocked
+                                    ? AppColors.success
+                                    : const Color(0xFF999999))),
                       ],
                     ],
                   ),
@@ -1127,7 +1309,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
               GestureDetector(
                 onTap: () => _doUnlock(item),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     gradient: AppColors.primaryGradient,
                     borderRadius: BorderRadius.circular(8),
@@ -1140,7 +1323,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                 ),
               )
             else if (isUnlocked)
-              const Icon(LucideIcons.checkCircle, color: AppColors.success, size: 20),
+              const Icon(LucideIcons.checkCircle,
+                  color: AppColors.success, size: 20),
           ],
         ),
       ),
@@ -1184,7 +1368,10 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
               Icon(LucideIcons.gamepad2, color: AppColors.primary, size: 18),
               SizedBox(width: 8),
               Text('互动面板',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF222222))),
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF222222))),
             ],
           ),
           const SizedBox(height: 14),
@@ -1244,9 +1431,13 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(name,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFF333333))),
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF333333))),
                   Text(effect,
-                      style: const TextStyle(fontSize: 11, color: AppColors.success)),
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.success)),
                 ],
               ),
             ),

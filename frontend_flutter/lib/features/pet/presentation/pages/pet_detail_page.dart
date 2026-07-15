@@ -326,6 +326,7 @@ class _PetDetailPageState extends ConsumerState<PetDetailPage>
                   size: 180,
                   showLevelBadge: false,
                   enableInteraction: false,
+                  skin: petState.currentSkin, // 使用用户选择的皮肤
                 ),
               ),
             ),

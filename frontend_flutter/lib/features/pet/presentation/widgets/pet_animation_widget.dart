@@ -6,6 +6,7 @@ import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../providers/pet_provider.dart';
 import '../../domain/pet_state_calculator.dart';
+import '../../domain/pet_skin_config.dart';
 
 /// 宠物心情枚举
 enum PetMood { normal, happy, hungry, anxious, weak }
@@ -18,7 +19,7 @@ class MoodConfig {
   final Color bgColor;
   final List<String> dialogues;
   final IconData icon;
-  final String gifAsset;
+  final String Function(PetSkin skin) getGifAsset;
 
   const MoodConfig({
     required this.name,
@@ -27,56 +28,65 @@ class MoodConfig {
     required this.bgColor,
     required this.dialogues,
     required this.icon,
-    required this.gifAsset,
+    required this.getGifAsset,
   });
+
+  /// 获取指定皮肤的GIF资源路径
+  String gifAssetFor(PetSkin skin) => getGifAsset(skin);
 }
 
-/// 心情配置映射
-const Map<PetMood, MoodConfig> kMoodConfigs = {
+/// 心情配置映射（根据皮肤动态获取GIF路径）
+final Map<PetMood, MoodConfig> kMoodConfigs = {
   PetMood.happy: MoodConfig(
     name: '开心',
     emoji: '😊',
     color: AppColors.success,
-    bgColor: Color(0xFFE8F5E9),
+    bgColor: const Color(0xFFE8F5E9),
     dialogues: ['今天吃得很棒哦！', '营养均衡，继续保持~', '完美的一天！', '好开心~'],
     icon: LucideIcons.smile,
-    gifAsset: 'assets/pet/happy.gif',
+    getGifAsset: (skin) =>
+        kPetSkinConfigs[skin]?.happyGif ?? 'assets/pet/happy.gif',
   ),
   PetMood.normal: MoodConfig(
     name: '正常',
     emoji: '🙂',
     color: AppColors.primary,
-    bgColor: Color(0xFFE3F2FD),
+    bgColor: const Color(0xFFE3F2FD),
     dialogues: ['今天也要好好吃饭哦', '记得记录饮食~', '嗯~', '继续加油！'],
     icon: LucideIcons.meh,
-    gifAsset: 'assets/pet/calm.gif',
+    getGifAsset: (skin) =>
+        kPetSkinConfigs[skin]?.normalGif ??
+        'assets/pet/calm.gif', // 后备使用 calm.gif
   ),
   PetMood.hungry: MoodConfig(
     name: '饿了',
     emoji: '😋',
     color: AppColors.warning,
-    bgColor: Color(0xFFFFF3E0),
+    bgColor: const Color(0xFFFFF3E0),
     dialogues: ['肚子饿了...', '该吃饭啦！', '想吃东西~', '好饿~'],
     icon: LucideIcons.utensils,
-    gifAsset: 'assets/pet/hungry.gif',
+    getGifAsset: (skin) =>
+        kPetSkinConfigs[skin]?.hungryGif ?? 'assets/pet/hungry.gif',
   ),
   PetMood.anxious: MoodConfig(
     name: '焦虑',
     emoji: '😰',
     color: AppColors.info,
-    bgColor: Color(0xFFE1F5FE),
+    bgColor: const Color(0xFFE1F5FE),
     dialogues: ['记得多喝水哦...', '有点担心...', '要规律饮食哦~'],
     icon: LucideIcons.cloudRain,
-    gifAsset: 'assets/pet/anxious.gif',
+    getGifAsset: (skin) =>
+        kPetSkinConfigs[skin]?.anxiousGif ?? 'assets/pet/anxious.gif',
   ),
   PetMood.weak: MoodConfig(
     name: '虚弱',
     emoji: '😢',
     color: AppColors.error,
-    bgColor: Color(0xFFFFEBEE),
+    bgColor: const Color(0xFFFFEBEE),
     dialogues: ['好饿...还没吃东西...', '记得按时吃饭哦...', '...'],
     icon: LucideIcons.heartCrack,
-    gifAsset: 'assets/pet/weak.gif',
+    getGifAsset: (skin) =>
+        kPetSkinConfigs[skin]?.weakGif ?? 'assets/pet/weak.gif',
   ),
 };
 
@@ -91,6 +101,7 @@ class PetAnimationWidget extends ConsumerStatefulWidget {
   final int? level;
   final int? exp;
   final int? maxExp;
+  final PetSkin? skin; // 可选的皮肤参数
 
   const PetAnimationWidget({
     super.key,
@@ -102,6 +113,7 @@ class PetAnimationWidget extends ConsumerStatefulWidget {
     this.level,
     this.exp,
     this.maxExp,
+    this.skin,
   });
 
   @override
@@ -164,6 +176,14 @@ class _PetAnimationWidgetState extends ConsumerState<PetAnimationWidget>
     return kMoodConfigs[mood] ?? kMoodConfigs[PetMood.normal]!;
   }
 
+  /// 获取当前皮肤类型
+  PetSkin _getCurrentSkin() {
+    if (widget.skin != null) return widget.skin!;
+    // 从 provider 获取（如果存在）
+    // 这里暂时返回默认皮肤，后续可以从 petProvider 获取
+    return PetSkin.defaultPet;
+  }
+
   void _handleInteraction() {
     setState(() {
       _interactionCount++;
@@ -188,6 +208,7 @@ class _PetAnimationWidgetState extends ConsumerState<PetAnimationWidget>
   Widget build(BuildContext context) {
     final mood = _getCurrentMood();
     final config = _getMoodConfig(mood);
+    final currentSkin = _getCurrentSkin();
 
     return GestureDetector(
       onTap: widget.enableInteraction ? _handleInteraction : null,
@@ -209,19 +230,9 @@ class _PetAnimationWidgetState extends ConsumerState<PetAnimationWidget>
               child: Container(
                 width: widget.size,
                 height: widget.size,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: config.color.withValues(alpha: 0.25),
-                      blurRadius: 24,
-                      spreadRadius: 6,
-                    ),
-                  ],
-                ),
                 child: ClipOval(
                   child: Image.asset(
-                    config.gifAsset,
+                    config.gifAssetFor(currentSkin), // 使用皮肤相关的GIF路径
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Container(
                       decoration: BoxDecoration(

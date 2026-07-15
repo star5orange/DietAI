@@ -974,11 +974,134 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
 
     final mealNames = ['早餐', '午餐', '晚餐', '加餐'];
-    await _createFoodRecordFromSavedMeal(
-      meal,
-      mealNames[mealType - 1],
-      mealType,
-      DateTime.now().toIso8601String(),
+
+    // 显示消费输入对话框
+    await _showCostInputDialog(
+      mealName: meal.mealName,
+      onConfirm: (costAmount, costSource) async {
+        // 设置待处理的消费信息
+        setState(() {
+          _pendingCostAmount = costAmount;
+          _pendingCostSource = costSource;
+        });
+
+        // 创建记录
+        await _createFoodRecordFromSavedMeal(
+          meal,
+          mealNames[mealType - 1],
+          mealType,
+          DateTime.now().toIso8601String(),
+        );
+      },
+    );
+  }
+
+  /// 显示消费输入对话框
+  Future<void> _showCostInputDialog({
+    required String mealName,
+    required Function(double? costAmount, String? costSource) onConfirm,
+  }) async {
+    double? costAmount;
+    String? costSource;
+    final amountController = TextEditingController();
+    final sourceController = TextEditingController();
+
+    final commonSources = ['外卖', '食堂', '餐厅', '自制', '便利店', '其他'];
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text('记录 $mealName'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('消费金额（可选）', style: AppTextStyles.bodyLarge),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: amountController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    hintText: '请输入消费金额',
+                    prefixText: '¥ ',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (value) {
+                    costAmount = double.tryParse(value);
+                  },
+                ),
+                const SizedBox(height: 16),
+                Text('消费来源（可选）', style: AppTextStyles.bodyLarge),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: sourceController,
+                  decoration: const InputDecoration(
+                    hintText: '请输入消费来源',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (value) {
+                    costSource = value.trim().isEmpty ? null : value.trim();
+                  },
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: commonSources.map((source) {
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          sourceController.text = source;
+                          costSource = source;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: sourceController.text == source
+                              ? AppColors.primary.withValues(alpha: 0.1)
+                              : AppColors.backgroundSecondary,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: sourceController.text == source
+                                ? AppColors.primary
+                                : AppColors.borderLight,
+                          ),
+                        ),
+                        child: Text(
+                          source,
+                          style: AppTextStyles.caption.copyWith(
+                            color: sourceController.text == source
+                                ? AppColors.primary
+                                : AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                onConfirm(costAmount, costSource);
+              },
+              child: const Text('确认'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -123,11 +123,14 @@ class PetService {
   }
 
   /// 设置宠物名称
-  Future<ApiResponse<bool>> setPetName(String petName) async {
+  Future<ApiResponse<bool>> setPetName(String petName, {String? skinKey}) async {
     try {
       await _apiService.post(
         '/virtual-pet/settings',
-        data: {'pet_name': petName},
+        data: {
+          'pet_name': petName,
+          if (skinKey != null) 'skin_key': skinKey,
+        },
       );
       return ApiResponse.success(message: '设置成功', data: true);
     } catch (e) {

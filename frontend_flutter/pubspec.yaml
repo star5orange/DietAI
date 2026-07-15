@@ -77,12 +77,13 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  
+
   assets:
     - assets/images/
     - assets/icons/
     - assets/lottie/
     - assets/pet/
+    - assets/pet/christine/  # 第二只桌宠资源
   
   # 字体使用 Google Fonts，无需本地字体文件
   # fonts:
