@@ -64,13 +64,19 @@ class Settings(BaseSettings):
 
     @property
     def jwt_private_key(self) -> str:
-        with open(self.jwt_private_key_file, "r", encoding="utf-8") as f:
-            return f.read()
+        try:
+            with open(self.jwt_private_key_file, "r", encoding="utf-8") as f:
+                return f.read()
+        except FileNotFoundError:
+            return ""
 
     @property
     def jwt_public_key(self) -> str:
-        with open(self.jwt_public_key_file, "r", encoding="utf-8") as f:
-            return f.read()
+        try:
+            with open(self.jwt_public_key_file, "r", encoding="utf-8") as f:
+                return f.read()
+        except FileNotFoundError:
+            return ""
 
     jwt_access_token_expire_minutes: int = Field(default=30, description="访问令牌过期时间(分钟)")
     jwt_refresh_token_expire_days: int = Field(default=7, description="刷新令牌过期时间(天)")

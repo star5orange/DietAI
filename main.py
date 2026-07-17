@@ -39,6 +39,10 @@ _pet_router = None
 _fasting_router = None
 _advisor_router = None
 
+# Milestone 3 真实宠物路由器
+_real_pet_router = None
+_pet_avatar_router = None
+
 try:
     from routers.food_router import router as food_router
     _food_router = food_router
@@ -91,6 +95,20 @@ except ImportError:
 try:
     from routers.advisor_router import router as advisor_router
     _advisor_router = advisor_router
+except ImportError:
+    pass
+
+# Milestone 3: 真实宠物管理
+try:
+    from routers.real_pet_router import router as real_pet_router
+    _real_pet_router = real_pet_router
+except ImportError:
+    pass
+
+# Milestone 3: AI 宠物形象生成
+try:
+    from routers.pet_avatar_router import router as pet_avatar_router
+    _pet_avatar_router = pet_avatar_router
 except ImportError:
     pass
 
@@ -346,6 +364,12 @@ if _fasting_router is not None:
     app.include_router(_fasting_router, prefix="/api", tags=["轻断食"])
 if _advisor_router is not None:
     app.include_router(_advisor_router, prefix="/api", tags=["AI顾问设置"])
+
+# Milestone 3: 真实宠物管理路由
+if _real_pet_router is not None:
+    app.include_router(_real_pet_router, prefix="/api", tags=["真实宠物"])
+if _pet_avatar_router is not None:
+    app.include_router(_pet_avatar_router, prefix="/api", tags=["AI宠物形象"])
 
 # 启动服务器
 if __name__ == "__main__":

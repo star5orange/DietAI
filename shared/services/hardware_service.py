@@ -162,8 +162,102 @@ def sync_offline_records(db: Session, user_id: int, records: List[dict]) -> dict
         pass
 
     # Log sync
-    log = OfflineSyncLog(user_id=user_id, synced_count=synced, failed_count=failed, sync_details=details)
+    log = OfflineSyncLog(
+        user_id=user_id, target_type="human",
+        sync_type="batch", payload={"synced": synced, "failed": failed, "details": details}
+    )
     db.add(log)
     db.commit()
 
     return {"synced": synced, "failed": failed}
+
+
+# ============================================================
+# M3: 真实宠物硬件同步
+# ============================================================
+
+def sync_pet_feeding(db: Session, data: dict) -> dict:
+    """硬件投粮后同步：写入宠物饮食记录并更新每日汇总"""
+    from shared.models.pet_models import PetFeedingRecord
+    from datetime import datetime
+
+    record = PetFeedingRecord(
+        pet_id=data["pet_id"],
+        food_name=data.get("food_name", "未知食物"),
+        amount_grams=data.get("amount_grams"),
+        calories=data.get("calories"),
+        protein=data.get("protein"),
+        fat=data.get("fat"),
+        carbs=data.get("carbs"),
+        record_time=datetime.fromisoformat(data["timestamp"]) if data.get("timestamp") else datetime.utcnow(),
+        from_source="hardware",
+    )
+    db.add(record)
+    db.flush()
+
+    # 更新每日汇总
+    try:
+        from shared.services.real_pet_service import _upsert_pet_daily_summary
+        _upsert_pet_daily_summary(db, data["pet_id"], record.record_time.date())
+    except Exception:
+        pass
+
+    db.commit()
+    db.refresh(record)
+    return {"id": record.id, "type": "feeding", "status": "ok"}
+
+
+def sync_pet_water(db: Session, data: dict) -> dict:
+    """硬件放水后同步：写入宠物饮水记录并更新每日汇总"""
+    from shared.models.pet_models import PetWaterRecord
+    from datetime import datetime
+
+    record = PetWaterRecord(
+        pet_id=data["pet_id"],
+        amount_ml=data.get("amount_ml", 0),
+        record_time=datetime.fromisoformat(data["timestamp"]) if data.get("timestamp") else datetime.utcnow(),
+        from_source="hardware",
+    )
+    db.add(record)
+    db.flush()
+
+    try:
+        from shared.services.real_pet_service import _upsert_pet_daily_summary
+        _upsert_pet_daily_summary(db, data["pet_id"], record.record_time.date())
+    except Exception:
+        pass
+
+    db.commit()
+    db.refresh(record)
+    return {"id": record.id, "type": "water", "status": "ok"}
+
+
+def get_pet_quick_buttons(db: Session, user_id: int) -> dict:
+    """获取宠物专用快捷按钮"""
+    from shared.models.pet_models import PetProfile, HardwareQuickButton
+    pets = db.query(PetProfile).filter(
+        PetProfile.user_id == user_id, PetProfile.is_active.is_(True)
+    ).all()
+    buttons = db.query(HardwareQuickButton).filter(
+        HardwareQuickButton.user_id == user_id,
+        HardwareQuickButton.pet_id.isnot(None)
+    ).order_by(HardwareQuickButton.button_index).all()
+
+    return {
+        "user_id": user_id,
+        "pets": [{"id": p.id, "name": p.name, "species": p.species} for p in pets],
+        "buttons": [{
+            "button_index": b.button_index, "button_type": b.button_type,
+            "label": b.label, "pet_id": b.pet_id,
+            "food_name": b.food_name, "calories": float(b.calories) if b.calories else None,
+        } for b in buttons],
+    }
+
+
+def get_pet_feeding_plan_for_hardware(db: Session, pet_id: int) -> dict:
+    """硬件查询当日喂食计划"""
+    from shared.services.real_pet_service import get_feeding_plan, get_pet
+    pet = get_pet(db, pet_id, None)  # 硬件调用不走用户验证
+    if not pet:
+        return {"error": "宠物不存在"}
+    return get_feeding_plan(db, pet_id, pet.user_id)
