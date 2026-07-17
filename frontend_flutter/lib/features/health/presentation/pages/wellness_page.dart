@@ -116,7 +116,7 @@ class _WellnessPageState extends State<WellnessPage>
         _recommendation!['recommended_ingredients'] as List? ?? [];
     final recipes = _recommendation!['recommended_recipes'] as List? ?? [];
     final avoidFoods = _recommendation!['foods_to_avoid'] as List? ?? [];
-    final solarTerm = _recommendation!['current_solar_term'] ?? '芒种';
+    final solarTerm = _recommendation!['current_solar_term'] ?? '未知节气';
     final season = _recommendation!['current_season'] ?? '夏季';
 
     return SingleChildScrollView(

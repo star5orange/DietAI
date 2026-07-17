@@ -11,6 +11,7 @@ class Reminder(Base):
     remind_time = Column(Time, nullable=False)
     repeat_days = Column(Integer, default=127)           # bitmask 0=周日...6=周六，全选为127
     is_enabled = Column(Boolean, default=True)
+    fasting_plan_id = Column(Integer, ForeignKey("fasting_plans.id"), nullable=True)  # M2: 关联轻断食计划
     title = Column(String(100))
     description = Column(Text)
     virtual_pet_status = Column(JSON, nullable=True)     # 预留

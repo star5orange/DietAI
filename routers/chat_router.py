@@ -6,7 +6,7 @@ LangGraph 聊天 Agent 路由
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Optional, Dict, Any, List, AsyncGenerator
 import json
 
@@ -68,7 +68,7 @@ async def _run_chat_agent(
     current_user: user_models.User,
     db: Session,
 ) -> tuple[str, dict[str, Any], list[str]]:
-    user_context = await get_user_context(current_user.id, db)
+    user_context, _ = await get_user_context(current_user.id, db)
     recent_meals = await get_recent_meals(current_user.id, db)
     health_goals = await get_health_goals(current_user.id, db)
     weekly_trends = await get_weekly_trends(current_user.id, db)
@@ -162,7 +162,7 @@ async def send_chat_message_stream(
             db.refresh(user_message)
 
             # 3. 获取用户上下文数据
-            user_context = await get_user_context(current_user.id, db)
+            user_context, advisor_system_prompt = await get_user_context(current_user.id, db)
             recent_meals = await get_recent_meals(current_user.id, db)
             health_goals = await get_health_goals(current_user.id, db)
             weekly_trends = await get_weekly_trends(current_user.id, db)
@@ -214,7 +214,8 @@ async def send_chat_message_stream(
                     "weekly_trends": weekly_trends,
                     "crowd_tag": crowd_tag,
                     "constitution_type": constitution_type,
-                    "conversation_history": conversation_history
+                    "conversation_history": conversation_history,
+                    "advisor_system_prompt": advisor_system_prompt
                 },
                 stream_mode="values"
             ):
@@ -238,7 +239,16 @@ async def send_chat_message_stream(
                     last_response_len = len(response_content)
                     yield f"data: {json.dumps({'type': 'content', 'content': new_content})}\n\n"
 
-            # 6. 创建AI回复消息记录
+            # 6. 合规检查：扫描是否有情感诱导关键词
+            try:
+                from agent.diet_deep_agent.tools.advisor_style_prompt_manager import check_compliance
+                compliance_result = check_compliance(full_response)
+                if not compliance_result.get("compliant", True):
+                    logger.warning(f"Compliance violation in chat response: {compliance_result.get('violated_keyword')}")
+            except Exception:
+                pass
+
+            # 7. 创建AI回复消息记录
             ai_message = conversation_models.ConversationMessage(
                 session_id=session.id,
                 message_type=2,
@@ -334,7 +344,7 @@ async def send_chat_message(
         db.refresh(user_message)
 
         # 3. 获取用户上下文数据
-        user_context = await get_user_context(current_user.id, db)
+        user_context, advisor_system_prompt = await get_user_context(current_user.id, db)
         recent_meals = await get_recent_meals(current_user.id, db)
         health_goals = await get_health_goals(current_user.id, db)
         weekly_trends = await get_weekly_trends(current_user.id, db)
@@ -383,7 +393,8 @@ async def send_chat_message(
                 "weekly_trends": weekly_trends,
                 "crowd_tag": crowd_tag,
                 "constitution_type": constitution_type,
-                "conversation_history": conversation_history
+                "conversation_history": conversation_history,
+                "advisor_system_prompt": advisor_system_prompt
             },
             stream_mode="values"
         ):
@@ -518,7 +529,7 @@ async def get_session_context(
     
     try:
         # 获取上下文数据
-        user_context = await get_user_context(current_user.id, db)
+        user_context, _ = await get_user_context(current_user.id, db)
         recent_meals = await get_recent_meals(current_user.id, db)
         health_goals = await get_health_goals(current_user.id, db)
         
@@ -545,12 +556,12 @@ async def get_session_context(
 
 
 # 辅助函数
-async def get_user_context(user_id: int, db: Session) -> Dict[str, Any]:
+async def get_user_context(user_id: int, db: Session):
     """获取用户上下文信息"""
     user = db.query(user_models.User).filter(user_models.User.id == user_id).first()
     if not user:
-        return {}
-    
+        return {}, ""
+
     # 获取用户档案信息
     user_profile = db.query(user_models.UserProfile).filter(
         user_models.UserProfile.user_id == user_id
@@ -567,7 +578,28 @@ async def get_user_context(user_id: int, db: Session) -> Dict[str, Any]:
         "constitution_type": user_profile.constitution_type if user_profile else None,
     }
     
-    return {k: v for k, v in context.items() if v is not None}
+    # Milestone 2: 获取 AI 顾问风格设置
+    advisor_system_prompt = ""
+    try:
+        from shared.services.advisor_service import get_advisor_settings
+        from agent.diet_deep_agent.tools.advisor_style_prompt_manager import build_style_prompt
+        advisor_settings = get_advisor_settings(db, user_id)
+        if advisor_settings:
+            context["advisor_style"] = advisor_settings.get("advisor_style")
+            context["advisor_focus_goal"] = advisor_settings.get("focus_goal")
+            context["advisor_focus_nutrient"] = advisor_settings.get("focus_nutrient")
+            context["advisor_response_style"] = advisor_settings.get("response_style")
+            # 构建风格化 System Prompt（注入到 Agent 中）
+            advisor_system_prompt = build_style_prompt(
+                advisor_style=advisor_settings.get("advisor_style", "nutritionist"),
+                focus_goal=advisor_settings.get("focus_goal"),
+                focus_nutrient=advisor_settings.get("focus_nutrient"),
+                response_style=advisor_settings.get("response_style", "detailed")
+            )
+    except Exception:
+        pass  # 非阻塞，获取失败不影响主流程
+    
+    return {k: v for k, v in context.items() if v is not None}, advisor_system_prompt
 
 
 async def get_recent_meals(user_id: int, db: Session, limit: int = 5) -> List[Dict[str, Any]]:
@@ -754,11 +786,14 @@ async def get_conversation_history(session_id: int, db: Session, limit: int = 10
 @router.get("/sessions", response_model=schemas.BaseResponse)
 async def get_chat_sessions(
         session_type: Optional[int] = None,
-        limit: int = 10,
+        keyword: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 50,
         current_user: user_models.User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    """获取用户的聊天会话列表 - 前端专用"""
+    """获取用户的聊天会话列表 - 支持关键词搜索和日期范围筛选"""
     try:
         query = db.query(conversation_models.ConversationSession).filter(
             conversation_models.ConversationSession.user_id == current_user.id
@@ -766,6 +801,43 @@ async def get_chat_sessions(
 
         if session_type:
             query = query.filter(conversation_models.ConversationSession.session_type == session_type)
+
+        # 关键词搜索：按会话标题模糊匹配
+        if keyword and keyword.strip():
+            query = query.filter(
+                conversation_models.ConversationSession.title.ilike(f"%{keyword.strip()}%")
+            )
+
+        # 日期范围筛选：按 last_message_at 或 created_at
+        if start_date:
+            try:
+                start_dt = datetime.strptime(start_date.strip(), "%Y-%m-%d")
+                query = query.filter(
+                    db.or_(
+                        conversation_models.ConversationSession.last_message_at >= start_dt,
+                        db.and_(
+                            conversation_models.ConversationSession.last_message_at.is_(None),
+                            conversation_models.ConversationSession.created_at >= start_dt,
+                        ),
+                    )
+                )
+            except ValueError:
+                pass
+
+        if end_date:
+            try:
+                end_dt = datetime.strptime(end_date.strip(), "%Y-%m-%d") + timedelta(days=1)
+                query = query.filter(
+                    db.or_(
+                        conversation_models.ConversationSession.last_message_at < end_dt,
+                        db.and_(
+                            conversation_models.ConversationSession.last_message_at.is_(None),
+                            conversation_models.ConversationSession.created_at < end_dt,
+                        ),
+                    )
+                )
+            except ValueError:
+                pass
 
         sessions = query.order_by(
             conversation_models.ConversationSession.last_message_at.desc().nullslast(),
@@ -802,6 +874,118 @@ async def get_chat_sessions(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取会话列表失败: {str(e)}"
+        )
+
+
+@router.get("/search", response_model=schemas.BaseResponse)
+async def search_chat_messages(
+        keyword: str,
+        session_type: Optional[int] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 20,
+        current_user: user_models.User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """按关键词搜索消息内容 - 跨所有会话搜索"""
+    try:
+        if not keyword or not keyword.strip():
+            return schemas.BaseResponse(
+                success=True,
+                message="请输入搜索关键词",
+                data=[]
+            )
+
+        kw = keyword.strip()
+
+        # 先查匹配关键字的会话
+        session_query = db.query(conversation_models.ConversationSession).filter(
+            conversation_models.ConversationSession.user_id == current_user.id
+        )
+
+        if session_type:
+            session_query = session_query.filter(
+                conversation_models.ConversationSession.session_type == session_type
+            )
+
+        # 日期范围
+        if start_date:
+            try:
+                start_dt = datetime.strptime(start_date.strip(), "%Y-%m-%d")
+                session_query = session_query.filter(
+                    conversation_models.ConversationSession.last_message_at >= start_dt
+                )
+            except ValueError:
+                pass
+
+        if end_date:
+            try:
+                end_dt = datetime.strptime(end_date.strip(), "%Y-%m-%d") + timedelta(days=1)
+                session_query = session_query.filter(
+                    conversation_models.ConversationSession.last_message_at < end_dt
+                )
+            except ValueError:
+                pass
+
+        user_sessions = session_query.all()
+        session_ids = [s.id for s in user_sessions]
+
+        if not session_ids:
+            return schemas.BaseResponse(
+                success=True,
+                message="未找到匹配的对话",
+                data=[]
+            )
+
+        # 搜索消息内容
+        message_query = db.query(conversation_models.ConversationMessage).filter(
+            conversation_models.ConversationMessage.session_id.in_(session_ids),
+            conversation_models.ConversationMessage.content.ilike(f"%{kw}%")
+        ).order_by(
+            conversation_models.ConversationMessage.created_at.desc()
+        ).limit(limit)
+
+        messages = message_query.all()
+
+        results = []
+        for msg in messages:
+            session = db.query(conversation_models.ConversationSession).filter(
+                conversation_models.ConversationSession.id == msg.session_id
+            ).first()
+
+            # 截取匹配关键词前后文（最多 100 字）
+            content = msg.content or ""
+            idx = content.lower().find(kw.lower())
+            snippet_start = max(0, idx - 30)
+            snippet_end = min(len(content), idx + len(kw) + 50)
+            snippet = content[snippet_start:snippet_end]
+            if snippet_start > 0:
+                snippet = "..." + snippet
+            if snippet_end < len(content):
+                snippet = snippet + "..."
+
+            results.append({
+                "id": msg.id,
+                "session_id": msg.session_id,
+                "session_title": session.title if session else "未知对话",
+                "session_type": session.session_type if session else 0,
+                "session_type_name": get_session_type_name(session.session_type) if session else "",
+                "message_type": msg.message_type,
+                "content_snippet": snippet,
+                "highlight_keyword": kw,
+                "created_at": msg.created_at.isoformat()
+            })
+
+        return schemas.BaseResponse(
+            success=True,
+            message=f"找到 {len(results)} 条相关消息",
+            data=results
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"搜索消息失败: {str(e)}"
         )
 
 

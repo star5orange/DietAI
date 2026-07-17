@@ -24,11 +24,42 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   DateTime _selectedDate = DateTime.now();
   bool _isLoading = true;
   List<FoodRecord> _records = [];
+  String _searchQuery = '';
+  bool _showSearch = false;
+  int? _activeMealFilter;
+  final TextEditingController _searchController = TextEditingController();
+  double? _pendingCostAmount;
+  String? _pendingCostSource;
 
   @override
   void initState() {
     super.initState();
     _loadRecords();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<FoodRecord> get _filteredRecords {
+    var records = _records;
+    if (_searchQuery.isNotEmpty) {
+      records = records
+          .where((r) =>
+              (r.foodName ?? '')
+                  .toLowerCase()
+                  .contains(_searchQuery.toLowerCase()) ||
+              (r.description ?? '')
+                  .toLowerCase()
+                  .contains(_searchQuery.toLowerCase()))
+          .toList();
+    }
+    if (_activeMealFilter != null) {
+      records = records.where((r) => r.mealType == _activeMealFilter).toList();
+    }
+    return records;
   }
 
   Future<void> _loadRecords() async {
@@ -71,29 +102,66 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('饮食记录'),
-        actions: [
-          IconButton(
-            icon: const Icon(LucideIcons.search),
-            onPressed: () {
-              // TODO: 搜索功能
-            },
-          ),
-          IconButton(
-            icon: const Icon(LucideIcons.filter),
-            onPressed: () {
-              // TODO: 筛选功能
-            },
-          ),
-          IconButton(
-            icon: const Icon(LucideIcons.testTube),
-            onPressed: () {
-              Navigator.pushNamed(context, '/history/test');
-            },
-          ),
-        ],
-      ),
+      appBar: _showSearch
+          ? AppBar(
+              title: TextField(
+                controller: _searchController,
+                autofocus: true,
+                style: const TextStyle(color: AppColors.textPrimary),
+                decoration: const InputDecoration(
+                  hintText: '搜索食物名称...',
+                  border: InputBorder.none,
+                  hintStyle: TextStyle(color: AppColors.textSecondary),
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _searchQuery = value;
+                  });
+                },
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(LucideIcons.x),
+                  onPressed: () {
+                    setState(() {
+                      _showSearch = false;
+                      _searchQuery = '';
+                      _searchController.clear();
+                    });
+                  },
+                ),
+              ],
+            )
+          : AppBar(
+              title: _activeMealFilter != null
+                  ? Text(_getMealName(_activeMealFilter!))
+                  : const Text('饮食记录'),
+              actions: [
+                IconButton(
+                  icon: const Icon(LucideIcons.search),
+                  onPressed: () {
+                    setState(() {
+                      _showSearch = true;
+                    });
+                  },
+                ),
+                IconButton(
+                  icon: Icon(
+                    _activeMealFilter != null
+                        ? LucideIcons.filterX
+                        : LucideIcons.filter,
+                    color: _activeMealFilter != null ? AppColors.primary : null,
+                  ),
+                  onPressed: () => _showFilterSheet(),
+                ),
+                IconButton(
+                  icon: const Icon(LucideIcons.testTube),
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/history/test');
+                  },
+                ),
+              ],
+            ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -163,8 +231,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                   ? const Center(child: CircularProgressIndicator())
                   : RefreshIndicator(
                       onRefresh: _loadRecords,
-                      child: _records.isEmpty
-                          ? const Center(
+                      child: _filteredRecords.isEmpty
+                          ? Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -175,7 +243,10 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                                   ),
                                   SizedBox(height: 16),
                                   Text(
-                                    '该日期暂无记录',
+                                    _searchQuery.isNotEmpty ||
+                                            _activeMealFilter != null
+                                        ? '没有匹配的记录'
+                                        : '该日期暂无记录',
                                     style: TextStyle(
                                       color: AppColors.textTertiary,
                                       fontSize: 16,
@@ -222,6 +293,81 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     return '零食';
   }
 
+  void _showFilterSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '按餐次筛选',
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _buildFilterChip(null, '全部'),
+                    _buildFilterChip(1, '早餐'),
+                    _buildFilterChip(2, '午餐'),
+                    _buildFilterChip(3, '晚餐'),
+                    _buildFilterChip(4, '零食'),
+                  ],
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFilterChip(int? mealType, String label) {
+    final isSelected = _activeMealFilter == mealType;
+    return GestureDetector(
+      onTap: () {
+        Navigator.pop(context);
+        setState(() {
+          _activeMealFilter = mealType;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.primary.withValues(alpha: 0.15)
+              : AppColors.backgroundSecondary,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.divider,
+            width: 1.5,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? AppColors.primary : AppColors.textSecondary,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+            fontSize: 14,
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showFoodRecordModal(String mealName) {
     showModalBottomSheet(
       context: context,
@@ -229,8 +375,10 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       backgroundColor: Colors.transparent,
       builder: (context) => FoodRecordModal(
         mealName: mealName,
-        onRecordMethod: (method) {
+        onRecordMethod: (method, {double? cost, String? sourceTag}) {
           Navigator.pop(context);
+          _pendingCostAmount = cost;
+          _pendingCostSource = sourceTag;
           _handleRecordMethod(method, mealName);
         },
       ),
@@ -282,7 +430,13 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     mealName: mealName,
                     mealType: mealType,
                     recordDate: dateStr,
-                    recordTime: recordTime))).then((_) => _loadRecords());
+                    recordTime: recordTime,
+                    costAmount: _pendingCostAmount,
+                    costSource: _pendingCostSource))).then((_) {
+          _pendingCostAmount = null;
+          _pendingCostSource = null;
+          _loadRecords();
+        });
         break;
       case 'text_describe':
         Navigator.push(
@@ -292,7 +446,11 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     mealName: mealName,
                     mealType: mealType,
                     recordDate: dateStr,
-                    recordTime: recordTime))).then((result) {
+                    recordTime: recordTime,
+                    costAmount: _pendingCostAmount,
+                    costSource: _pendingCostSource))).then((result) {
+          _pendingCostAmount = null;
+          _pendingCostSource = null;
           if (result == true) _loadRecords();
         });
         break;
@@ -308,8 +466,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         Navigator.push(
             context,
             MaterialPageRoute(
-                builder: (context) => MealSelectionPage(recordMethod: method)))
-            .then((result) {
+                builder: (context) =>
+                    MealSelectionPage(recordMethod: method))).then((result) {
           if (result != null) {
             // TODO: 处理从常用餐食选择的记录
             _loadRecords();
@@ -351,9 +509,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   }
 
   List<Widget> _buildMealSections() {
-    // 按餐次分组记录
+    final records = _filteredRecords;
     final Map<int, List<FoodRecord>> mealGroups = {};
-    for (final record in _records) {
+    for (final record in records) {
       if (!mealGroups.containsKey(record.mealType)) {
         mealGroups[record.mealType] = [];
       }
@@ -640,6 +798,17 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     ),
                   ),
                 ),
+                // 消费金额
+                if (record != null && record.cost != null && record.cost! > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '¥${record.cost!.toStringAsFixed(1)}',
+                    style: AppTextStyles.bodySmall.copyWith(
+                      color: const Color(0xFFF57F17),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 6),
                 Text(
                   time,
@@ -825,6 +994,11 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     _buildDetailRow(
                         '记录时间', record.recordTime ?? record.createdAt),
                     _buildDetailRow('分析状态', record.analysisStatusName),
+                    if (record.cost != null && record.cost! > 0) ...[
+                      _buildDetailRow('消费金额', '¥${record.cost!.toStringAsFixed(2)}'),
+                      if (record.sourceTag != null)
+                        _buildDetailRow('消费来源', _sourceLabelName(record.sourceTag!)),
+                    ],
                   ]),
 
                   const SizedBox(height: 20),
@@ -1489,7 +1663,11 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     final nameController = TextEditingController(text: record.foodName ?? '');
     final descController =
         TextEditingController(text: record.description ?? '');
+    final costController = TextEditingController(
+      text: record.cost != null ? record.cost.toString() : '',
+    );
     int selectedMealType = record.mealType;
+    String? selectedSourceTag = record.sourceTag;
 
     showDialog(
       context: context,
@@ -1531,7 +1709,39 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     labelText: '描述',
                     border: OutlineInputBorder(),
                   ),
-                  maxLines: 3,
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 16),
+                // M2: 消费金额
+                TextField(
+                  controller: costController,
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: '消费金额（选填）',
+                    suffixText: '元',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // M2: 消费来源
+                DropdownButtonFormField<String?>(
+                  value: selectedSourceTag,
+                  decoration: const InputDecoration(
+                    labelText: '消费来源（选填）',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: null, child: Text('不选择')),
+                    DropdownMenuItem(value: 'canteen', child: Text('食堂')),
+                    DropdownMenuItem(value: 'delivery', child: Text('外卖')),
+                    DropdownMenuItem(value: 'home', child: Text('自制')),
+                    DropdownMenuItem(value: 'restaurant', child: Text('餐厅')),
+                    DropdownMenuItem(value: 'snack', child: Text('零食')),
+                    DropdownMenuItem(value: 'other', child: Text('其他')),
+                  ],
+                  onChanged: (value) {
+                    setDialogState(() => selectedSourceTag = value);
+                  },
                 ),
               ],
             ),
@@ -1543,6 +1753,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
             ),
             ElevatedButton(
               onPressed: () async {
+                final costValue = costController.text.trim().isEmpty
+                    ? null
+                    : double.tryParse(costController.text.trim());
                 final foodData = FoodRecordCreate(
                   recordDate: record.recordDate,
                   recordTime: record.recordTime,
@@ -1553,6 +1766,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                       : descController.text.trim(),
                   imageUrl: record.imageUrl,
                   recordingMethod: record.recordingMethod,
+                  cost: costValue,
+                  sourceTag: selectedSourceTag,
                 );
 
                 final result =
@@ -1604,5 +1819,17 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         SnackBar(content: Text('删除失败: $e')),
       );
     }
+  }
+
+  String _sourceLabelName(String key) {
+    const labels = {
+      'canteen': '食堂',
+      'delivery': '外卖',
+      'home': '家里',
+      'restaurant': '餐厅',
+      'snack': '零食',
+      'other': '其他',
+    };
+    return labels[key] ?? key;
   }
 }

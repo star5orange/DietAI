@@ -18,11 +18,24 @@ security = HTTPBearer()
 # 密码加密上下文
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# JWT配置
-SECRET_KEY = settings.jwt_secret_key
+# JWT配置 — RS256 非对称模式用私钥签名、公钥验证
 ALGORITHM = settings.jwt_algorithm
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.jwt_access_token_expire_minutes
 REFRESH_TOKEN_EXPIRE_DAYS = settings.jwt_refresh_token_expire_days
+
+
+def _get_signing_key() -> str:
+    """获取签名密钥：RS256 用私钥，HS256 用对称密钥"""
+    if ALGORITHM == "RS256":
+        return settings.jwt_private_key
+    return settings.jwt_secret_key
+
+
+def _get_verification_key() -> str:
+    """获取验证密钥：RS256 用公钥，HS256 用对称密钥"""
+    if ALGORITHM == "RS256":
+        return settings.jwt_public_key
+    return settings.jwt_secret_key
 
 
 class AuthService:
@@ -49,7 +62,7 @@ class AuthService:
             expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         
         to_encode.update({"exp": expire, "type": "access"})
-        encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+        encoded_jwt = jwt.encode(to_encode, _get_signing_key(), algorithm=ALGORITHM)
         return encoded_jwt
     
     @staticmethod
@@ -63,14 +76,14 @@ class AuthService:
             expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
         
         to_encode.update({"exp": expire, "type": "refresh"})
-        encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+        encoded_jwt = jwt.encode(to_encode, _get_signing_key(), algorithm=ALGORITHM)
         return encoded_jwt
     
     @staticmethod
     def verify_token(token: str) -> Dict[str, Any]:
         """验证令牌"""
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            payload = jwt.decode(token, _get_verification_key(), algorithms=[ALGORITHM])
             print("payload:", payload)
             return payload
         except JWTError:
@@ -115,13 +128,13 @@ class AuthService:
             "type": "password_reset",
             "exp": datetime.utcnow() + timedelta(hours=1)  # 1小时有效期
         }
-        return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+        return jwt.encode(data, _get_signing_key(), algorithm=ALGORITHM)
     
     @staticmethod
     def verify_password_reset_token(token: str) -> Optional[int]:
         """验证密码重置令牌"""
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            payload = jwt.decode(token, _get_verification_key(), algorithms=[ALGORITHM])
             if payload.get("type") != "password_reset":
                 return None
             return payload.get("user_id")

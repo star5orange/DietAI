@@ -33,28 +33,30 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
   @override
   Widget build(BuildContext context) {
     final weightRecordsAsync = ref.watch(weightRecordsProvider);
-    
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.8,
-      decoration: const BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      child: Column(
-        children: [
-          // 头部
-          _buildHeader(),
 
-          // 内容
-          Expanded(
-            child: _isAddingRecord
-                ? _buildAddRecordForm()
-                : _buildRecordsList(weightRecordsAsync),
-          ),
+    return SafeArea(
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.8,
+        decoration: const BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Column(
+          children: [
+            // 头部
+            _buildHeader(),
 
-          // 底部记录按钮（添加记录表单时不显示）
-          if (!_isAddingRecord) _buildBottomRecordButton(),
-        ],
+            // 内容
+            Expanded(
+              child: _isAddingRecord
+                  ? _buildAddRecordForm()
+                  : _buildRecordsList(weightRecordsAsync),
+            ),
+
+            // 底部记录按钮（添加记录表单时不显示）
+            if (!_isAddingRecord) _buildBottomRecordButton(),
+          ],
+        ),
       ),
     );
   }
@@ -107,12 +109,14 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(LucideIcons.alertCircle, size: 48, color: AppColors.error),
+            const Icon(LucideIcons.alertCircle,
+                size: 48, color: AppColors.error),
             const SizedBox(height: 16),
             Text('加载失败: $error'),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () => ref.read(weightRecordsProvider.notifier).loadWeightRecords(),
+              onPressed: () =>
+                  ref.read(weightRecordsProvider.notifier).loadWeightRecords(),
               child: const Text('重试'),
             ),
           ],
@@ -122,7 +126,7 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
         if (records.isEmpty) {
           return _buildEmptyState();
         }
-        
+
         return SingleChildScrollView(
           child: Column(
             children: [
@@ -131,10 +135,10 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
                 _buildWeightChart(records),
                 const SizedBox(height: 16),
               ],
-              
+
               // 统计信息
               _buildStatsRow(records),
-              
+
               // 记录列表
               _buildRecordsListView(records),
             ],
@@ -149,7 +153,8 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(LucideIcons.scale, size: 64, color: AppColors.textSecondary),
+          const Icon(LucideIcons.scale,
+              size: 64, color: AppColors.textSecondary),
           const SizedBox(height: 16),
           Text(
             '暂无体重记录',
@@ -176,27 +181,12 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
               ),
               elevation: 4,
             ),
-            child: const Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '记录',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    height: 1.2,
-                  ),
-                ),
-                Text(
-                  '体重',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    height: 1.2,
-                  ),
-                ),
-              ],
+            child: const Text(
+              '记录体重',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
             ),
           ),
         ],
@@ -230,26 +220,12 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
               ),
               elevation: 4,
             ),
-            child: const Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '记录',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    height: 1.2,
-                  ),
-                ),
-                Text(
-                  '体重',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    height: 1.2,
-                  ),
-                ),
-              ],
+            child: const Text(
+              '记录体重',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
             ),
           ),
         ),
@@ -278,10 +254,12 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
 
     // 按时间排序
     final sortedRecords = List<WeightRecord>.from(records)
-      ..sort((a, b) => DateTime.parse(a.measuredAt).compareTo(DateTime.parse(b.measuredAt)));
+      ..sort((a, b) =>
+          DateTime.parse(a.measuredAt).compareTo(DateTime.parse(b.measuredAt)));
 
     // 获取最近30天的记录
-    final recentRecords = ref.read(weightRecordsProvider.notifier).recentRecords;
+    final recentRecords =
+        ref.read(weightRecordsProvider.notifier).recentRecords;
     if (recentRecords.isEmpty) {
       return Container(
         height: 200,
@@ -328,7 +306,8 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
                 showTitles: true,
                 reservedSize: 30,
                 getTitlesWidget: (value, meta) {
-                  if (value.toInt() < 0 || value.toInt() >= recentRecords.length) {
+                  if (value.toInt() < 0 ||
+                      value.toInt() >= recentRecords.length) {
                     return const Text('');
                   }
                   final record = recentRecords[value.toInt()];
@@ -352,8 +331,10 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
                 },
               ),
             ),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
           borderData: FlBorderData(
             show: true,
@@ -361,8 +342,14 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
           ),
           minX: 0,
           maxX: (recentRecords.length - 1).toDouble(),
-          minY: recentRecords.map((r) => r.weight).reduce((a, b) => a < b ? a : b) - 2,
-          maxY: recentRecords.map((r) => r.weight).reduce((a, b) => a > b ? a : b) + 2,
+          minY: recentRecords
+                  .map((r) => r.weight)
+                  .reduce((a, b) => a < b ? a : b) -
+              2,
+          maxY: recentRecords
+                  .map((r) => r.weight)
+                  .reduce((a, b) => a > b ? a : b) +
+              2,
           lineBarsData: [
             LineChartBarData(
               spots: recentRecords.asMap().entries.map((entry) {
@@ -396,13 +383,15 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
 
   Widget _buildStatsRow(List<WeightRecord> records) {
     final latestRecord = ref.read(weightRecordsProvider.notifier).latestRecord;
-    final recentRecords = ref.read(weightRecordsProvider.notifier).recentRecords;
-    
+    final recentRecords =
+        ref.read(weightRecordsProvider.notifier).recentRecords;
+
     // 计算变化趋势
     double? weightChange;
     if (recentRecords.length >= 2) {
       final sortedRecords = List<WeightRecord>.from(recentRecords)
-        ..sort((a, b) => DateTime.parse(a.measuredAt).compareTo(DateTime.parse(b.measuredAt)));
+        ..sort((a, b) => DateTime.parse(a.measuredAt)
+            .compareTo(DateTime.parse(b.measuredAt)));
       weightChange = sortedRecords.last.weight - sortedRecords.first.weight;
     }
 
@@ -431,9 +420,11 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
           Expanded(
             child: _buildStatCard(
               '30天变化',
-              weightChange != null ? '${weightChange > 0 ? '+' : ''}${weightChange.toStringAsFixed(1)}' : '--',
+              weightChange != null
+                  ? '${weightChange > 0 ? '+' : ''}${weightChange.toStringAsFixed(1)}'
+                  : '--',
               'kg',
-              weightChange != null 
+              weightChange != null
                   ? (weightChange > 0 ? AppColors.error : AppColors.success)
                   : AppColors.textSecondary,
             ),
@@ -487,7 +478,8 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
   Widget _buildRecordsListView(List<WeightRecord> records) {
     // 按时间倒序排序
     final sortedRecords = List<WeightRecord>.from(records)
-      ..sort((a, b) => DateTime.parse(b.measuredAt).compareTo(DateTime.parse(a.measuredAt)));
+      ..sort((a, b) =>
+          DateTime.parse(b.measuredAt).compareTo(DateTime.parse(a.measuredAt)));
 
     return Container(
       margin: const EdgeInsets.all(16),
@@ -510,8 +502,9 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
 
   Widget _buildRecordCard(WeightRecord record) {
     final date = DateTime.parse(record.measuredAt);
-    final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-    
+    final dateStr =
+        '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -586,7 +579,7 @@ class _AddRecordFormState extends ConsumerState<_AddRecordForm> {
   final _bodyFatController = TextEditingController();
   final _muscleMassController = TextEditingController();
   final _notesController = TextEditingController();
-  
+
   String? _selectedMeasureDate;
   String? _selectedDeviceType;
   bool _isLoading = false;
@@ -617,7 +610,12 @@ class _AddRecordFormState extends ConsumerState<_AddRecordForm> {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
       child: Form(
         key: _formKey,
         child: Column(
@@ -643,13 +641,13 @@ class _AddRecordFormState extends ConsumerState<_AddRecordForm> {
               },
             ),
             const SizedBox(height: 24),
-            
+
             // 测量时间
             _buildSectionTitle('测量时间'),
             const SizedBox(height: 12),
             _buildMeasureDateSelector(),
             const SizedBox(height: 24),
-            
+
             // 可选信息
             _buildSectionTitle('可选信息'),
             const SizedBox(height: 12),
@@ -694,7 +692,7 @@ class _AddRecordFormState extends ConsumerState<_AddRecordForm> {
               maxLines: 3,
             ),
             const SizedBox(height: 32),
-            
+
             // 提交按钮
             SizedBox(
               width: double.infinity,
@@ -737,19 +735,21 @@ class _AddRecordFormState extends ConsumerState<_AddRecordForm> {
         ),
         child: Row(
           children: [
-            const Icon(LucideIcons.calendar, size: 18, color: AppColors.textSecondary),
+            const Icon(LucideIcons.calendar,
+                size: 18, color: AppColors.textSecondary),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 _selectedMeasureDate?.split('T')[0] ?? '选择测量日期',
                 style: AppTextStyles.bodyMedium.copyWith(
-                  color: _selectedMeasureDate != null 
-                      ? AppColors.textPrimary 
+                  color: _selectedMeasureDate != null
+                      ? AppColors.textPrimary
                       : AppColors.textSecondary,
                 ),
               ),
             ),
-            const Icon(LucideIcons.chevronRight, size: 16, color: AppColors.textTertiary),
+            const Icon(LucideIcons.chevronRight,
+                size: 16, color: AppColors.textTertiary),
           ],
         ),
       ),
@@ -769,7 +769,8 @@ class _AddRecordFormState extends ConsumerState<_AddRecordForm> {
               borderRadius: BorderRadius.circular(8),
               borderSide: const BorderSide(color: AppColors.divider),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),
           hint: const Text('选择设备类型'),
           items: _deviceTypes.map((type) {
@@ -791,13 +792,13 @@ class _AddRecordFormState extends ConsumerState<_AddRecordForm> {
   Future<void> _selectMeasureDate() async {
     final selectedDate = await showDatePicker(
       context: context,
-      initialDate: _selectedMeasureDate != null 
+      initialDate: _selectedMeasureDate != null
           ? DateTime.parse(_selectedMeasureDate!)
           : DateTime.now(),
       firstDate: DateTime.now().subtract(const Duration(days: 365)),
       lastDate: DateTime.now(),
     );
-    
+
     if (selectedDate != null) {
       setState(() {
         _selectedMeasureDate = selectedDate.toIso8601String();
@@ -815,21 +816,23 @@ class _AddRecordFormState extends ConsumerState<_AddRecordForm> {
     try {
       final request = WeightRecordCreateRequest(
         weight: double.parse(_weightController.text),
-        bodyFatPercentage: _bodyFatController.text.trim().isEmpty 
-            ? null 
+        bodyFatPercentage: _bodyFatController.text.trim().isEmpty
+            ? null
             : double.tryParse(_bodyFatController.text),
-        muscleMass: _muscleMassController.text.trim().isEmpty 
-            ? null 
+        muscleMass: _muscleMassController.text.trim().isEmpty
+            ? null
             : double.tryParse(_muscleMassController.text),
         measuredAt: _selectedMeasureDate,
         deviceType: _selectedDeviceType,
-        notes: _notesController.text.trim().isEmpty 
-            ? null 
+        notes: _notesController.text.trim().isEmpty
+            ? null
             : _notesController.text.trim(),
       );
 
-      final success = await ref.read(weightRecordsProvider.notifier).addWeightRecord(request);
-      
+      final success = await ref
+          .read(weightRecordsProvider.notifier)
+          .addWeightRecord(request);
+
       if (success) {
         if (mounted) {
           // 返回到记录列表

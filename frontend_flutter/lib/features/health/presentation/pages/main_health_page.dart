@@ -18,7 +18,7 @@ import '../../../health/presentation/pages/exercise_record_page.dart';
 import '../../../health/presentation/pages/reminder_settings_page.dart';
 import '../../../health/presentation/pages/constitution_quiz_page.dart';
 import '../../../health/presentation/pages/wellness_page.dart';
-import '../../../../shared/presentation/widgets/water_intake_widget.dart';
+import '../../../fast/presentation/pages/fasting_plan_page.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
 
 class HealthPage extends ConsumerStatefulWidget {
@@ -57,9 +57,12 @@ class _HealthPageState extends ConsumerState<HealthPage> {
 
       if (mounted) {
         setState(() {
-          _dailySummary = (results[0] as ApiResponse<DailyNutritionSummary>).data;
-          _waterIntake = ((results[1] as ApiResponse).data?.totalMl ?? 0).toDouble();
-          _weeklySummary = (results[2] as ApiResponse<Map<String, dynamic>>).data;
+          _dailySummary =
+              (results[0] as ApiResponse<DailyNutritionSummary>).data;
+          _waterIntake =
+              ((results[1] as ApiResponse).data?.totalMl ?? 0).toDouble();
+          _weeklySummary =
+              (results[2] as ApiResponse<Map<String, dynamic>>).data;
           _isLoading = false;
         });
       }
@@ -92,10 +95,6 @@ class _HealthPageState extends ConsumerState<HealthPage> {
                 _buildWeeklySummaryCard(),
                 const SizedBox(height: 24),
               ],
-              WaterIntakeWidget(
-                selectedDate: DateTime.now(),
-              ),
-              const SizedBox(height: 24),
               _buildFeatureGrid(context),
               const SizedBox(height: 24),
               _buildHealthTipsCard(),
@@ -220,7 +219,8 @@ class _HealthPageState extends ConsumerState<HealthPage> {
     final data = _weeklySummary!;
     final period = data['period'] as Map<String, dynamic>? ?? {};
     final trends = data['trends'] as Map<String, dynamic>? ?? {};
-    final goalCompletion = data['goal_completion'] as Map<String, dynamic>? ?? {};
+    final goalCompletion =
+        data['goal_completion'] as Map<String, dynamic>? ?? {};
     final weightChange = data['weight_change'] as Map<String, dynamic>?;
     final summaryText = data['summary_text'] as String? ?? '';
     final crowdTag = data['crowd_tag'] as String? ?? '普通';
@@ -230,11 +230,13 @@ class _HealthPageState extends ConsumerState<HealthPage> {
     final calTrend = trends['total_calories'] as Map<String, dynamic>? ?? {};
     final proteinTrend = trends['total_protein'] as Map<String, dynamic>? ?? {};
     final waterTrend = trends['water_intake'] as Map<String, dynamic>? ?? {};
-    final exerciseTrend = trends['exercise_calories'] as Map<String, dynamic>? ?? {};
+    final exerciseTrend =
+        trends['exercise_calories'] as Map<String, dynamic>? ?? {};
 
     // 解析目标完成率
     final calGoal = goalCompletion['calories'] as Map<String, dynamic>? ?? {};
-    final proteinGoal = goalCompletion['protein'] as Map<String, dynamic>? ?? {};
+    final proteinGoal =
+        goalCompletion['protein'] as Map<String, dynamic>? ?? {};
 
     final startDate = period['start_date'] as String? ?? '';
     final endDate = period['end_date'] as String? ?? '';
@@ -508,7 +510,8 @@ class _HealthPageState extends ConsumerState<HealthPage> {
           const SizedBox(height: 4),
           Text(
             label,
-            style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w500),
+            style: TextStyle(
+                fontSize: 10, color: color, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 2),
           Text(
@@ -526,9 +529,9 @@ class _HealthPageState extends ConsumerState<HealthPage> {
   }
 
   /// 构建目标完成率进度条
-  Widget _buildGoalProgress(String label, Map<String, dynamic> goal, Color color) {
-    final completionPct =
-        (goal['completion_pct'] as num?)?.toDouble() ?? 0.0;
+  Widget _buildGoalProgress(
+      String label, Map<String, dynamic> goal, Color color) {
+    final completionPct = (goal['completion_pct'] as num?)?.toDouble() ?? 0.0;
     final actual = (goal['actual'] as num?)?.toDouble() ?? 0.0;
     final target = (goal['target'] as num?)?.toDouble() ?? 0.0;
 
@@ -703,6 +706,16 @@ class _HealthPageState extends ConsumerState<HealthPage> {
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => const WellnessPage()),
+        ),
+      ),
+      _FeatureItem(
+        icon: LucideIcons.clock,
+        title: '轻断食',
+        subtitle: '科学断食计划与打卡',
+        color: const Color(0xFF6366F1),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const FastingPlanPage()),
         ),
       ),
     ];

@@ -76,7 +76,7 @@ class UserProfile(Base):
     onboarding_step = Column(Integer, default=0)  # 当前引导步骤
 
     # Milestone 2: 月度饮食预算
-    monthly_food_budget = Column(Numeric(10, 2), default=0, comment="月度饮食预算(元)")
+    monthly_food_budget = Column(Numeric(10, 2), default=0)
 
 
 class HealthGoal(Base):

@@ -193,6 +193,8 @@ FoodRecord _$FoodRecordFromJson(Map<String, dynamic> json) => FoodRecord(
           : AgentAnalysisData.fromJson(
               json['analysis_result'] as Map<String, dynamic>),
       nutritionData: json['nutrition_data'] as Map<String, dynamic>?,
+      cost: (json['cost'] as num?)?.toDouble(),
+      sourceTag: json['source_tag'] as String?,
     );
 
 Map<String, dynamic> _$FoodRecordToJson(FoodRecord instance) =>
@@ -212,6 +214,8 @@ Map<String, dynamic> _$FoodRecordToJson(FoodRecord instance) =>
       'nutrition_detail': instance.nutritionDetail,
       'analysis_result': instance.analysisResult,
       'nutrition_data': instance.nutritionData,
+      'cost': instance.cost,
+      'source_tag': instance.sourceTag,
     };
 
 FoodRecordCreate _$FoodRecordCreateFromJson(Map<String, dynamic> json) =>
@@ -223,6 +227,8 @@ FoodRecordCreate _$FoodRecordCreateFromJson(Map<String, dynamic> json) =>
       description: json['description'] as String?,
       imageUrl: json['image_url'] as String?,
       recordingMethod: (json['recording_method'] as num?)?.toInt(),
+      cost: (json['cost'] as num?)?.toDouble(),
+      sourceTag: json['source_tag'] as String?,
     );
 
 Map<String, dynamic> _$FoodRecordCreateToJson(FoodRecordCreate instance) =>
@@ -234,6 +240,8 @@ Map<String, dynamic> _$FoodRecordCreateToJson(FoodRecordCreate instance) =>
       'description': instance.description,
       'image_url': instance.imageUrl,
       'recording_method': instance.recordingMethod,
+      'cost': instance.cost,
+      'source_tag': instance.sourceTag,
     };
 
 NutritionDetailCreate _$NutritionDetailCreateFromJson(

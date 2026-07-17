@@ -19,6 +19,8 @@ class CameraPage extends ConsumerStatefulWidget {
   final int? mealType;
   final String recordDate;
   final String? recordTime;
+  final double? costAmount;
+  final String? costSource;
 
   const CameraPage({
     super.key,
@@ -26,6 +28,8 @@ class CameraPage extends ConsumerStatefulWidget {
     this.mealType,
     required this.recordDate,
     this.recordTime,
+    this.costAmount,
+    this.costSource,
   });
 
   @override
@@ -147,6 +151,8 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         foodName: widget.mealName ?? '未知食物',
         description: '通过AI扫描识别',
         recordTime: widget.recordTime,
+        cost: widget.costAmount,
+        sourceTag: widget.costSource,
       );
 
       // 立即跳转到分析页面并传递流式数据

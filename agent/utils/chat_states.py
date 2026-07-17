@@ -20,6 +20,7 @@ class ChatState(TypedDict):
     weekly_trends: Optional[Dict]  # 一周饮食趋势数据
     crowd_tag: Optional[str]  # 人群标签（如"减脂,健身"）
     constitution_type: Optional[str]  # 体质类型（如"气虚","痰湿"）
+    advisor_system_prompt: Optional[str]  # AI顾问风格 System Prompt（M2）
     
     # 处理过程
     context_analysis: Optional[str]  # 上下文分析结果
@@ -45,3 +46,6 @@ class ChatInputState(TypedDict):
     recent_meals: Optional[List[Dict]]
     health_goals: Optional[Dict]
     weekly_trends: Optional[Dict]
+    crowd_tag: Optional[str]
+    constitution_type: Optional[str]
+    advisor_system_prompt: Optional[str]  # AI顾问风格 System Prompt（M2）

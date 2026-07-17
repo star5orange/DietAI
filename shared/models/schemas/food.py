@@ -19,8 +19,8 @@ class FoodRecordCreate(BaseModel):
     # Milestone 1 新增
     from_source: Optional[str] = Field("camera", description="记录来源：camera/manual/voice/barcode/saved_meal/suggestion")
     # Milestone 2 新增
-    cost: Optional[float] = Field(None, ge=0, le=99999.99, description="消费金额(元)")
-    source_tag: Optional[str] = Field(None, max_length=20, description="消费来源: canteen/delivery/home/restaurant/snack/other")
+    cost: Optional[float] = Field(None, ge=0, description="消费金额(元)")
+    source_tag: Optional[str] = Field(None, max_length=50, description="来源标签")
 
 
 class FoodRecordResponse(BaseModel):

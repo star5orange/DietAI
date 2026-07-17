@@ -101,6 +101,7 @@ android/local.properties
 android/**/GeneratedPluginRegistrant.java
 android/key.properties
 *.aab
+android_sdk/
 
 # Web
 web/icons/Icon-192.png
@@ -131,6 +132,11 @@ yarn-error.log*
 .env.production
 env.example
 .envrc
+
+# ===== 密钥文件（不要上传到公开仓库）=====
+*.pem
+*.pub
+!env.example
 
 # ==========================================
 # Database & Storage
@@ -228,6 +234,16 @@ pids/
 .nyc_output
 coverage/
 *.lcov
+
+# ==========================================
+# Android SDK (local dev only)
+# ==========================================
+android_sdk/
+
+# ==========================================
+# Milestone Docs (internal use only)
+# ==========================================
+Milestone2_*.md
 
 # ==========================================
 # Miscellaneous

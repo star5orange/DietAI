@@ -13,5 +13,6 @@
         <domain includeSubdomains="true">10.0.2.3</domain>
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">8.130.208.166</domain>
     </domain-config>
 </network-security-config>

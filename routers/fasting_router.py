@@ -11,7 +11,7 @@ from shared.utils.auth import get_current_user
 from shared.models.user_models import User
 from shared.services.fasting_service import (
     create_fasting_plan, get_fasting_plans, update_fasting_plan,
-    stop_fasting_plan, create_checkin, get_checkins,
+    stop_fasting_plan, delete_fasting_plan, create_checkin, get_checkins,
     get_progress, get_refeed_guide, health_assessment_check
 )
 
@@ -196,6 +196,35 @@ async def stop_plan(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"停止计划失败: {str(e)}"
+        )
+
+
+@router.delete("/plans/{plan_id}", response_model=BaseResponse)
+async def delete_plan(
+    plan_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """删除断食计划
+
+    级联删除计划及其所有打卡记录。
+    """
+    try:
+        result = delete_fasting_plan(db, plan_id, current_user.id)
+        return BaseResponse(
+            success=True,
+            message="计划已删除",
+            data=result
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"删除计划失败: {str(e)}"
         )
 
 

@@ -2,12 +2,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import Optional
+from pydantic import BaseModel, Field
 
 from shared.models.database import get_db
 from shared.models.schemas import BaseResponse
 from shared.utils.auth import get_current_user
 from shared.models.user_models import User
-from shared.services.cost_service import get_cost_stats, get_cost_trend
+from shared.services.cost_service import get_cost_stats, get_cost_trend, set_monthly_budget
 
 router = APIRouter(prefix="/foods", tags=["消费统计"])
 
@@ -67,4 +68,37 @@ async def cost_trend(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取消费趋势失败: {str(e)}"
+        )
+
+
+class SetBudgetRequest(BaseModel):
+    budget: float = Field(..., ge=0, description="月度饮食预算（元）")
+
+
+@router.post("/cost-budget", response_model=BaseResponse)
+async def set_budget(
+    request: SetBudgetRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """设置月度饮食预算
+
+    用于消费统计中的预算对比和提醒
+    """
+    try:
+        result = set_monthly_budget(db, current_user.id, request.budget)
+        return BaseResponse(
+            success=True,
+            message="预算设置成功",
+            data=result
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"设置预算失败: {str(e)}"
         )

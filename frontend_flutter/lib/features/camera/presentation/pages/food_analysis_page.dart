@@ -7,6 +7,7 @@ import '../../../../services/goal_tracking_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/presentation/widgets/error_handler.dart';
 import '../../../chat/presentation/pages/chat_page.dart';
+import '../../../home/presentation/widgets/cost_input_widget.dart'; // 导入消费输入组件
 
 class FoodAnalysisPage extends StatefulWidget {
   final FoodRecord? foodRecord;
@@ -24,7 +25,7 @@ class FoodAnalysisPage extends StatefulWidget {
   State<FoodAnalysisPage> createState() => _FoodAnalysisPageState();
 }
 
-class _FoodAnalysisPageState extends State<FoodAnalysisPage> 
+class _FoodAnalysisPageState extends State<FoodAnalysisPage>
     with TickerProviderStateMixin {
   int _servingCount = 1;
   final FoodService _foodService = FoodService();
@@ -34,13 +35,17 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
   bool _hasError = false;
   String _errorMessage = '';
   double _targetCalories = 0; // 每日卡路里目标
-  
+
   // 流式分析相关
   FoodRecord? _currentRecord;
   String _currentStep = '';
   String _currentMessage = '';
   StreamSubscription<Map<String, dynamic>>? _streamSubscription;
-  
+
+  // 消费金额和来源
+  double? _costAmount;
+  String? _costSource;
+
   // 动画控制器
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -48,7 +53,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
   late Animation<double> _shimmerAnimation;
   late AnimationController _progressController;
   late Animation<double> _progressAnimation;
-  
+
   // 从分析数据中提取营养信息
   Map<String, dynamic> _nutritionFacts = {};
   Map<String, dynamic> _recommendations = {};
@@ -72,7 +77,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
     '保存数据'
   ];
   int _currentStepIndex = 0;
-  
+
   @override
   void initState() {
     super.initState();
@@ -117,15 +122,15 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
 
   void _listenToAnalysisStream() {
     if (widget.analysisStream == null) return;
-    
+
     _streamSubscription = widget.analysisStream!.listen(
       (event) {
         if (!mounted) return;
-        
+
         final type = event['type'] as String?;
         final success = event['success'] as bool? ?? false;
         final data = event['data'] as Map<String, dynamic>? ?? {};
-        
+
         setState(() {
           switch (type) {
             case 'upload_started':
@@ -269,11 +274,12 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
     if (data['image_description'] != null) {
       _imageDescription = data['image_description'];
     }
-    
+
     if (data['nutrition_facts'] != null) {
       final nutritionFacts = data['nutrition_facts'] as Map<String, dynamic>;
-      _totalCalories = (nutritionFacts['total_calories'] as num?)?.toDouble() ?? 0.0;
-      
+      _totalCalories =
+          (nutritionFacts['total_calories'] as num?)?.toDouble() ?? 0.0;
+
       if (nutritionFacts['macronutrients'] != null) {
         final macros = nutritionFacts['macronutrients'] as Map<String, dynamic>;
         _macronutrients = {
@@ -282,14 +288,14 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
           'carbohydrates': (macros['carbohydrates'] as num?)?.toDouble() ?? 0.0,
         };
       }
-      
+
       _nutritionFacts = {
         'total_calories': _totalCalories,
         'macronutrients': _macronutrients,
         'food_items': nutritionFacts['food_items'] ?? [],
       };
     }
-    
+
     if (data['recommendations'] != null) {
       final recommendations = data['recommendations'] as Map<String, dynamic>;
       _recommendations = {
@@ -301,7 +307,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
       };
     }
   }
-  
+
   void _initializeAnimations() {
     // 脉冲动画 - 用于加载指示器
     _pulseController = AnimationController(
@@ -336,7 +342,8 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
 
   void _checkLoadingState() {
     // 检查分析状态：1-待分析，2-分析中，3-已完成
-    if (_currentRecord?.analysisStatus == 3 && _currentRecord?.analysisResult != null) {
+    if (_currentRecord?.analysisStatus == 3 &&
+        _currentRecord?.analysisResult != null) {
       // 已完成分析，解析结果
       _parseAnalysisData();
       setState(() {
@@ -351,7 +358,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
 
   Future<void> _pollAnalysisResult() async {
     if (_currentRecord == null) return;
-    
+
     try {
       setState(() {
         _isLoading = true;
@@ -361,15 +368,15 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
       // 轮询检查分析结果
       int attempts = 0;
       const maxAttempts = 30; // 最多等待30次 (30秒)
-      
+
       while (attempts < maxAttempts) {
         await Future.delayed(const Duration(seconds: 1));
-        
+
         final result = await _foodService.getFoodRecord(_currentRecord!.id);
 
         if (result.success && result.data != null) {
           final updatedRecord = result.data!;
-          
+
           if (updatedRecord.analysisStatus == 3) {
             // 分析完成
             _parseAnalysisDataFromRecord(updatedRecord);
@@ -387,17 +394,16 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
             return;
           }
         }
-        
+
         attempts++;
       }
-      
+
       // 超时
       setState(() {
         _isLoading = false;
         _hasError = true;
         _errorMessage = '分析超时，请稍后查看分析结果';
       });
-      
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -405,8 +411,40 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
         _errorMessage = '获取分析结果失败: $e';
       });
       if (mounted) {
-        NetworkErrorHandler.handleApiError(context, e, onRetry: _pollAnalysisResult);
+        NetworkErrorHandler.handleApiError(context, e,
+            onRetry: _pollAnalysisResult);
       }
+    }
+  }
+
+  /// 更新记录的消费信息
+  Future<void> _updateRecordCost() async {
+    if (_currentRecord == null) return;
+
+    try {
+      // 使用 FoodRecordCreate 更新消费信息
+      final updateData = FoodRecordCreate(
+        recordDate: _currentRecord!.recordDate,
+        recordTime: _currentRecord!.recordTime,
+        mealType: _currentRecord!.mealType,
+        foodName: _currentRecord!.foodName ?? '未命名食物', // 处理可空值
+        description: _currentRecord!.description,
+        imageUrl: _currentRecord!.imageUrl,
+        recordingMethod: _currentRecord!.recordingMethod,
+        cost: _costAmount,
+        sourceTag: _costSource,
+      );
+
+      final result = await _foodService.updateFoodRecord(
+        _currentRecord!.id,
+        updateData,
+      );
+
+      if (!result.success) {
+        print('更新消费信息失败: ${result.message}');
+      }
+    } catch (e) {
+      print('更新消费信息异常: $e');
     }
   }
 
@@ -418,32 +456,34 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
 
   void _parseAnalysisDataFromRecord(FoodRecord record) {
     _foodName = record.foodName ?? '';
-    
+
     if (record.analysisResult != null) {
       final analysisResult = record.analysisResult!;
       _imageDescription = analysisResult.imageDescription;
-    
+
       // 解析营养成分
       _totalCalories = analysisResult.nutritionFacts.totalCalories;
       _macronutrients = {
         'protein': analysisResult.nutritionFacts.macronutrients.protein,
         'fat': analysisResult.nutritionFacts.macronutrients.fat,
-        'carbohydrates': analysisResult.nutritionFacts.macronutrients.carbohydrates,
+        'carbohydrates':
+            analysisResult.nutritionFacts.macronutrients.carbohydrates,
       };
-      
+
       // 转换营养成分为Map格式以兼容现有UI
       _nutritionFacts = {
         'total_calories': _totalCalories,
         'macronutrients': _macronutrients,
         'food_items': analysisResult.nutritionFacts.foodItems ?? [],
       };
-      
+
       // 转换推荐建议为Map格式以兼容现有UI
       _recommendations = {
         'health_tips': analysisResult.recommendations.recommendations ?? [],
         'dietary_advice': analysisResult.recommendations.dietaryTips ?? [],
         'warnings': analysisResult.recommendations.warnings ?? [],
-        'alternative_foods': analysisResult.recommendations.alternativeFoods ?? [],
+        'alternative_foods':
+            analysisResult.recommendations.alternativeFoods ?? [],
         'action_items': (analysisResult.recommendations.actionItems ?? [])
             .map((item) => {'action': item.action, 'priority': item.priority})
             .toList(),
@@ -457,13 +497,13 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
         'fat': nutrition.fat,
         'carbohydrates': nutrition.carbohydrates,
       };
-      
+
       _nutritionFacts = {
         'total_calories': _totalCalories,
         'macronutrients': _macronutrients,
         'food_items': [],
       };
-      
+
       _recommendations = {
         'health_tips': ['营养数据已更新'],
         'dietary_advice': ['请保持均衡饮食'],
@@ -473,7 +513,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
       };
     }
   }
-  
+
   Future<void> _loadImageUrl() async {
     final imageUrl = _currentRecord?.imageUrl;
     if (imageUrl != null && imageUrl.isNotEmpty) {
@@ -492,7 +532,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
       }
     }
   }
-  
+
   Widget _buildLoadingView() {
     return Container(
       color: const Color(0xFFF5F7F6),
@@ -502,16 +542,16 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
           children: [
             // 食物图片预览 (立即显示)
             _buildFoodImageHeader(),
-            
+
             // AI分析进度卡片
             _buildAnalysisProgressCard(),
-            
+
             // 分析步骤展示
             _buildAnalysisStepsCard(),
-            
+
             // 预览卡片（骨架屏）
             _buildPreviewCards(),
-            
+
             const SizedBox(height: 100),
           ],
         ),
@@ -526,7 +566,8 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
       child: Center(
         child: Card(
           elevation: 8,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: Container(
             padding: const EdgeInsets.all(32),
             child: Column(
@@ -602,27 +643,41 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
           children: [
             // 食物图片和基本信息
             _buildFoodImageHeader(),
-            
+
             const SizedBox(height: 12),
-            
+
             // 卡路里和份量
             _buildCaloriesAndServingCard(),
-            
+
             const SizedBox(height: 12),
-            
+
             // 宏营养素圆环图
             _buildMacronutrientsCard(),
-            
+
             const SizedBox(height: 12),
-            
+
             // AI建议卡片
             _buildAIRecommendationsCard(),
-            
+
             const SizedBox(height: 12),
-            
+
             // 配料信息
             _buildIngredientsCard(),
-            
+
+            const SizedBox(height: 12),
+
+            // 消费输入组件
+            CostInputWidget(
+              initialAmount: widget.foodRecord?.cost,
+              initialSource: widget.foodRecord?.sourceTag,
+              onChanged: (amount, source) {
+                setState(() {
+                  _costAmount = amount;
+                  _costSource = source;
+                });
+              },
+            ),
+
             const SizedBox(height: 100), // 底部按钮预留空间
           ],
         ),
@@ -660,9 +715,9 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                 child: _buildImageContent(),
               ),
             ),
-            
+
             const SizedBox(height: 20),
-            
+
             // 食物名称
             Text(
               _foodName,
@@ -673,7 +728,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
               ),
               textAlign: TextAlign.center,
             ),
-            
+
             if (_imageDescription.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
@@ -699,28 +754,28 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
       return Image.file(
         widget.imageFile!,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => 
+        errorBuilder: (context, error, stackTrace) =>
             const Icon(LucideIcons.image, size: 60, color: Colors.grey),
       );
     }
-    
+
     // 其次显示网络图片URL
     if (_imageUrl != null) {
       return Image.network(
         _imageUrl!,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => 
+        errorBuilder: (context, error, stackTrace) =>
             const Icon(LucideIcons.image, size: 60, color: Colors.grey),
       );
     }
-    
+
     // 默认占位符
     return const Icon(LucideIcons.image, size: 60, color: Colors.grey);
   }
 
   Widget _buildAnalysisProgressCard() {
     if (!_isLoading) return const SizedBox.shrink();
-    
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 4,
@@ -759,7 +814,9 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _currentMessage.isNotEmpty ? _currentMessage : 'AI正在分析您的食物...',
+                        _currentMessage.isNotEmpty
+                            ? _currentMessage
+                            : 'AI正在分析您的食物...',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -773,7 +830,8 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                           return LinearProgressIndicator(
                             value: _progressAnimation.value,
                             backgroundColor: const Color(0xFFE6FAF0),
-                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2BAF74)),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                                Color(0xFF2BAF74)),
                             minHeight: 6,
                           );
                         },
@@ -799,7 +857,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
 
   Widget _buildAnalysisStepsCard() {
     if (!_isLoading) return const SizedBox.shrink();
-    
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 4,
@@ -823,7 +881,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
               final step = entry.value;
               final isCompleted = index < _currentStepIndex;
               final isCurrent = index == _currentStepIndex;
-              
+
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Row(
@@ -832,21 +890,21 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                       width: 24,
                       height: 24,
                       decoration: BoxDecoration(
-                        color: isCompleted 
-                          ? const Color(0xFF2BAF74) 
-                          : isCurrent 
-                            ? const Color(0xFFA6E3C1)
-                            : const Color(0xFFE6FAF0),
+                        color: isCompleted
+                            ? const Color(0xFF2BAF74)
+                            : isCurrent
+                                ? const Color(0xFFA6E3C1)
+                                : const Color(0xFFE6FAF0),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
                         isCompleted ? LucideIcons.check : LucideIcons.circle,
                         size: 12,
-                        color: isCompleted 
-                          ? Colors.white 
-                          : isCurrent 
-                            ? const Color(0xFF2BAF74)
-                            : const Color(0xFF666666),
+                        color: isCompleted
+                            ? Colors.white
+                            : isCurrent
+                                ? const Color(0xFF2BAF74)
+                                : const Color(0xFF666666),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -854,10 +912,11 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                       step,
                       style: TextStyle(
                         fontSize: 14,
-                        fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
-                        color: isCompleted || isCurrent 
-                          ? const Color(0xFF222222)
-                          : const Color(0xFF666666),
+                        fontWeight:
+                            isCurrent ? FontWeight.w600 : FontWeight.w400,
+                        color: isCompleted || isCurrent
+                            ? const Color(0xFF222222)
+                            : const Color(0xFF666666),
                       ),
                     ),
                   ],
@@ -1024,15 +1083,15 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
           ],
         ],
       ),
-      body: _isLoading 
-        ? _buildLoadingView() 
-        : _hasError 
-          ? _buildErrorView() 
-          : _buildContentView(),
+      body: _isLoading
+          ? _buildLoadingView()
+          : _hasError
+              ? _buildErrorView()
+              : _buildContentView(),
       bottomNavigationBar: _buildBottomButton(),
     );
   }
-  
+
   Widget _buildCaloriesAndServingCard() {
     final actualCalories = (_totalCalories * _servingCount).round();
     final budgetPercent = _targetCalories > 0
@@ -1057,7 +1116,8 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
               children: [
                 // 卡路里信息
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   decoration: BoxDecoration(
                     color: const Color(0xFF2BAF74),
                     borderRadius: BorderRadius.circular(50),
@@ -1082,7 +1142,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                     ],
                   ),
                 ),
-                
+
                 // 份量控制器
                 Row(
                   children: [
@@ -1103,14 +1163,17 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                       child: Row(
                         children: [
                           IconButton(
-                            onPressed: _servingCount > 1 ? () {
-                              setState(() => _servingCount--);
-                            } : null,
+                            onPressed: _servingCount > 1
+                                ? () {
+                                    setState(() => _servingCount--);
+                                  }
+                                : null,
                             icon: const Icon(LucideIcons.minus, size: 16),
                             color: const Color(0xFF2BAF74),
                           ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
                             child: Text(
                               '$_servingCount',
                               style: const TextStyle(
@@ -1134,7 +1197,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                 ),
               ],
             ),
-            
+
             // 热量预算占比
             if (_targetCalories > 0) ...[
               const SizedBox(height: 16),
@@ -1209,7 +1272,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
       ),
     );
   }
-  
+
   Widget _buildMacronutrientsCard() {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -1228,32 +1291,37 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                 color: Color(0xFF222222),
               ),
             ),
-            
+
             const SizedBox(height: 20),
-            
+
             // 营养成分圆环图
             Row(
               children: [
                 Expanded(
                   child: _buildNutrientCircle(
                     label: '碳水化合物',
-                    value: '${(_macronutrients['carbohydrates']! * _servingCount).round()}g',
+                    value:
+                        '${(_macronutrients['carbohydrates']! * _servingCount).round()}g',
                     color: const Color(0xFF2BAF74),
-                    percentage: _calculatePercentage(_macronutrients['carbohydrates']!),
+                    percentage:
+                        _calculatePercentage(_macronutrients['carbohydrates']!),
                   ),
                 ),
                 Expanded(
                   child: _buildNutrientCircle(
                     label: '蛋白质',
-                    value: '${(_macronutrients['protein']! * _servingCount).round()}g',
+                    value:
+                        '${(_macronutrients['protein']! * _servingCount).round()}g',
                     color: const Color(0xFFA6E3C1),
-                    percentage: _calculatePercentage(_macronutrients['protein']!),
+                    percentage:
+                        _calculatePercentage(_macronutrients['protein']!),
                   ),
                 ),
                 Expanded(
                   child: _buildNutrientCircle(
                     label: '脂肪',
-                    value: '${(_macronutrients['fat']! * _servingCount).round()}g',
+                    value:
+                        '${(_macronutrients['fat']! * _servingCount).round()}g',
                     color: const Color(0xFFDEF5E9),
                     percentage: _calculatePercentage(_macronutrients['fat']!),
                   ),
@@ -1270,7 +1338,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
     final total = _macronutrients.values.fold(0.0, (sum, val) => sum + val);
     return total > 0 ? value / total : 0.0;
   }
-  
+
   Widget _buildNutrientCircle({
     required String label,
     required String value,
@@ -1315,7 +1383,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
       ],
     );
   }
-  
+
   Map<String, dynamic> _getPriorityConfig(String priority) {
     switch (priority.toLowerCase()) {
       case 'high':
@@ -1349,22 +1417,25 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
     final healthTips = _recommendations['health_tips'] as List? ?? [];
     final dietaryAdvice = _recommendations['dietary_advice'] as List? ?? [];
     final actionItemsRaw = _recommendations['action_items'] as List? ?? [];
-    
+
     if (healthTips.isEmpty && dietaryAdvice.isEmpty && actionItemsRaw.isEmpty) {
       return const SizedBox.shrink();
     }
-    
+
     // 解析行动项
-    final actionItems = actionItemsRaw.map((item) {
-      if (item is Map<String, dynamic>) {
-        return ActionItem(
-          action: item['action'] as String? ?? '',
-          priority: item['priority'] as String? ?? 'medium',
-        );
-      }
-      return null;
-    }).whereType<ActionItem>().toList();
-    
+    final actionItems = actionItemsRaw
+        .map((item) {
+          if (item is Map<String, dynamic>) {
+            return ActionItem(
+              action: item['action'] as String? ?? '',
+              priority: item['priority'] as String? ?? 'medium',
+            );
+          }
+          return null;
+        })
+        .whereType<ActionItem>()
+        .toList();
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       elevation: 4,
@@ -1410,7 +1481,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                 ),
               ],
             ),
-            
+
             // 行动项（优先展示）
             if (actionItems.isNotEmpty) ...[
               const SizedBox(height: 16),
@@ -1451,7 +1522,8 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
                                 color: priorityConfig['bgColor'],
                                 borderRadius: BorderRadius.circular(4),
@@ -1484,74 +1556,80 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                 ),
               ),
             ],
-            
+
             const SizedBox(height: 16),
-            
+
             // 健康提示
             if (healthTips.isNotEmpty) ...[
-              ...healthTips.take(3).map((tip) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      margin: const EdgeInsets.only(top: 8),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF2BAF74),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        tip.toString(),
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF222222),
-                          height: 1.4,
+              ...healthTips
+                  .take(3)
+                  .map((tip) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              margin: const EdgeInsets.only(top: 8),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF2BAF74),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                tip.toString(),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF222222),
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-              )).toList(),
+                      ))
+                  .toList(),
             ],
-            
+
             // 饮食建议
             if (dietaryAdvice.isNotEmpty) ...[
               const SizedBox(height: 12),
-              ...dietaryAdvice.take(2).map((advice) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      margin: const EdgeInsets.only(top: 8),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFA6E3C1),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        advice.toString(),
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF222222),
-                          height: 1.4,
+              ...dietaryAdvice
+                  .take(2)
+                  .map((advice) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              margin: const EdgeInsets.only(top: 8),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFA6E3C1),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                advice.toString(),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF222222),
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-              )).toList(),
+                      ))
+                  .toList(),
             ],
-            
+
             // 营养师问答按钮
             const SizedBox(height: 20),
             SizedBox(
@@ -1586,7 +1664,8 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(50),
                   ),
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                 ),
               ),
             ),
@@ -1595,14 +1674,14 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
       ),
     );
   }
-  
+
   Widget _buildIngredientsCard() {
     final foodItems = _nutritionFacts['food_items'] as List? ?? [];
-    
+
     if (foodItems.isEmpty) {
       return const SizedBox.shrink();
     }
-    
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       elevation: 4,
@@ -1620,44 +1699,47 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                 color: Color(0xFF222222),
               ),
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // 食物列表
-            ...foodItems.take(5).map((item) => Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE6FAF0),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    LucideIcons.utensils, 
-                    size: 20, 
-                    color: Color(0xFF2BAF74),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      item.toString(),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF222222),
+            ...foodItems
+                .take(5)
+                .map((item) => Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE6FAF0),
+                        borderRadius: BorderRadius.circular(16),
                       ),
-                    ),
-                  ),
-                ],
-              ),
-            )).toList(),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            LucideIcons.utensils,
+                            size: 20,
+                            color: Color(0xFF2BAF74),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              item.toString(),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF222222),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ))
+                .toList(),
           ],
         ),
       ),
     );
   }
-  
+
   Widget _buildBottomButton() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1676,13 +1758,24 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
           width: double.infinity,
           height: 56,
           child: ElevatedButton(
-            onPressed: _isLoading ? null : () {
-              Navigator.pop(context);
-              Navigator.pop(context); // 返回到主页
-            },
+            onPressed: _isLoading
+                ? null
+                : () async {
+                    // 更新消费信息
+                    if (_currentRecord != null &&
+                        (_costAmount != null || _costSource != null)) {
+                      await _updateRecordCost();
+                    }
+
+                    Navigator.pop(context);
+                    Navigator.pop(context); // 返回到主页
+                  },
             style: ElevatedButton.styleFrom(
-              backgroundColor: _isLoading ? const Color(0xFFE6FAF0) : const Color(0xFF2BAF74),
-              foregroundColor: _isLoading ? const Color(0xFF666666) : Colors.white,
+              backgroundColor: _isLoading
+                  ? const Color(0xFFE6FAF0)
+                  : const Color(0xFF2BAF74),
+              foregroundColor:
+                  _isLoading ? const Color(0xFF666666) : Colors.white,
               elevation: 0,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(50),

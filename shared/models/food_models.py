@@ -24,9 +24,9 @@ class FoodRecord(Base):
 
     from_source = Column(String(20), default="camera")  # camera/manual/voice/barcode/saved_meal/suggestion
 
-    # Milestone 2: 消费金额与来源标签
-    cost = Column(Numeric(10, 2), nullable=True, comment="消费金额(元)")
-    source_tag = Column(String(20), nullable=True, comment="消费来源: canteen/delivery/home/restaurant/snack/other")
+    # Milestone 2: 消费字段
+    cost = Column(Numeric(10, 2), nullable=True)
+    source_tag = Column(String(20), nullable=True, comment="canteen/delivery/home/restaurant/snack/other")
 
     # 关系
     user = relationship("User", back_populates="food_records")

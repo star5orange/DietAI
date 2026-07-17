@@ -6,7 +6,7 @@
 /// 3. 编译时常量 devBaseUrl / prodBaseUrl
 class ApiConfig {
   // 开发环境配置
-  static const String devBaseUrl = 'http://localhost:8000';
+  static const String devBaseUrl = 'http://localhost:8000';  // 本地开发环境
   static const String devLocalNetworkUrl =
       'http://192.168.1.108:8000'; // 请修改为您的局域网IP
 

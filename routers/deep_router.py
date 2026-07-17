@@ -80,6 +80,22 @@ async def deep_chat(
     """
     message, session_id = await _resolve_deep_chat_params(request, message, session_id)
 
+    # Milestone 2: 加载 AI 顾问风格
+    advisor_prompt = ""
+    try:
+        from shared.services.advisor_service import get_advisor_settings
+        from agent.diet_deep_agent.tools.advisor_style_prompt_manager import build_style_prompt
+        settings = get_advisor_settings(next(get_db()), current_user.id)
+        if settings:
+            advisor_prompt = build_style_prompt(
+                advisor_style=settings.get("advisor_style", "nutritionist"),
+                focus_goal=settings.get("focus_goal"),
+                focus_nutrient=settings.get("focus_nutrient"),
+                response_style=settings.get("response_style", "detailed")
+            )
+    except Exception:
+        pass
+
     async def generate_response() -> AsyncGenerator[str, None]:
         try:
             agent = _get_cached_agent()
@@ -98,8 +114,14 @@ async def deep_chat(
                 }
             }
 
+            # 注入顾问风格 System Prompt
+            messages = []
+            if advisor_prompt:
+                messages.append({"role": "system", "content": advisor_prompt})
+            messages.append({"role": "user", "content": message})
+
             result = await agent.ainvoke(
-                {"messages": [{"role": "user", "content": message}]},
+                {"messages": messages},
                 config=config,
             )
 
@@ -146,6 +168,22 @@ async def deep_analyze(
     image_bytes = await image.read()
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
+    # Milestone 2: 加载 AI 顾问风格
+    advisor_prompt = ""
+    try:
+        from shared.services.advisor_service import get_advisor_settings
+        from agent.diet_deep_agent.tools.advisor_style_prompt_manager import build_style_prompt
+        settings = get_advisor_settings(next(get_db()), current_user.id)
+        if settings:
+            advisor_prompt = build_style_prompt(
+                advisor_style=settings.get("advisor_style", "nutritionist"),
+                focus_goal=settings.get("focus_goal"),
+                focus_nutrient=settings.get("focus_nutrient"),
+                response_style=settings.get("response_style", "detailed")
+            )
+    except Exception:
+        pass
+
     async def generate_response() -> AsyncGenerator[str, None]:
         try:
             agent = _get_cached_agent()
@@ -170,8 +208,14 @@ async def deep_analyze(
                 }
             }
 
+            # 注入顾问风格 System Prompt
+            messages = []
+            if advisor_prompt:
+                messages.append({"role": "system", "content": advisor_prompt})
+            messages.append({"role": "user", "content": user_content})
+
             result = await agent.ainvoke(
-                {"messages": [{"role": "user", "content": user_content}]},
+                {"messages": messages},
                 config=config,
             )
 

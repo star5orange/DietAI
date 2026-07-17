@@ -9,11 +9,13 @@ import '../../../services/water_service.dart';
 
 class WaterIntakeWidget extends StatefulWidget {
   final VoidCallback? onTapDetails;
+  final VoidCallback? onWaterRecorded;
   final DateTime selectedDate;
 
   const WaterIntakeWidget({
     super.key,
     this.onTapDetails,
+    this.onWaterRecorded,
     required this.selectedDate,
   });
 
@@ -65,7 +67,8 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
     }
   }
 
-  Future<void> _quickAdd({int amountMl = 250, String? drinkType, String? timeSlot}) async {
+  Future<void> _quickAdd(
+      {int amountMl = 250, String? drinkType, String? timeSlot}) async {
     final result = await _waterService.addWaterIntake(
         amountMl: amountMl,
         recordedAt: widget.selectedDate,
@@ -73,6 +76,7 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
 
     if (result.success) {
       await _loadData();
+      widget.onWaterRecorded?.call();
       if (mounted) {
         final msg = drinkType != null && drinkType != '水'
             ? '已添加 ${amountMl}ml $drinkType'
@@ -132,8 +136,8 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
                     labelText: '饮水量 (ml)',
                     hintText: '请输入饮水量',
                     suffixText: 'ml',
-                    border:
-                        OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
                     filled: true,
                     fillColor: AppColors.backgroundSecondary,
                   ),
@@ -167,7 +171,9 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
                       },
                       selectedColor: AppColors.info,
                       labelStyle: TextStyle(
-                        color: isSelected ? AppColors.textInverse : AppColors.textSecondary,
+                        color: isSelected
+                            ? AppColors.textInverse
+                            : AppColors.textSecondary,
                         fontSize: 13,
                       ),
                     );
@@ -190,7 +196,9 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
                       },
                       selectedColor: AppColors.info,
                       labelStyle: TextStyle(
-                        color: isSelected ? AppColors.textInverse : AppColors.textSecondary,
+                        color: isSelected
+                            ? AppColors.textInverse
+                            : AppColors.textSecondary,
                         fontSize: 12,
                       ),
                     );
@@ -201,7 +209,8 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(context), child: const Text('取消')),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消')),
             ElevatedButton(
               onPressed: () {
                 final amount = int.tryParse(controller.text);
@@ -472,7 +481,7 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
             children: [
               const Icon(LucideIcons.droplets,
                   color: AppColors.textInverse, size: 22),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Text('今日饮水',
                   style: AppTextStyles.bodyLarge.copyWith(
                       color: AppColors.textInverse,
@@ -480,19 +489,18 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
               const Spacer(),
               if (_todayRecords.isNotEmpty)
                 IconButton(
-                  icon: const Icon(LucideIcons.undo2, size: 18),
+                  icon: const Icon(LucideIcons.undo2, size: 16),
                   color: AppColors.textInverse,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   tooltip: '撤回上一次记录',
                   onPressed: _undoLastRecord,
                 ),
-              const SizedBox(width: 8),
               GestureDetector(
                 onTap: _showGoalSettingDialog,
                 child: Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.whiteWithOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
@@ -501,8 +509,8 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(LucideIcons.target,
-                          color: AppColors.textInverse, size: 14),
-                      const SizedBox(width: 4),
+                          color: AppColors.textInverse, size: 12),
+                      const SizedBox(width: 3),
                       Text('${_formatWater(goalMl)}L',
                           style: AppTextStyles.labelSmall.copyWith(
                               color: AppColors.textInverse,

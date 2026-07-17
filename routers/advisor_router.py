@@ -1,4 +1,4 @@
-"""AI顾问设置路由"""
+"""AI 顾问风格设置路由"""
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -15,39 +15,39 @@ router = APIRouter(prefix="/ai-advisor", tags=["AI顾问设置"])
 
 class AdvisorSettingsUpdate(BaseModel):
     advisor_style: Optional[str] = Field(
-        None, description="顾问风格: nutritionist/fitness_coach/tcm_healer/encouraging_friend"
+        None, description="顾问风格: nutritionist / fitness_coach / tcm_healer / encouraging_friend"
     )
     focus_goal: Optional[str] = Field(
-        None, description="关注目标: fat_loss/muscle_gain/sugar_control/wellness/balanced"
+        None, description="关注目标: fat_loss / muscle_gain / sugar_control / wellness / balanced"
     )
     focus_nutrient: Optional[str] = Field(
-        None, description="关注营养素: calories/protein/carb/fat/micronutrient"
+        None, description="关注营养素: calories / protein / carb / fat / micronutrient"
     )
     response_style: Optional[str] = Field(
-        None, description="输出风格: concise/detailed/example_rich"
+        None, description="回复风格: concise / detailed / example_rich"
     )
 
 
 @router.get("/settings", response_model=BaseResponse)
 async def get_settings(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """获取用户 AI 顾问风格设置
 
-    返回当前用户的顾问风格、关注目标、关注营养素、输出风格
+    返回当前用户的顾问风格、关注目标、关注营养素、回复风格
     """
     try:
-        data = get_advisor_settings(db, current_user.id)
+        settings = get_advisor_settings(db, current_user.id)
         return BaseResponse(
             success=True,
             message="获取AI顾问设置成功",
-            data=data
+            data=settings,
         )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取AI顾问设置失败: {str(e)}"
+            detail=f"获取AI顾问设置失败: {str(e)}",
         )
 
 
@@ -55,21 +55,22 @@ async def get_settings(
 async def update_settings(
     request: AdvisorSettingsUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """更新用户 AI 顾问风格设置
 
-    只需传入要修改的字段，未传入的字段保持不变
+    只需传入要修改的字段，未传入的保持不变
     """
-    # 至少需要修改一个字段
-    if all(v is None for v in [request.advisor_style, request.focus_goal, request.focus_nutrient, request.response_style]):
+    # 校验 advisor_style 值
+    valid_styles = {"nutritionist", "fitness_coach", "tcm_healer", "encouraging_friend"}
+    if request.advisor_style is not None and request.advisor_style not in valid_styles:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="至少需要提供一个要修改的字段"
+            detail=f"无效的顾问风格，可选值: {', '.join(valid_styles)}",
         )
 
     try:
-        updated = update_advisor_settings(
+        settings = update_advisor_settings(
             db,
             current_user.id,
             advisor_style=request.advisor_style,
@@ -79,16 +80,11 @@ async def update_settings(
         )
         return BaseResponse(
             success=True,
-            message="AI 顾问风格已更新，下次对话生效",
-            data=updated
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            message="AI顾问设置已更新，下次对话生效",
+            data=settings,
         )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"更新AI顾问设置失败: {str(e)}"
+            detail=f"更新AI顾问设置失败: {str(e)}",
         )

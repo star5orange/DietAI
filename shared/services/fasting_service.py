@@ -1,12 +1,13 @@
 """轻断食/辟谷业务逻辑"""
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, time as dt_time
 from typing import Optional, Dict, Any, List
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from shared.models.fasting_models import FastingPlan, FastingCheckin
+from shared.models.reminder_models import Reminder
 from shared.models.user_models import UserProfile, User
 
 logger = logging.getLogger(__name__)
@@ -172,6 +173,10 @@ def create_fasting_plan(
     db.commit()
     db.refresh(plan)
 
+    # 自动创建断食相关提醒
+    reminders = _create_fasting_reminders(db, plan, eating_window_start, eating_window_end)
+    logger.info(f"为断食计划 {plan.id} 创建了 {len(reminders)} 条提醒")
+
     return {
         "plan_id": plan.id,
         "plan_type": plan.plan_type,
@@ -179,6 +184,7 @@ def create_fasting_plan(
         "eating_window": f"{eating_window_start}-{eating_window_end}",
         "estimated_duration": "30 days",
         "warnings": warnings,
+        "reminders_created": len(reminders),
     }
 
 
@@ -283,13 +289,134 @@ def stop_fasting_plan(
         raise ValueError("计划已经结束，无需重复停止")
 
     plan.status = "stopped"
+    # 停止后禁用关联提醒
+    db.query(Reminder).filter(
+        Reminder.fasting_plan_id == plan_id
+    ).update({"is_enabled": False})
     db.commit()
 
     return {
         "plan_id": plan.id,
         "status": plan.status,
-        "message": "计划已停止，如有需要可查看复食指导",
+        "message": "计划已停止，关联提醒已禁用。如有需要可查看复食指导",
     }
+
+
+def delete_fasting_plan(
+    db: Session,
+    plan_id: int,
+    user_id: int,
+) -> Dict[str, Any]:
+    """删除断食计划（级联删除关联的打卡记录）"""
+    plan = db.query(FastingPlan).filter(
+        FastingPlan.id == plan_id,
+        FastingPlan.user_id == user_id
+    ).first()
+
+    if not plan:
+        raise ValueError("计划不存在")
+
+    # 删除关联提醒
+    deleted_count = _delete_fasting_reminders(db, plan_id)
+    logger.info(f"删除了断食计划 {plan_id} 的 {deleted_count} 条关联提醒")
+
+    db.delete(plan)
+    db.commit()
+
+    return {
+        "plan_id": plan_id,
+        "message": "计划已删除",
+        "reminders_deleted": deleted_count,
+    }
+
+
+# ========== 断食提醒管理 ==========
+
+FASTING_REMINDER_TEMPLATES = {
+    "16_8": {
+        "window_start": {"title": "进食窗口开始", "description": "8小时进食窗口已开启，可以开始进食了"},
+        "window_end": {"title": "进食窗口即将结束", "description": "距离进食窗口关闭还有30分钟，请安排好最后进食时间"},
+        "fasting_start": {"title": "禁食时段开始", "description": "16小时禁食时段开始，只能喝水或无热量饮品"},
+        "water": {"title": "断食期间补水", "description": "禁食期间记得多喝水，保持身体水分"},
+    },
+    "5_2": {
+        "fasting_day": {"title": "今天是低热量日", "description": "今天是5:2轻断食的低热量日（500-600kcal），请控制热量摄入"},
+        "normal_day": {"title": "今天是正常饮食日", "description": "今天可以正常饮食，保持均衡营养"},
+        "water": {"title": "断食期间补水", "description": "低热量日记得多喝水，避免脱水"},
+    },
+    "basic_fasting": {
+        "fasting_day": {"title": "辟谷日", "description": "今天是辟谷日，只摄入流质食物或无热量饮品"},
+        "water": {"title": "辟谷期间补水", "description": "辟谷期间务必多喝水，避免脱水"},
+        "warning": {"title": "注意身体反应", "description": "如出现头晕、心悸等不适，请立即停止并咨询医生"},
+    },
+}
+
+
+def _create_fasting_reminders(db: Session, plan: FastingPlan, eating_window_start: str, eating_window_end: str) -> List[Reminder]:
+    """为断食计划创建相关提醒"""
+    templates = FASTING_REMINDER_TEMPLATES.get(plan.plan_type, FASTING_REMINDER_TEMPLATES["16_8"])
+    reminders = []
+
+    try:
+        start_h, start_m = map(int, eating_window_start.split(":"))
+        end_h, end_m = map(int, eating_window_end.split(":"))
+    except (ValueError, AttributeError):
+        start_h, start_m = 8, 0
+        end_h, end_m = 16, 0
+
+    for key, tmpl in templates.items():
+        if key == "window_start":
+            remind_time = dt_time(start_h, start_m)
+        elif key == "window_end":
+            # 结束前30分钟提醒
+            total_m = end_h * 60 + end_m - 30
+            if total_m < 0:
+                total_m = 0
+            r_h, r_m = divmod(total_m, 60)
+            remind_time = dt_time(r_h, r_m)
+        elif key == "fasting_start":
+            remind_time = dt_time(end_h, end_m)
+        elif key == "water":
+            # 禁食中期补水提醒
+            total_m = end_h * 60 + end_m
+            mid_m = total_m + (24 * 60 - total_m) // 2 if start_h > end_h else (start_h + 24) * 60
+            if mid_m >= 24 * 60:
+                mid_m -= 24 * 60
+            r_h, r_m = divmod(mid_m % (24 * 60), 60)
+            remind_time = dt_time(r_h, r_m)
+        elif key == "fasting_day":
+            remind_time = dt_time(8, 0)
+        elif key == "normal_day":
+            remind_time = dt_time(8, 0)
+        elif key == "warning":
+            remind_time = dt_time(10, 0)
+        else:
+            remind_time = dt_time(12, 0)
+
+        reminder = Reminder(
+            user_id=plan.user_id,
+            reminder_type="fasting",
+            remind_time=remind_time,
+            repeat_days=127,  # 每天
+            is_enabled=True,
+            fasting_plan_id=plan.id,
+            title=tmpl["title"],
+            description=tmpl["description"],
+        )
+        db.add(reminder)
+        reminders.append(reminder)
+
+    db.commit()
+    return reminders
+
+
+def _delete_fasting_reminders(db: Session, plan_id: int) -> int:
+    """删除断食计划关联的所有提醒"""
+    count = db.query(Reminder).filter(
+        Reminder.fasting_plan_id == plan_id
+    ).delete()
+    db.commit()
+    return count
 
 
 def create_checkin(

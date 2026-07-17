@@ -423,3 +423,173 @@ def _check_unlocks(db: Session, pet: VirtualPetState) -> Optional[str]:
             return u.unlock_key
 
     return None
+
+
+# ========== M2 新增：宠物设置、经验、成长 ==========
+
+
+def update_pet_settings(
+    db: Session,
+    user_id: int,
+    visible: Optional[bool] = None,
+    pet_type: Optional[str] = None,
+    pet_name: Optional[str] = None,
+) -> Dict[str, Any]:
+    """更新宠物设置
+
+    Args:
+        db: 数据库会话
+        user_id: 用户ID
+        visible: 宠物可见性
+        pet_type: 宠物类型
+        pet_name: 宠物名称
+
+    Returns:
+        更新后的设置信息
+    """
+    pet = db.query(VirtualPetState).filter(VirtualPetState.user_id == user_id).first()
+    if not pet:
+        pet = create_pet_state(db, user_id)
+
+    updated_fields = []
+    if visible is not None:
+        pet.is_visible = visible
+        updated_fields.append("visible")
+    if pet_type is not None and pet_type in ("cat", "dog", "rabbit", "hamster"):
+        pet.current_skin = pet_type
+        updated_fields.append("pet_type")
+    if pet_name is not None:
+        pet.custom_name = pet_name
+        updated_fields.append("pet_name")
+
+    if updated_fields:
+        pet.version += 1
+        db.commit()
+        db.refresh(pet)
+
+    return {
+        "is_visible": pet.is_visible if hasattr(pet, 'is_visible') else True,
+        "current_skin": pet.current_skin,
+        "custom_name": pet.custom_name if hasattr(pet, 'custom_name') else None,
+        "updated_fields": updated_fields,
+    }
+
+
+def add_pet_exp(db: Session, user_id: int, amount: int) -> Dict[str, Any]:
+    """增加宠物经验值
+
+    Args:
+        db: 数据库会话
+        user_id: 用户ID
+        amount: 经验值数量
+
+    Returns:
+        更新后的宠物状态
+    """
+    pet = db.query(VirtualPetState).filter(VirtualPetState.user_id == user_id).first()
+    if not pet:
+        pet = create_pet_state(db, user_id)
+
+    old_level = pet.level
+    pet.exp += amount
+    new_level = calc_level(pet.exp)
+    level_up = new_level > old_level
+    pet.level = new_level
+    pet.version += 1
+
+    db.commit()
+    db.refresh(pet)
+
+    return {
+        "level": pet.level,
+        "exp": pet.exp,
+        "exp_to_next": get_exp_to_next_level(pet.level + 1),
+        "exp_gained": amount,
+        "level_up": level_up,
+        "old_level": old_level if level_up else None,
+    }
+
+
+def get_pet_growth(
+    db: Session,
+    user_id: int,
+    start_date_str: Optional[str] = None,
+    end_date_str: Optional[str] = None,
+) -> Dict[str, Any]:
+    """获取宠物成长趋势数据
+
+    Args:
+        db: 数据库会话
+        user_id: 用户ID
+        start_date_str: 开始日期
+        end_date_str: 结束日期
+
+    Returns:
+        成长趋势数据
+    """
+    pet = db.query(VirtualPetState).filter(VirtualPetState.user_id == user_id).first()
+    if not pet:
+        pet = create_pet_state(db, user_id)
+
+    end_date = date.today()
+    start_date = end_date - timedelta(days=7)  # 默认7天
+
+    if start_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            pass
+    
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            pass
+
+    # 获取每日饮食记录数作为成长轨迹
+    from sqlalchemy import func as sa_func
+    daily_records = db.query(
+        FoodRecord.record_date,
+        sa_func.count(FoodRecord.id).label('count'),
+        sa_func.coalesce(sa_func.sum(FoodRecord.cost), 0).label('total_cost')
+    ).filter(
+        FoodRecord.user_id == user_id,
+        FoodRecord.record_date >= start_date,
+        FoodRecord.record_date <= end_date
+    ).group_by(FoodRecord.record_date).order_by(FoodRecord.record_date).all()
+
+    # 获取每日饮水
+    daily_water = db.query(
+        sa_func.date(WaterIntakeRecord.record_time).label('record_date'),
+        sa_func.coalesce(sa_func.sum(WaterIntakeRecord.amount_ml), 0).label('total_ml')
+    ).filter(
+        WaterIntakeRecord.user_id == user_id,
+        sa_func.date(WaterIntakeRecord.record_time) >= start_date,
+        sa_func.date(WaterIntakeRecord.record_time) <= end_date
+    ).group_by(sa_func.date(WaterIntakeRecord.record_time)).all()
+
+    water_map = {str(w[0]): int(w[1]) for w in daily_water}
+
+    daily_data = []
+    for r in daily_records:
+        date_key = r[0].isoformat() if hasattr(r[0], 'isoformat') else str(r[0])
+        daily_data.append({
+            "date": date_key,
+            "food_records": r[1],
+            "total_cost": float(r[2]),
+            "water_ml": water_map.get(date_key, 0),
+        })
+
+    streak_days = _calc_streak_days(db, user_id)
+
+    return {
+        "current_level": pet.level,
+        "current_exp": pet.exp,
+        "exp_to_next": get_exp_to_next_level(pet.level + 1),
+        "current_streak": streak_days,
+        "daily_data": daily_data,
+        "period": {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+        },
+    }

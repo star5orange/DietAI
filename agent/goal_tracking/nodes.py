@@ -162,6 +162,93 @@ def calculate_daily_targets_node(state: GoalTrackingState) -> GoalTrackingState:
     return state
 
 
+def calculate_fasting_targets_node(state: GoalTrackingState) -> GoalTrackingState:
+    """
+    M2: Adjust daily targets when user has an active fasting plan.
+
+    Checks for active fasting plans and adjusts calorie targets:
+    - 16:8: Normal TDEE targets, appends eating window note
+    - 5:2: 500-600 kcal on fasting days, normal on regular days
+    - basic_fast: 800-1000 kcal maintenance
+    """
+    try:
+        user_id = state.get("user_id")
+        if not user_id:
+            return state
+
+        # Query active fasting plan from DB
+        from shared.models.fasting_models import FastingPlan
+        from shared.models.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            active_plan = db.query(FastingPlan).filter(
+                FastingPlan.user_id == user_id,
+                FastingPlan.status == "active"
+            ).first()
+        finally:
+            db.close()
+
+        if not active_plan:
+            return state  # No active fasting plan
+
+        plan_type = active_plan.plan_type
+        current_target = state.get("daily_calorie_target", 2000)
+
+        if plan_type == "5_2":
+            # 5:2 diet: 500-600 kcal on fasting days
+            from datetime import date
+            today = date.today()
+            # Alternate: Mon/Thu are fasting days
+            today_weekday = today.weekday()  # 0=Mon ... 6=Sun
+            is_fast_day = today_weekday in (0, 3)  # Monday and Thursday
+
+            if is_fast_day:
+                fasting_target = 500
+                state["daily_calorie_target"] = fasting_target
+                state["macro_targets"] = {
+                    "protein": 50,
+                    "carbs": 40,
+                    "fat": 15,
+                    "calories": fasting_target,
+                    "note": "5:2 轻断食日（500 kcal 限额）"
+                }
+                logger.info(f"Applied 5:2 fasting target: {fasting_target} kcal (fast day)")
+            else:
+                # Normal TDEE-based targets on non-fasting days
+                state["macro_targets"]["note"] = "5:2 正常进食日"
+
+        elif plan_type == "16_8":
+            # 16:8 intermittent fasting: normal TDEE, eating window note
+            eating_window = active_plan.eating_window or "12:00-20:00"
+            state["macro_targets"]["note"] = f"16:8 进食窗口 {eating_window}"
+
+        elif plan_type == "basic_fast":
+            # Basic fasting: reduced calorie maintenance
+            fasting_target = min(current_target, 800)
+            state["daily_calorie_target"] = fasting_target
+            state["macro_targets"] = {
+                "protein": 60,
+                "carbs": 80,
+                "fat": 25,
+                "calories": fasting_target,
+                "note": "辟谷期基础维护（800 kcal 限额）"
+            }
+            logger.info(f"Applied basic fasting target: {fasting_target} kcal")
+
+        state["current_step"] = "fasting_targets_adjusted"
+        logger.info(
+            f"Adjusted fasting targets for user {user_id}: "
+            f"plan={plan_type}, target={state['daily_calorie_target']} kcal"
+        )
+
+    except Exception as e:
+        # Non-blocking: pass through on failure
+        logger.warning(f"Fasting target calculation skipped: {e}")
+
+    return state
+
+
 def track_today_progress_node(state: GoalTrackingState) -> GoalTrackingState:
     """
     Track today's consumption against targets.

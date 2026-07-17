@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/pet_state_calculator.dart';
+import '../../domain/pet_skin_config.dart'; // 导入皮肤配置
 import '../providers/pet_provider.dart';
 import 'pet_bubble.dart';
+import 'pet_animation_widget.dart'; // 导入动画组件
 
 class PetWidget extends ConsumerStatefulWidget {
   final double size;
@@ -134,26 +136,11 @@ class _PetWidgetState extends ConsumerState<PetWidget>
           onTap: _onTapPet,
           child: ScaleTransition(
             scale: _bounceAnimation,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: Image.asset(
-                petState.gifPath,
-                key: ValueKey(petState.gifPath),
-                width: widget.size,
-                height: widget.size,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: widget.size,
-                    height: widget.size,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.grey.shade200,
-                    ),
-                    child: const Icon(Icons.pets, color: Colors.grey),
-                  );
-                },
-              ),
+            child: PetAnimationWidget(
+              size: widget.size,
+              skin: petState.currentSkin, // 使用用户选择的皮肤
+              enableInteraction: false,
+              showMoodIndicator: false,
             ),
           ),
         ),

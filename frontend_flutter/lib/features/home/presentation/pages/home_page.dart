@@ -10,6 +10,7 @@ import '../../../../services/exercise_service.dart';
 import '../../../../services/saved_meal_service.dart';
 import '../../../../services/goal_tracking_service.dart';
 import '../../../../services/wellness_service.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/domain/models/saved_meal_model.dart';
 import '../../../../shared/presentation/widgets/error_handler.dart';
@@ -24,6 +25,8 @@ import '../../../chat/presentation/pages/chat_page.dart';
 import '../../../health/presentation/pages/exercise_record_page.dart';
 import '../../../pet/presentation/providers/pet_provider.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
+import '../../../cost/data/services/cost_service.dart';
+import '../../../cost/presentation/widgets/budget_progress_card.dart';
 import 'meal_selection_page.dart';
 import 'text_describe_page.dart';
 import '../../../saved_meals/presentation/pages/saved_meals_page.dart';
@@ -46,6 +49,8 @@ class _HomePageState extends ConsumerState<HomePage> {
   double _targetCalories = 2000.0;
   double _targetProtein = 150.0;
   double _targetCarbs = 250.0;
+  double? _pendingCostAmount;
+  String? _pendingCostSource;
   double _targetFat = 65.0;
   final GoalTrackingService _goalTrackingService = GoalTrackingService();
   int _streakDays = 0;
@@ -55,9 +60,12 @@ class _HomePageState extends ConsumerState<HomePage> {
   Map<String, dynamic>? _upcomingSolarTerm; // 即将到来的节气（3天内）
   final ExerciseService _exerciseService = ExerciseService();
   final SavedMealService _savedMealService = SavedMealService();
+  final CostService _costService = CostService(ApiService());
   double _todayExerciseCalories = 0.0;
   int _todayExerciseDuration = 0;
   List<SavedMeal> _favoriteMeals = [];
+  CostStats? _weekCostStats;
+  CostStats? _monthCostStats; // 月度统计（用于预算显示）
 
   @override
   void initState() {
@@ -98,7 +106,8 @@ class _HomePageState extends ConsumerState<HomePage> {
         final daysAhead = upcoming['days_ahead'] as int? ?? 0;
         final lastUpcoming = prefs.getString('last_upcoming_solar_term') ?? '';
         // 仅当节气预告未展示过时显示
-        if (upcomingName.isNotEmpty && '$upcomingName$daysAhead' != lastUpcoming) {
+        if (upcomingName.isNotEmpty &&
+            '$upcomingName$daysAhead' != lastUpcoming) {
           setState(() => _upcomingSolarTerm = upcoming);
         }
       }
@@ -118,6 +127,8 @@ class _HomePageState extends ConsumerState<HomePage> {
         startDate: dateStr,
         endDate: dateStr,
       );
+      print(
+          '📋 Records API: success=${result.success}, records=${result.data?.records.length ?? 0}');
       DailyNutritionSummary? summary;
       try {
         final summaryResult =
@@ -136,15 +147,22 @@ class _HomePageState extends ConsumerState<HomePage> {
 
       // 加载今日运动数据
       try {
-        final exerciseResult =
-            await _exerciseService.getDailySummary(dateStr);
+        final exerciseResult = await _exerciseService.getDailySummary(dateStr);
         if (exerciseResult.success && exerciseResult.data != null) {
-          _todayExerciseCalories =
-              exerciseResult.data!.totalCaloriesBurned;
-          _todayExerciseDuration =
-              exerciseResult.data!.totalDurationMinutes;
+          _todayExerciseCalories = exerciseResult.data!.totalCaloriesBurned;
+          _todayExerciseDuration = exerciseResult.data!.totalDurationMinutes;
         }
       } catch (_) {}
+
+      // 加载本周消费统计（仅在今日加载）
+      if (DateFormat('yyyy-MM-dd').format(date) ==
+          DateFormat('yyyy-MM-dd').format(DateTime.now())) {
+        try {
+          _weekCostStats = await _costService.getCostStats(period: 'week');
+          _monthCostStats = await _costService.getCostStats(period: 'month');
+        } catch (_) {}
+      }
+
 
       // 加载收藏餐食（取前6个常用）
       try {
@@ -158,19 +176,50 @@ class _HomePageState extends ConsumerState<HomePage> {
       try {
         final goalResult = await _goalTrackingService.getDailyStatus();
         if (goalResult.success && goalResult.data != null) {
-          final targets = goalResult.data!['daily_targets'] as Map<String, dynamic>?;
+          final targets =
+              goalResult.data!['daily_targets'] as Map<String, dynamic>?;
           if (targets != null) {
-            _targetCalories = (targets['calories'] as num?)?.toDouble() ?? _targetCalories;
-            _targetProtein = (targets['protein'] as num?)?.toDouble() ?? _targetProtein;
-            _targetCarbs = (targets['carbs'] as num?)?.toDouble() ?? _targetCarbs;
+            _targetCalories =
+                (targets['calories'] as num?)?.toDouble() ?? _targetCalories;
+            _targetProtein =
+                (targets['protein'] as num?)?.toDouble() ?? _targetProtein;
+            _targetCarbs =
+                (targets['carbs'] as num?)?.toDouble() ?? _targetCarbs;
             _targetFat = (targets['fat'] as num?)?.toDouble() ?? _targetFat;
           }
         }
       } catch (_) {}
 
       if (mounted) {
+        final records = result.data?.records ?? [];
+
+        // M2: 如果汇总有热量但记录列表为空，重试一次 records API
+        if (records.isEmpty && summary != null && summary!.totalCalories > 0) {
+          print('⚠️ 汇总有热量(${summary!.totalCalories})但记录为空，重试records API...');
+          await Future.delayed(const Duration(milliseconds: 500));
+          try {
+            final retryResult = await _foodService.getFoodRecords(
+              startDate: dateStr,
+              endDate: dateStr,
+            );
+            final retryRecords = retryResult.data?.records ?? [];
+            if (retryRecords.isNotEmpty) {
+              print('✅ 重试成功，获取到 ${retryRecords.length} 条记录');
+              setState(() {
+                _todayRecords = retryRecords;
+                _dailySummary = summary;
+                _isLoading = false;
+              });
+              _updatePetState();
+              return;
+            }
+          } catch (e) {
+            print('⚠️ 重试失败: $e');
+          }
+        }
+
         setState(() {
-          _todayRecords = result.data?.records ?? [];
+          _todayRecords = records;
           _dailySummary = summary;
           _isLoading = false;
         });
@@ -196,6 +245,10 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Future<void> _refreshData() async {
     await _loadDataForDate(_selectedDate);
+    ref.read(petProvider.notifier).onFoodRecorded();
+  }
+
+  void _onWaterRecorded() {
     ref.read(petProvider.notifier).onFoodRecorded();
   }
 
@@ -295,6 +348,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                                 height: 300,
                                 child: WaterIntakeWidget(
                                   onTapDetails: () {},
+                                  onWaterRecorded: _onWaterRecorded,
                                   selectedDate: _selectedDate,
                                 ),
                               ),
@@ -338,6 +392,9 @@ class _HomePageState extends ConsumerState<HomePage> {
                           crowdTag: crowdTag,
                         ),
                         const SizedBox(height: 24),
+                        // M2: 消费概览卡片
+                        _buildCostOverviewCard(),
+                        const SizedBox(height: 20),
                         if (_favoriteMeals.isNotEmpty) ...[
                           _buildFavoriteMealsSection(),
                           const SizedBox(height: 24),
@@ -861,8 +918,8 @@ class _HomePageState extends ConsumerState<HomePage> {
           children: [
             Text(
               meal.mealName,
-              style: AppTextStyles.bodySmall
-                  .copyWith(fontWeight: FontWeight.w600),
+              style:
+                  AppTextStyles.bodySmall.copyWith(fontWeight: FontWeight.w600),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -917,11 +974,134 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
 
     final mealNames = ['早餐', '午餐', '晚餐', '加餐'];
-    await _createFoodRecordFromSavedMeal(
-      meal,
-      mealNames[mealType - 1],
-      mealType,
-      DateTime.now().toIso8601String(),
+
+    // 显示消费输入对话框
+    await _showCostInputDialog(
+      mealName: meal.mealName,
+      onConfirm: (costAmount, costSource) async {
+        // 设置待处理的消费信息
+        setState(() {
+          _pendingCostAmount = costAmount;
+          _pendingCostSource = costSource;
+        });
+
+        // 创建记录
+        await _createFoodRecordFromSavedMeal(
+          meal,
+          mealNames[mealType - 1],
+          mealType,
+          DateTime.now().toIso8601String(),
+        );
+      },
+    );
+  }
+
+  /// 显示消费输入对话框
+  Future<void> _showCostInputDialog({
+    required String mealName,
+    required Function(double? costAmount, String? costSource) onConfirm,
+  }) async {
+    double? costAmount;
+    String? costSource;
+    final amountController = TextEditingController();
+    final sourceController = TextEditingController();
+
+    final commonSources = ['外卖', '食堂', '餐厅', '自制', '便利店', '其他'];
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text('记录 $mealName'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('消费金额（可选）', style: AppTextStyles.bodyLarge),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: amountController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    hintText: '请输入消费金额',
+                    prefixText: '¥ ',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (value) {
+                    costAmount = double.tryParse(value);
+                  },
+                ),
+                const SizedBox(height: 16),
+                Text('消费来源（可选）', style: AppTextStyles.bodyLarge),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: sourceController,
+                  decoration: const InputDecoration(
+                    hintText: '请输入消费来源',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (value) {
+                    costSource = value.trim().isEmpty ? null : value.trim();
+                  },
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: commonSources.map((source) {
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          sourceController.text = source;
+                          costSource = source;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: sourceController.text == source
+                              ? AppColors.primary.withValues(alpha: 0.1)
+                              : AppColors.backgroundSecondary,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: sourceController.text == source
+                                ? AppColors.primary
+                                : AppColors.borderLight,
+                          ),
+                        ),
+                        child: Text(
+                          source,
+                          style: AppTextStyles.caption.copyWith(
+                            color: sourceController.text == source
+                                ? AppColors.primary
+                                : AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                onConfirm(costAmount, costSource);
+              },
+              child: const Text('确认'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1026,8 +1206,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                                   fontWeight: FontWeight.bold)),
                           const SizedBox(width: 8),
                           Text('${mealRecords.length} 项',
-                              style: AppTextStyles.bodySmall.copyWith(
-                                  color: AppColors.textTertiary)),
+                              style: AppTextStyles.bodySmall
+                                  .copyWith(color: AppColors.textTertiary)),
                         ],
                       ),
                     ] else ...[
@@ -1079,15 +1259,17 @@ class _HomePageState extends ConsumerState<HomePage> {
     final calories = record.analysisResult?.nutritionFacts.totalCalories ??
         record.nutritionDetail?.calories ??
         0.0;
-    final protein = record.analysisResult?.nutritionFacts.macronutrients.protein ??
-        record.nutritionDetail?.protein ??
-        0.0;
+    final protein =
+        record.analysisResult?.nutritionFacts.macronutrients.protein ??
+            record.nutritionDetail?.protein ??
+            0.0;
     final fat = record.analysisResult?.nutritionFacts.macronutrients.fat ??
         record.nutritionDetail?.fat ??
         0.0;
-    final carbs = record.analysisResult?.nutritionFacts.macronutrients.carbohydrates ??
-        record.nutritionDetail?.carbohydrates ??
-        0.0;
+    final carbs =
+        record.analysisResult?.nutritionFacts.macronutrients.carbohydrates ??
+            record.nutritionDetail?.carbohydrates ??
+            0.0;
 
     // 格式化就餐时间
     String? timeText;
@@ -1185,6 +1367,12 @@ class _HomePageState extends ConsumerState<HomePage> {
                       Text('脂肪${fat.round()}g',
                           style: AppTextStyles.numberXSmall.copyWith(
                               color: AppColors.fatColor, fontSize: 9)),
+                    if (record.cost != null && record.cost! > 0)
+                      Text('¥${record.cost!.toStringAsFixed(1)}',
+                          style: AppTextStyles.numberXSmall.copyWith(
+                              color: const Color(0xFFF57F17),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 10)),
                   ],
                 ),
               ],
@@ -1271,8 +1459,11 @@ class _HomePageState extends ConsumerState<HomePage> {
       backgroundColor: Colors.transparent,
       builder: (context) => FoodRecordModal(
         mealName: mealName,
-        onRecordMethod: (method) {
+        onRecordMethod: (method, {double? cost, String? sourceTag}) {
           Navigator.pop(context);
+          // 保存消费数据
+          _pendingCostAmount = cost;
+          _pendingCostSource = sourceTag;
           _handleRecordMethod(method, mealName);
         },
       ),
@@ -1360,20 +1551,30 @@ class _HomePageState extends ConsumerState<HomePage> {
             context,
             MaterialPageRoute(
                 builder: (context) => CameraPage(
-                    mealName: mealName,
-                    mealType: mealType,
-                    recordDate: dateStr,
-                    recordTime: recordTime))).then((_) => _refreshData());
+                      mealName: mealName,
+                      mealType: mealType,
+                      recordDate: dateStr,
+                      recordTime: recordTime,
+                      costAmount: _pendingCostAmount,
+                      costSource: _pendingCostSource,
+                    ))).then((_) {
+          _clearPendingCost();
+          _refreshData();
+        });
         break;
       case 'text_describe':
         Navigator.push(
             context,
             MaterialPageRoute(
                 builder: (context) => TextDescribePage(
-                    mealName: mealName,
-                    mealType: mealType,
-                    recordDate: dateStr,
-                    recordTime: recordTime))).then((result) {
+                      mealName: mealName,
+                      mealType: mealType,
+                      recordDate: dateStr,
+                      recordTime: recordTime,
+                      costAmount: _pendingCostAmount,
+                      costSource: _pendingCostSource,
+                    ))).then((result) {
+          _clearPendingCost();
           if (result == true) _refreshData();
         });
         break;
@@ -1387,6 +1588,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         break;
       case 'saved_meals':
         await _navigateToSavedMeals(mealName, mealType, recordTime);
+        _clearPendingCost();
         break;
     }
   }
@@ -1400,6 +1602,11 @@ class _HomePageState extends ConsumerState<HomePage> {
     if (meal != null && mounted) {
       _createFoodRecordFromSavedMeal(meal, mealName, mealType, recordTime);
     }
+  }
+
+  void _clearPendingCost() {
+    _pendingCostAmount = null;
+    _pendingCostSource = null;
   }
 
   Future<void> _createFoodRecordFromSavedMeal(
@@ -1417,6 +1624,8 @@ class _HomePageState extends ConsumerState<HomePage> {
         description: meal.description,
         imageUrl: meal.imageUrl,
         recordingMethod: 4,
+        cost: _pendingCostAmount,
+        sourceTag: _pendingCostSource,
       );
 
       final result = await foodService.createFoodRecord(record);
@@ -1733,12 +1942,16 @@ class _HomePageState extends ConsumerState<HomePage> {
       try {
         final recalcResult = await _goalTrackingService.recalculateTargets();
         if (recalcResult.success && recalcResult.data != null) {
-          final targets = recalcResult.data!['daily_targets'] as Map<String, dynamic>?;
+          final targets =
+              recalcResult.data!['daily_targets'] as Map<String, dynamic>?;
           if (targets != null) {
             setState(() {
-              _targetCalories = (targets['calories'] as num?)?.toDouble() ?? _targetCalories;
-              _targetProtein = (targets['protein'] as num?)?.toDouble() ?? _targetProtein;
-              _targetCarbs = (targets['carbs'] as num?)?.toDouble() ?? _targetCarbs;
+              _targetCalories =
+                  (targets['calories'] as num?)?.toDouble() ?? _targetCalories;
+              _targetProtein =
+                  (targets['protein'] as num?)?.toDouble() ?? _targetProtein;
+              _targetCarbs =
+                  (targets['carbs'] as num?)?.toDouble() ?? _targetCarbs;
               _targetFat = (targets['fat'] as num?)?.toDouble() ?? _targetFat;
             });
           }
@@ -1885,8 +2098,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                           ),
                         ),
                         Text('kcal',
-                            style: AppTextStyles.bodySmall.copyWith(
-                                color: AppColors.textTertiary)),
+                            style: AppTextStyles.bodySmall
+                                .copyWith(color: AppColors.textTertiary)),
                       ],
                     ),
                   ),
@@ -1923,14 +2136,21 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildLegend(String label, double value, Color color) {
-    final total = (_dailySummary?.totalProtein ?? 0) + (_dailySummary?.totalCarbohydrates ?? 0) + (_dailySummary?.totalFat ?? 0);
+    final total = (_dailySummary?.totalProtein ?? 0) +
+        (_dailySummary?.totalCarbohydrates ?? 0) +
+        (_dailySummary?.totalFat ?? 0);
     final percent = total > 0 ? (value / total * 100).round() : 0;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 4),
-        Text('$label $percent%', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+        Text('$label $percent%',
+            style: AppTextStyles.bodySmall
+                .copyWith(color: AppColors.textSecondary)),
       ],
     );
   }
@@ -1996,6 +2216,150 @@ class _HomePageState extends ConsumerState<HomePage> {
           ),
         ),
       ],
+    );
+  }
+
+  /// 宠物卡片
+  /// 消费概览卡片
+  Widget _buildCostOverviewCard() {
+    // 计算今日消费（从今日记录中汇总）
+    final todayCost = _todayRecords.fold<double>(
+      0.0,
+      (sum, record) => sum + (record.cost ?? 0.0),
+    );
+
+    final weekCost = _weekCostStats?.totalCost ?? 0.0;
+    // 使用月度统计来获取预算信息
+    final monthCost = _monthCostStats?.totalCost ?? 0.0;
+    final budgetRemaining = _monthCostStats?.budgetRemaining;
+    final budget = _monthCostStats?.budget;
+    final budgetWarning = _monthCostStats?.budgetWarning;
+
+    return GestureDetector(
+      onTap: () => context.push('/cost-statistics'),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: budgetWarning != null &&
+                    budgetWarning['level'] == 'exceeded'
+                ? [
+                    AppColors.error.withValues(alpha: 0.1),
+                    AppColors.error.withValues(alpha: 0.05)
+                  ]
+                : budgetWarning != null && budgetWarning['level'] == 'warning'
+                    ? [
+                        AppColors.warning.withValues(alpha: 0.1),
+                        AppColors.warning.withValues(alpha: 0.05)
+                      ]
+                    : [
+                        AppColors.success.withValues(alpha: 0.1),
+                        AppColors.success.withValues(alpha: 0.05)
+                      ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: budgetWarning != null && budgetWarning['level'] == 'exceeded'
+                ? AppColors.error.withValues(alpha: 0.3)
+                : budgetWarning != null && budgetWarning['level'] == 'warning'
+                    ? AppColors.warning.withValues(alpha: 0.3)
+                    : AppColors.success.withValues(alpha: 0.3),
+          ),
+          boxShadow: AppColors.lightShadow,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: budgetWarning != null &&
+                              budgetWarning['level'] == 'exceeded'
+                          ? [
+                              AppColors.error,
+                              AppColors.error.withValues(alpha: 0.8)
+                            ]
+                          : budgetWarning != null &&
+                                  budgetWarning['level'] == 'warning'
+                              ? [
+                                  AppColors.warning,
+                                  AppColors.warning.withValues(alpha: 0.8)
+                                ]
+                              : [
+                                  const Color(0xFF2BAF74),
+                                  const Color(0xFF4ECDC4)
+                                ],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(LucideIcons.wallet,
+                      color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text('消费概览', style: AppTextStyles.h5),
+                          if (budgetWarning != null)
+                            Container(
+                              margin: const EdgeInsets.only(left: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: budgetWarning['level'] == 'exceeded'
+                                    ? AppColors.error.withValues(alpha: 0.2)
+                                    : AppColors.warning.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                budgetWarning['level'] == 'exceeded'
+                                    ? '已超预算'
+                                    : '接近预算',
+                                style: AppTextStyles.caption.copyWith(
+                                  color: budgetWarning['level'] == 'exceeded'
+                                      ? AppColors.error
+                                      : AppColors.warning,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '本周 ¥${weekCost.toStringAsFixed(1)} | 今日 ¥${todayCost.toStringAsFixed(1)}',
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(LucideIcons.chevronRight,
+                    color: AppColors.textTertiary),
+              ],
+            ),
+            if (budget != null && budget > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: BudgetProgressCard(
+                  budget: budget,
+                  used: monthCost,
+                  remaining: budgetRemaining ?? budget,
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -14,8 +14,27 @@ logger = logging.getLogger(__name__)
 # 餐次映射
 MEAL_TYPE_MAP = {1: "breakfast", 2: "lunch", 3: "dinner", 4: "snack", 5: "late_night"}
 
-# 来源标签白名单
+# 来源标签白名单（含中英文兼容）
 VALID_SOURCE_TAGS = ["canteen", "delivery", "home", "restaurant", "snack", "other"]
+# 中文→英文映射（兼容旧数据）
+SOURCE_TAG_ALIAS = {
+    "食堂": "canteen",
+    "外卖": "delivery",
+    "家里": "home",
+    "餐厅": "restaurant",
+    "零食": "snack",
+    "自制": "home",
+    "其他": "other",
+}
+
+
+def _normalize_source_tag(tag: Optional[str]) -> str:
+    """将中文标签标准化为英文 key"""
+    if not tag:
+        return "other"
+    if tag in VALID_SOURCE_TAGS:
+        return tag
+    return SOURCE_TAG_ALIAS.get(tag, "other")
 
 
 def get_cost_stats(db: Session, user_id: int, period: str = "week") -> Dict[str, Any]:
@@ -46,6 +65,9 @@ def get_cost_stats(db: Session, user_id: int, period: str = "week") -> Dict[str,
     ).all()
 
     if not records:
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        budget = float(profile.monthly_food_budget) if profile and profile.monthly_food_budget else 0
+        budget_remaining = round(budget, 2) if budget > 0 and period == "month" else None
         return {
             "period": period,
             "total_cost": 0,
@@ -55,7 +77,8 @@ def get_cost_stats(db: Session, user_id: int, period: str = "week") -> Dict[str,
             "by_meal_time": {},
             "by_source": {},
             "calorie_per_yuan": 0,
-            "budget_remaining": None,
+            "budget_remaining": budget_remaining,
+            "budget": budget if budget > 0 else None,
         }
 
     total_cost = sum(float(r.cost) for r in records if r.cost is not None)
@@ -77,7 +100,7 @@ def get_cost_stats(db: Session, user_id: int, period: str = "week") -> Dict[str,
     by_source: Dict[str, float] = {}
     for r in records:
         if r.cost is not None:
-            tag = r.source_tag if r.source_tag in VALID_SOURCE_TAGS else "other"
+            tag = _normalize_source_tag(r.source_tag)
             by_source[tag] = round(by_source.get(tag, 0) + float(r.cost), 2)
 
     # 每元热量（需要关联 nutrition_details 表）
@@ -99,6 +122,7 @@ def get_cost_stats(db: Session, user_id: int, period: str = "week") -> Dict[str,
         "by_source": by_source,
         "calorie_per_yuan": calorie_per_yuan,
         "budget_remaining": budget_remaining,
+        "budget": budget if budget > 0 else None,
     }
 
 
@@ -189,3 +213,31 @@ def _calc_calorie_per_yuan(
     ).scalar()
 
     return round(float(total_calories) / total_cost, 1)
+
+
+# ========== M2 新增：预算设置 ==========
+
+
+def set_monthly_budget(db: Session, user_id: int, budget: float) -> Dict[str, Any]:
+    """设置月度饮食预算
+
+    Args:
+        db: 数据库会话
+        user_id: 用户ID
+        budget: 预算金额（元）
+
+    Returns:
+        更新后的预算信息
+    """
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    if not profile:
+        raise ValueError("用户资料不存在")
+
+    profile.monthly_food_budget = budget
+    db.commit()
+    db.refresh(profile)
+
+    return {
+        "monthly_food_budget": float(profile.monthly_food_budget) if profile.monthly_food_budget else 0,
+        "message": f"月度饮食预算已设置为 {budget:.2f} 元",
+    }

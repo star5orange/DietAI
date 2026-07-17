@@ -1,4 +1,4 @@
-"""虚拟宠物状态 ORM 模型"""
+﻿"""虚拟宠物状态 ORM 模型"""
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func

@@ -9,7 +9,7 @@ import '../../../core/themes/app_text_styles.dart';
 /// 支持人群标签差异化：减脂/健身/养生/普通
 class SolarTermTodayWidget extends StatefulWidget {
   final VoidCallback? onTapDetails;
-  final String crowdTag; // 减脂/健身/养生/普通
+  final String crowdTag;
 
   const SolarTermTodayWidget({
     super.key,
@@ -17,21 +17,8 @@ class SolarTermTodayWidget extends StatefulWidget {
     this.crowdTag = '普通',
   });
 
-  @override
-  State<SolarTermTodayWidget> createState() => _SolarTermTodayWidgetState();
-}
-
-class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
-  Map<String, dynamic>? _currentTerm;
-
-  @override
-  void initState() {
-    super.initState();
-    _currentTerm = _getCurrentSolarTerm();
-  }
-
-  /// 24节气数据：名称、大约日期(月-日)、季节、养生要点、推荐食物、忌食
-  static const _solarTerms = [
+  /// 24节气数据（静态，供所有组件复用）
+  static const _solarTermsData = [
     ('小寒', '01-06', '冬', '温补驱寒', '羊肉、核桃、红枣', '寒凉生冷'),
     ('大寒', '01-20', '冬', '温补养肾', '牛肉、板栗、桂圆', '过度进补'),
     ('立春', '02-04', '春', '护阳生发', '韭菜、春笋、蜂蜜', '酸味过重'),
@@ -58,6 +45,45 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
     ('冬至', '12-22', '冬', '温补养阳', '羊肉、饺子、汤圆', '寒凉生冷'),
   ];
 
+  static bool _dateInRange(String date, String start, String end) {
+    if (start.compareTo(end) <= 0) {
+      return date.compareTo(start) >= 0 && date.compareTo(end) < 0;
+    }
+    return date.compareTo(start) >= 0 || date.compareTo(end) < 0;
+  }
+
+  /// 获取当前节气名称（静态方法，供其他组件调用）
+  static String getCurrentSolarTermName() {
+    final now = DateTime.now();
+    final mmdd =
+        '${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    String currentName = '小寒';
+    for (int i = 0; i < _solarTermsData.length; i++) {
+      final term = _solarTermsData[i];
+      final nextIdx = (i + 1) % _solarTermsData.length;
+      final nextTerm = _solarTermsData[nextIdx];
+      if (_dateInRange(mmdd, term.$2, nextTerm.$2)) {
+        currentName = term.$1;
+        break;
+      }
+    }
+    return currentName;
+  }
+
+  @override
+  State<SolarTermTodayWidget> createState() => _SolarTermTodayWidgetState();
+}
+
+class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
+  Map<String, dynamic>? _currentTerm;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentTerm = _getCurrentSolarTerm();
+  }
+
+
   Map<String, dynamic> _getCurrentSolarTerm() {
     final now = DateTime.now();
     final mmdd = now.month.toString().padLeft(2, '0') +
@@ -72,12 +98,13 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
     String currentAvoid = '寒凉生冷';
     String nextName = '大寒';
 
-    for (int i = 0; i < _solarTerms.length; i++) {
-      final term = _solarTerms[i];
-      final nextIdx = (i + 1) % _solarTerms.length;
-      final nextTerm = _solarTerms[nextIdx];
+    final terms = SolarTermTodayWidget._solarTermsData;
+    for (int i = 0; i < terms.length; i++) {
+      final term = terms[i];
+      final nextIdx = (i + 1) % terms.length;
+      final nextTerm = terms[nextIdx];
 
-      if (_isDateInRange(mmdd, term.$2, nextTerm.$2)) {
+      if (SolarTermTodayWidget._dateInRange(mmdd, term.$2, nextTerm.$2)) {
         currentName = term.$1;
         currentSeason = term.$3;
         currentPrinciple = term.$4;
@@ -98,13 +125,6 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
     };
   }
 
-  bool _isDateInRange(String date, String start, String end) {
-    if (start.compareTo(end) <= 0) {
-      return date.compareTo(start) >= 0 && date.compareTo(end) < 0;
-    }
-    // 跨年（如冬至→小寒）
-    return date.compareTo(start) >= 0 || date.compareTo(end) < 0;
-  }
 
   Color _seasonColor(String season) {
     switch (season) {

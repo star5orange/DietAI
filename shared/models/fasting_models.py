@@ -1,7 +1,6 @@
-"""轻断食计划 ORM 模型"""
-from sqlalchemy import Column, Integer, String, DateTime, Date, Boolean, Text, Numeric, ForeignKey, Index, Time
+"""轻断食/辟谷 ORM 模型"""
+from sqlalchemy import Column, Integer, String, DateTime, Date, Boolean, Text, Numeric, ForeignKey, Time, Index
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
 
@@ -14,17 +13,19 @@ class FastingPlan(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     # 计划类型
-    plan_type = Column(String(20), nullable=False, comment="16_8/5_2/basic_fasting")
+    plan_type = Column(String(20), nullable=False, comment="16_8 / 5_2 / basic_fasting")
+
+    # 目标与周期
     target_weight = Column(Numeric(5, 2), nullable=True)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=True)
 
     # 状态
-    status = Column(String(20), nullable=False, default="active", comment="active/paused/stopped/completed")
+    status = Column(String(20), nullable=False, default="active", comment="active / paused / stopped / completed")
 
     # 进食窗口
-    eating_window_start = Column(Time, nullable=False, default="08:00")
-    eating_window_end = Column(Time, nullable=False, default="16:00")
+    eating_window_start = Column(Time, nullable=False, default=func.time("08:00"))
+    eating_window_end = Column(Time, nullable=False, default=func.time("16:00"))
 
     # 安全确认
     disclaimer_accepted = Column(Boolean, nullable=False, default=False)
@@ -35,9 +36,6 @@ class FastingPlan(Base):
 
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
-
-    # 关系
-    checkins = relationship("FastingCheckin", back_populates="plan", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("idx_fasting_plans_user", "user_id"),
@@ -58,21 +56,18 @@ class FastingCheckin(Base):
 
     # 身体数据
     weight = Column(Numeric(5, 2), nullable=True)
-    feeling = Column(String(30), nullable=False, default="normal", comment="good/normal/tired/uncomfortable")
+    feeling = Column(String(30), nullable=False, default="normal", comment="good / normal / tired / uncomfortable")
 
     # 完成情况
     completed = Column(Boolean, nullable=False, default=False)
 
-    # 不适症状
+    # 不适症状（用于风险预警）
     discomfort = Column(JSONB, nullable=True)
 
     # 备注
     notes = Column(Text, nullable=True)
 
     created_at = Column(DateTime, nullable=False, default=func.now())
-
-    # 关系
-    plan = relationship("FastingPlan", back_populates="checkins")
 
     __table_args__ = (
         Index("idx_fasting_checkin_plan_date", "plan_id", "checkin_date", unique=True),

@@ -36,6 +36,15 @@ from agent.diet_deep_agent.tools.wellness_rag import (
     query_wellness_knowledge,
 )
 
+# Milestone 2: Fasting Advisor Skill
+from agent.diet_deep_agent.skills.fasting_advisor.fasting_advisor_skill import (
+    check_contraindications as fasting_check_contraindications,
+    generate_fasting_plan,
+    generate_checkin_feedback,
+    generate_refeed_guide,
+)
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,8 +61,8 @@ def create_diet_deep_agent(config: DietDeepConfig | None = None, use_custom_pers
         编译好的 Deep Agent 图（CompiledStateGraph）
     """
     config = config or DietDeepConfig()
-    load_dotenv(".env", override=True)
-    load_dotenv(".env.dev", override=True)
+    load_dotenv(".env", override=True, encoding="utf-8")
+    load_dotenv(".env.dev", override=True, encoding="utf-8")
 
     # 构建 LLM 实例（DashScope 使用 OpenAI 兼容接口）
     api_key = (
@@ -96,6 +105,12 @@ def create_diet_deep_agent(config: DietDeepConfig | None = None, use_custom_pers
         # 养生知识检索
         query_wellness_knowledge,
         get_current_season_wellness,
+        # M2: 断食/辟谷引导
+        fasting_check_contraindications,
+        generate_fasting_plan,
+        generate_checkin_feedback,
+        generate_refeed_guide,
+
         # 用户数据
         get_user_profile,
         get_diet_history,

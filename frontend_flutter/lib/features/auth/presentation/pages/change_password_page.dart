@@ -148,15 +148,15 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
                 AppInput(
                   controller: _newPasswordController,
                   label: '新密码',
-                  placeholder: '请输入新密码（至少6位）',
+                  placeholder: '请输入新密码（至少8位）',
                   prefixIcon: Icons.lock,
                   type: AppInputType.password,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return '请输入新密码';
                     }
-                    if (value.length < 6) {
-                      return '新密码至少6位字符';
+                    if (value.length < 8) {
+                      return '新密码至少8位字符';
                     }
                     if (value == _oldPasswordController.text) {
                       return '新密码不能与当前密码相同';
