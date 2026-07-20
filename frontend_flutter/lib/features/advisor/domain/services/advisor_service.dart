@@ -71,47 +71,24 @@ class AdvisorService {
   }
 
   /// 获取顾问风格模板列表
-  /// 返回所有可用的预设风格模板
+  /// GET /api/ai-advisor/templates
   Future<ApiResponse<List<Map<String, dynamic>>>> getStyleTemplates() async {
     try {
-      // 返回前端硬编码的预设模板（无需后端API）
-      const templates = [
-        {
-          'advisor_style': 'nutritionist',
-          'name': '注册营养师',
-          'description': '专业、数据驱动，专注于营养科学和膳食规划',
-          'focus_goal': 'balanced',
-          'focus_nutrient': 'calories',
-          'response_style': 'detailed',
-        },
-        {
-          'advisor_style': 'fitness_coach',
-          'name': '运动营养教练',
-          'description': '严格、激励，专注于运动营养和体能训练',
-          'focus_goal': 'muscle_gain',
-          'focus_nutrient': 'protein',
-          'response_style': 'concise',
-        },
-        {
-          'advisor_style': 'tcm_healer',
-          'name': '中医养生顾问',
-          'description': '温和、传统，专注于节气养生和体质调理',
-          'focus_goal': 'wellness',
-          'focus_nutrient': 'micronutrient',
-          'response_style': 'example_rich',
-        },
-        {
-          'advisor_style': 'encouraging_friend',
-          'name': '健康伙伴',
-          'description': '友善、温暖，专注于生活习惯和可持续改变',
-          'focus_goal': 'fat_loss',
-          'focus_nutrient': 'calories',
-          'response_style': 'detailed',
-        },
-      ];
-      return ApiResponse.success(
-        message: '获取风格模板成功',
-        data: templates.map((t) => Map<String, dynamic>.from(t)).toList(),
+      final response = await _apiService.get('/ai-advisor/templates');
+      if (response.isSuccess && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        final templates = data['templates'] as List<dynamic>?;
+        return ApiResponse.success(
+          message: response.message,
+          data: templates
+                  ?.map((t) => Map<String, dynamic>.from(t as Map))
+                  .toList() ??
+              [],
+        );
+      }
+      return ApiResponse.failure(
+        message: response.message,
+        error: '获取模板失败',
       );
     } catch (e) {
       return ApiResponse.failure(

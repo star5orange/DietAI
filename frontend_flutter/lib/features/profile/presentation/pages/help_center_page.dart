@@ -85,6 +85,33 @@ class HelpCenterPage extends StatelessWidget {
             question: '运动记录功能说明？',
             answer: '您可以手动添加运动记录，包括运动类型、时长和消耗热量。系统会综合饮食和运动数据计算每日热量平衡。',
           ),
+          const SizedBox(height: 24),
+          _buildSectionHeader('宠物健康管理'),
+          const SizedBox(height: 8),
+          _buildFAQItem(
+            icon: LucideIcons.cat,
+            question: '如何添加真实宠物？',
+            answer:
+                '进入"我的"→"我的宠物"，切换到「真实宠物」标签，点击"添加真实宠物"按钮，填写宠物名称、品种、年龄和体重等信息即可完成添加。',
+          ),
+          _buildFAQItem(
+            icon: LucideIcons.bone,
+            question: '如何记录宠物饮食？',
+            answer:
+                '进入宠物详情页的「饮食」标签，点击右下角 + 按钮，选择食品类型并填写克数即可记录。系统会自动计算热量、蛋白质和脂肪摄入。',
+          ),
+          _buildFAQItem(
+            icon: LucideIcons.sparkles,
+            question: '如何生成宠物专属形象？',
+            answer:
+                '在宠物详情页的「档案」标签中，点击"生成专属形象"按钮，选择风格并描述宠物外观特征（或上传照片），AI 将生成独一无二的卡通宠物形象。',
+          ),
+          _buildFAQItem(
+            icon: LucideIcons.clipboardCheck,
+            question: '宠物健康建议可靠吗？',
+            answer:
+                '宠物健康建议由 AI 生成，仅供参考。所有建议均包含兽医咨询免责声明。如果宠物出现呕吐、腹泻、不吃不喝超过 24 小时等症状，请立即就医。AI 不会提供药物推荐或诊断结论。',
+          ),
           const SizedBox(height: 32),
           Container(
             padding: const EdgeInsets.all(16),
@@ -95,7 +122,8 @@ class HelpCenterPage extends StatelessWidget {
             ),
             child: Column(
               children: [
-                Icon(LucideIcons.headphones, size: 32, color: AppColors.primary),
+                Icon(LucideIcons.headphones,
+                    size: 32, color: AppColors.primary),
                 const SizedBox(height: 12),
                 Text(
                   '还有其他问题？',

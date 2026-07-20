@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../shared/domain/models/user_model.dart';
@@ -28,14 +29,14 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
   final _weightController = TextEditingController();
   final _occupationController = TextEditingController();
   final _regionController = TextEditingController();
-  
+
   int? _selectedGender;
   String? _selectedBirthDate;
   int? _selectedActivityLevel;
   String? _selectedCrowdTag;
   bool _isLoading = false;
 
-  static const List<Map<String, dynamic>> _crowdTagOptions = [
+  static const List<Map<String, dynamic>> _fallbackCrowdTagOptions = [
     {'tag': '减脂', 'icon': LucideIcons.flame, 'color': Color(0xFFFF6B6B)},
     {'tag': '健身', 'icon': LucideIcons.dumbbell, 'color': Color(0xFF4ECDC4)},
     {'tag': '普通', 'icon': LucideIcons.scale, 'color': Color(0xFF2BAF74)},
@@ -44,10 +45,15 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
     {'tag': '慢病管理', 'icon': LucideIcons.heartPulse, 'color': Color(0xFF5B86E5)},
   ];
 
+  // 可被API更新的人群标签选项
+  List<Map<String, dynamic>> _crowdTagOptions =
+      List.from(_fallbackCrowdTagOptions);
+
   @override
   void initState() {
     super.initState();
     _initializeData();
+    _fetchCrowdTags();
   }
 
   void _initializeData() {
@@ -62,6 +68,50 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
       _selectedBirthDate = profile.birthDate;
       _selectedActivityLevel = profile.activityLevel;
       _selectedCrowdTag = profile.crowdTag;
+    }
+  }
+
+  Future<void> _fetchCrowdTags() async {
+    try {
+      final response = await ApiService().get('/users/crowd-tags');
+      if (response.success &&
+          response.data != null &&
+          response.data['items'] != null) {
+        final items = response.data['items'] as List;
+        final tagIcons = {
+          '减脂': LucideIcons.flame,
+          '健身': LucideIcons.dumbbell,
+          '普通': LucideIcons.scale,
+          '养生': LucideIcons.leaf,
+          '孕期': LucideIcons.baby,
+          '慢病管理': LucideIcons.heartPulse,
+        };
+        final tagColors = {
+          '减脂': const Color(0xFFFF6B6B),
+          '健身': const Color(0xFF4ECDC4),
+          '普通': const Color(0xFF2BAF74),
+          '养生': const Color(0xFF9C88FF),
+          '孕期': const Color(0xFFFFB6C1),
+          '慢病管理': const Color(0xFF5B86E5),
+        };
+        final updated = items.map((item) {
+          final tag = (item['tag'] ?? item['name'] ?? '').toString();
+          final colorHex = item['color'] as String?;
+          return {
+            'tag': tag,
+            'icon': tagIcons[tag] ?? LucideIcons.users,
+            'color': colorHex != null
+                ? Color(int.parse(colorHex.replaceFirst('#', '0xFF')))
+                : (tagColors[tag] ?? const Color(0xFF2BAF74)),
+          };
+        }).toList();
+
+        if (updated.isNotEmpty && mounted) {
+          setState(() => _crowdTagOptions = updated);
+        }
+      }
+    } catch (_) {
+      // API 失败，使用硬编码回退数据
     }
   }
 
@@ -117,7 +167,7 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
               ],
             ),
           ),
-          
+
           // 表单内容
           Expanded(
             child: SingleChildScrollView(
@@ -136,15 +186,15 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
                       prefixIcon: LucideIcons.user,
                     ),
                     const SizedBox(height: 16),
-                    
+
                     // 性别选择
                     _buildGenderSelector(),
                     const SizedBox(height: 16),
-                    
+
                     // 生日选择
                     _buildBirthDateSelector(),
                     const SizedBox(height: 24),
-                    
+
                     // 身体数据
                     _buildSectionTitle('身体数据'),
                     const SizedBox(height: 12),
@@ -159,7 +209,9 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
                             validator: (value) {
                               if (value?.isNotEmpty ?? false) {
                                 final height = double.tryParse(value!);
-                                if (height == null || height <= 0 || height > 300) {
+                                if (height == null ||
+                                    height <= 0 ||
+                                    height > 300) {
                                   return '请输入有效的身高';
                                 }
                               }
@@ -177,7 +229,9 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
                             validator: (value) {
                               if (value?.isNotEmpty ?? false) {
                                 final weight = double.tryParse(value!);
-                                if (weight == null || weight <= 0 || weight > 1000) {
+                                if (weight == null ||
+                                    weight <= 0 ||
+                                    weight > 1000) {
                                   return '请输入有效的体重';
                                 }
                               }
@@ -188,17 +242,17 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    
+
                     // 活动级别
                     _buildActivityLevelSelector(),
                     const SizedBox(height: 24),
-                    
+
                     // 人群标签
                     _buildSectionTitle('人群标签'),
                     const SizedBox(height: 12),
                     _buildCrowdTagSelector(),
                     const SizedBox(height: 24),
-                    
+
                     // 其他信息
                     _buildSectionTitle('其他信息'),
                     const SizedBox(height: 12),
@@ -265,7 +319,9 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
           decoration: BoxDecoration(
-            color: isSelected ? AppColors.primary.withValues(alpha: 0.1) : AppColors.backgroundSecondary,
+            color: isSelected
+                ? AppColors.primary.withValues(alpha: 0.1)
+                : AppColors.backgroundSecondary,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: isSelected ? AppColors.primary : AppColors.divider,
@@ -283,7 +339,8 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
               Text(
                 label,
                 style: AppTextStyles.bodyMedium.copyWith(
-                  color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                  color:
+                      isSelected ? AppColors.primary : AppColors.textSecondary,
                 ),
               ),
             ],
@@ -310,17 +367,21 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
             ),
             child: Row(
               children: [
-                const Icon(LucideIcons.calendar, size: 18, color: AppColors.textSecondary),
+                const Icon(LucideIcons.calendar,
+                    size: 18, color: AppColors.textSecondary),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     _selectedBirthDate?.split('T')[0] ?? '选择出生日期',
                     style: AppTextStyles.bodyMedium.copyWith(
-                      color: _selectedBirthDate != null ? AppColors.textPrimary : AppColors.textSecondary,
+                      color: _selectedBirthDate != null
+                          ? AppColors.textPrimary
+                          : AppColors.textSecondary,
                     ),
                   ),
                 ),
-                const Icon(LucideIcons.chevronRight, size: 16, color: AppColors.textTertiary),
+                const Icon(LucideIcons.chevronRight,
+                    size: 16, color: AppColors.textTertiary),
               ],
             ),
           ),
@@ -363,7 +424,9 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withValues(alpha: 0.1) : AppColors.backgroundSecondary,
+          color: isSelected
+              ? AppColors.primary.withValues(alpha: 0.1)
+              : AppColors.backgroundSecondary,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: isSelected ? AppColors.primary : AppColors.divider,
@@ -384,7 +447,9 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
                   Text(
                     title,
                     style: AppTextStyles.bodyMedium.copyWith(
-                      color: isSelected ? AppColors.primary : AppColors.textPrimary,
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.textPrimary,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -421,7 +486,9 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: isSelected ? color.withValues(alpha: 0.1) : AppColors.backgroundSecondary,
+              color: isSelected
+                  ? color.withValues(alpha: 0.1)
+                  : AppColors.backgroundSecondary,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: isSelected ? color : AppColors.divider,
@@ -431,7 +498,9 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 16, color: isSelected ? color : AppColors.textSecondary),
+                Icon(icon,
+                    size: 16,
+                    color: isSelected ? color : AppColors.textSecondary),
                 const SizedBox(width: 6),
                 Text(
                   tag,
@@ -452,13 +521,13 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
   Future<void> _selectBirthDate() async {
     final selectedDate = await showDatePicker(
       context: context,
-      initialDate: _selectedBirthDate != null 
+      initialDate: _selectedBirthDate != null
           ? DateTime.parse(_selectedBirthDate!)
           : DateTime(1990),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
     );
-    
+
     if (selectedDate != null) {
       setState(() {
         _selectedBirthDate = selectedDate.toIso8601String();
@@ -475,19 +544,31 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
 
     try {
       final request = UserProfileUpdateRequest(
-        realName: _realNameController.text.trim().isEmpty ? null : _realNameController.text.trim(),
+        realName: _realNameController.text.trim().isEmpty
+            ? null
+            : _realNameController.text.trim(),
         gender: _selectedGender,
         birthDate: _selectedBirthDate?.split('T')[0],
-        height: _heightController.text.trim().isEmpty ? null : double.tryParse(_heightController.text),
-        weight: _weightController.text.trim().isEmpty ? null : double.tryParse(_weightController.text),
+        height: _heightController.text.trim().isEmpty
+            ? null
+            : double.tryParse(_heightController.text),
+        weight: _weightController.text.trim().isEmpty
+            ? null
+            : double.tryParse(_weightController.text),
         activityLevel: _selectedActivityLevel,
         crowdTag: _selectedCrowdTag,
-        occupation: _occupationController.text.trim().isEmpty ? null : _occupationController.text.trim(),
-        region: _regionController.text.trim().isEmpty ? null : _regionController.text.trim(),
+        occupation: _occupationController.text.trim().isEmpty
+            ? null
+            : _occupationController.text.trim(),
+        region: _regionController.text.trim().isEmpty
+            ? null
+            : _regionController.text.trim(),
       );
 
-      final success = await ref.read(userProfileProvider.notifier).updateUserProfile(request);
-      
+      final success = await ref
+          .read(userProfileProvider.notifier)
+          .updateUserProfile(request);
+
       if (success) {
         if (mounted) {
           Navigator.pop(context);

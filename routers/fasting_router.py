@@ -18,6 +18,37 @@ from shared.services.fasting_service import (
 router = APIRouter(prefix="/fasting", tags=["轻断食"])
 
 
+@router.get("/plan-types", response_model=BaseResponse)
+async def get_plan_types():
+    """获取轻断食计划类型列表
+
+    返回 3 种断食计划类型及说明
+    """
+    types = [
+        {
+            "id": "16_8",
+            "name": "16:8 轻断食",
+            "description": "每日禁食16小时，进食8小时",
+        },
+        {
+            "id": "5_2",
+            "name": "5:2 轻断食",
+            "description": "每周5天正常吃，2天低热量",
+        },
+        {
+            "id": "basic_fasting",
+            "name": "基础断食",
+            "description": "每周1-2天24小时断食",
+        },
+    ]
+
+    return BaseResponse(
+        success=True,
+        message="获取计划类型成功",
+        data={"items": types},
+    )
+
+
 # ========== 请求模型 ==========
 
 class HealthAssessment(BaseModel):

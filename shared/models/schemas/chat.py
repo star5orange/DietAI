@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 class ConversationSessionCreate(BaseModel):
-    session_type: int = Field(1, ge=1, le=4, description="会话类型：1营养咨询2健康评估3食物识别4运动建议")
+    session_type: int = Field(1, ge=1, le=6, description="会话类型：1营养咨询2健康评估3食物识别4运动建议5养生咨询6宠物健康")
     title: Optional[str] = Field(None, max_length=200, description="会话标题")
 
 

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../shared/domain/models/health_goals_model.dart';
 import '../providers/health_goals_provider.dart';
 
@@ -23,12 +24,21 @@ class CreateGoalModal extends ConsumerStatefulWidget {
 class _CreateGoalModalState extends ConsumerState<CreateGoalModal> {
   final _formKey = GlobalKey<FormState>();
   final _targetWeightController = TextEditingController();
+  final ApiService _apiService = ApiService();
 
   int _selectedGoalType = 1;
   DateTime? _targetDate;
   bool _isLoading = false;
 
-  final List<Map<String, dynamic>> _goalTypes = [
+  static const Map<int, String> _goalTypeIcons = {
+    1: '⬇️',
+    2: '⬆️',
+    3: '⚖️',
+    4: '💪',
+    5: '🔥',
+  };
+
+  List<Map<String, dynamic>> _goalTypes = [
     {'id': 1, 'name': '减重', 'icon': '⬇️', 'description': '减少体重，塑造完美身材'},
     {'id': 2, 'name': '增重', 'icon': '⬆️', 'description': '健康增重，改善体质'},
     {'id': 3, 'name': '维持体重', 'icon': '⚖️', 'description': '保持当前体重，维持健康状态'},
@@ -49,6 +59,33 @@ class _CreateGoalModalState extends ConsumerState<CreateGoalModal> {
       if (widget.existingGoal!.targetDate != null) {
         _targetDate = DateTime.parse(widget.existingGoal!.targetDate!);
       }
+    }
+    _fetchGoalTypes();
+  }
+
+  Future<void> _fetchGoalTypes() async {
+    try {
+      final response = await _apiService.get('/goals/types');
+      if (response.success && response.data != null) {
+        final items = response.data['items'] as List<dynamic>?;
+        if (items != null && mounted) {
+          setState(() {
+            _goalTypes = items.map((item) {
+              final id = (item['id'] as num).toInt();
+              final name = item['name'] as String;
+              final description = item['description'] as String? ?? '';
+              return {
+                'id': id,
+                'name': name,
+                'icon': _goalTypeIcons[id] ?? '🎯',
+                'description': description,
+              };
+            }).toList();
+          });
+        }
+      }
+    } catch (_) {
+      // Silently fallback to hardcoded data
     }
   }
 

@@ -111,12 +111,6 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(LucideIcons.plus),
-            onPressed: () => _showAddExerciseModal(),
-          ),
-        ],
       ),
       body: Column(
         children: [

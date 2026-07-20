@@ -12,12 +12,14 @@ class ChatPage extends ConsumerStatefulWidget {
   final int? sessionId;
   final int sessionType;
   final String? title;
+  final bool hideAppBar;
 
   const ChatPage({
     super.key,
     this.sessionId,
     this.sessionType = 1,
     this.title,
+    this.hideAppBar = false,
   });
 
   @override
@@ -37,11 +39,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   String _currentStyleName = '获取中...';
 
   final Map<String, String> _styleLabels = {
-    'nutritionist': '专业营养师',
+    'nutritionist': '营养师',
     'fitness_coach': '健身教练',
     'tcm_healer': '中医养生师',
-    'encouraging_friend': '鼓励伙伴',
-    'motivator': '励志伙伴',
+    'encouraging_friend': '鼓励型伙伴',
   };
 
   @override
@@ -58,12 +59,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       final settings = await advisorService.getSettings();
       if (mounted) {
         setState(() {
-          _currentStyleName = _styleLabels[settings.advisorStyle] ?? '专业营养师';
+          _currentStyleName = _styleLabels[settings.advisorStyle] ?? '营养师';
         });
       }
     } catch (_) {
       if (mounted) {
-        setState(() => _currentStyleName = '专业营养师');
+        setState(() => _currentStyleName = '营养师');
       }
     }
   }
@@ -306,6 +307,22 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
+    final body = Column(
+      children: [
+        Expanded(
+          child: _buildMessageList(),
+        ),
+        _buildInputArea(),
+      ],
+    );
+
+    if (widget.hideAppBar) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF5F7F6),
+        body: body,
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
       appBar: AppBar(
@@ -384,14 +401,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: _buildMessageList(),
-          ),
-          _buildInputArea(),
-        ],
-      ),
+      body: body,
     );
   }
 
@@ -461,6 +471,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         welcomeText = '作为您的运动顾问，我可以为您制定个性化的运动计划和建议。有什么运动相关的问题吗？';
         welcomeIcon = Icons.fitness_center;
         break;
+      case 5:
+        welcomeText = '欢迎来到养生咨询！我可以根据您的体质和当前节气，为您提供个性化的养生调理建议。';
+        welcomeIcon = Icons.spa;
+        break;
+      case 6:
+        welcomeText = '您好！我是您的宠物健康顾问，可以帮您分析宠物的饮食、体重、疫苗等健康数据。请告诉我您的宠物情况吧！';
+        welcomeIcon = Icons.pets;
+        break;
       default:
         welcomeText = '您好！我是DietAI智能助手，随时为您提供健康和营养方面的帮助。有什么可以为您服务的吗？';
         welcomeIcon = Icons.smart_toy;
@@ -526,6 +544,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         break;
       case 4:
         suggestions = ['制定运动计划', '什么运动适合减脂？', '如何提高运动效果？'];
+        break;
+      case 5:
+        suggestions = ['我是什么体质？', '当前节气如何养生？', '推荐适合我的药膳茶饮'];
+        break;
+      case 6:
+        suggestions = ['我家猫的饮食健康吗？', '宠物体重管理建议', '宠物疫苗接种计划', '推荐适合的宠物食品'];
         break;
       default:
         suggestions = ['了解我的健康状况', '制定饮食计划', '运动建议'];

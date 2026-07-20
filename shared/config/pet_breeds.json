@@ -1,0 +1,27 @@
+{
+  "species": {
+    "cat": {
+      "label": "猫",
+      "breeds": [
+        {"name": "英国短毛猫", "avg_weight_kg": {"male": 5.5, "female": 4.5}, "daily_calories_per_kg": 50},
+        {"name": "布偶猫", "avg_weight_kg": {"male": 7.0, "female": 5.5}, "daily_calories_per_kg": 45},
+        {"name": "暹罗猫", "avg_weight_kg": {"male": 4.5, "female": 3.5}, "daily_calories_per_kg": 55},
+        {"name": "中华田园猫", "avg_weight_kg": {"male": 5.0, "female": 4.0}, "daily_calories_per_kg": 50},
+        {"name": "橘猫", "avg_weight_kg": {"male": 6.0, "female": 5.0}, "daily_calories_per_kg": 48},
+        {"name": "美短", "avg_weight_kg": {"male": 5.5, "female": 4.5}, "daily_calories_per_kg": 50},
+        {"name": "波斯猫", "avg_weight_kg": {"male": 5.0, "female": 4.0}, "daily_calories_per_kg": 45},
+        {"name": "无毛猫", "avg_weight_kg": {"male": 4.0, "female": 3.0}, "daily_calories_per_kg": 60}
+      ]
+    },
+    "dog": {
+      "label": "狗",
+      "breeds": [
+        {"name": "泰迪", "avg_weight_kg": {"male": 4.5, "female": 3.5}, "daily_calories_per_kg": 55},
+        {"name": "柯基", "avg_weight_kg": {"male": 12.0, "female": 10.0}, "daily_calories_per_kg": 40},
+        {"name": "金毛", "avg_weight_kg": {"male": 32.0, "female": 27.0}, "daily_calories_per_kg": 35},
+        {"name": "柴犬", "avg_weight_kg": {"male": 10.0, "female": 8.0}, "daily_calories_per_kg": 45},
+        {"name": "哈士奇", "avg_weight_kg": {"male": 23.0, "female": 19.0}, "daily_calories_per_kg": 40}
+      ]
+    }
+  }
+}

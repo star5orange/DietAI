@@ -3,6 +3,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../core/themes/app_colors.dart';
 import '../../../core/themes/app_text_styles.dart';
+import '../../../services/wellness_service.dart';
 
 /// 节气日历联动 - 今日养生组件
 /// 根据当前日期自动判断节气，展示对应的养生建议
@@ -76,13 +77,34 @@ class SolarTermTodayWidget extends StatefulWidget {
 
 class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
   Map<String, dynamic>? _currentTerm;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _currentTerm = _getCurrentSolarTerm();
+    _loadCurrentSolarTerm();
   }
 
+  Future<void> _loadCurrentSolarTerm() async {
+    try {
+      final service = WellnessService();
+      final result = await service.getCurrentSolarTerm();
+      if (result.isSuccess && result.data != null && mounted) {
+        setState(() {
+          _currentTerm = result.data;
+          _isLoading = false;
+        });
+        return;
+      }
+    } catch (_) {}
+    // API 失败，fallback 到本地硬编码节气数据
+    if (mounted) {
+      setState(() {
+        _currentTerm = _getCurrentSolarTerm();
+        _isLoading = false;
+      });
+    }
+  }
 
   Map<String, dynamic> _getCurrentSolarTerm() {
     final now = DateTime.now();
@@ -125,7 +147,6 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
     };
   }
 
-
   Color _seasonColor(String season) {
     switch (season) {
       case '春':
@@ -158,14 +179,19 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) return const SizedBox.shrink();
     if (_currentTerm == null) return const SizedBox.shrink();
 
-    final name = _currentTerm!['name'] as String;
-    final season = _currentTerm!['season'] as String;
-    final principle = _currentTerm!['principle'] as String;
-    final foods = _currentTerm!['foods'] as String;
-    final avoid = _currentTerm!['avoid'] as String;
-    final next = _currentTerm!['next'] as String;
+    final name = (_currentTerm!['name'] as String?) ?? '';
+    final season = (_currentTerm!['season'] as String?) ?? '';
+    final principle = (_currentTerm!['principle'] as String?) ??
+        (_currentTerm!['wellness'] as String?) ??
+        '';
+    final foods = (_currentTerm!['foods'] as String?) ?? '';
+    final avoid = (_currentTerm!['avoid'] as String?) ?? '';
+    final next = (_currentTerm!['next'] as String?) ??
+        (_currentTerm!['next_term'] as String?) ??
+        '';
     final color = _seasonColor(season);
 
     // 根据人群标签差异化推荐食物和忌食

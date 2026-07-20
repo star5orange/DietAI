@@ -14,6 +14,35 @@ from typing import List, Optional
 router = APIRouter(prefix="/api/exercises", tags=["exercises"])
 
 
+@router.get("/types", response_model=BaseResponse)
+async def get_exercise_types():
+    """获取运动类型列表
+
+    返回所有支持的运动类型及其中文名称
+    """
+    types = [
+        {"id": "running", "name": "跑步"},
+        {"id": "walking", "name": "步行"},
+        {"id": "cycling", "name": "骑行"},
+        {"id": "swimming", "name": "游泳"},
+        {"id": "yoga", "name": "瑜伽"},
+        {"id": "strength", "name": "力量训练"},
+        {"id": "hiit", "name": "HIIT"},
+        {"id": "dance", "name": "舞蹈"},
+        {"id": "basketball", "name": "篮球"},
+        {"id": "football", "name": "足球"},
+        {"id": "badminton", "name": "羽毛球"},
+        {"id": "tennis", "name": "网球"},
+        {"id": "other", "name": "其他"},
+    ]
+
+    return BaseResponse(
+        success=True,
+        message="获取运动类型成功",
+        data={"items": types},
+    )
+
+
 def _record_to_dict(record) -> dict:
     """将 ExerciseRecord ORM 对象转为可序列化的 dict"""
     return {

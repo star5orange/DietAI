@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../shared/domain/models/user_model.dart';
 import '../../../../shared/presentation/widgets/app_button.dart';
 import '../../../../shared/presentation/widgets/app_input.dart';
@@ -32,7 +33,7 @@ class _HealthGoalsSheetState extends ConsumerState<HealthGoalsSheet> {
   @override
   Widget build(BuildContext context) {
     final healthGoalsAsync = ref.watch(healthGoalsProvider);
-    
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.8,
       decoration: const BoxDecoration(
@@ -43,7 +44,7 @@ class _HealthGoalsSheetState extends ConsumerState<HealthGoalsSheet> {
         children: [
           // 头部
           _buildHeader(),
-          
+
           // 内容
           Expanded(
             child: _isAddingGoal
@@ -114,12 +115,14 @@ class _HealthGoalsSheetState extends ConsumerState<HealthGoalsSheet> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(LucideIcons.alertCircle, size: 48, color: AppColors.error),
+            const Icon(LucideIcons.alertCircle,
+                size: 48, color: AppColors.error),
             const SizedBox(height: 16),
             Text('加载失败: $error'),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () => ref.read(healthGoalsProvider.notifier).loadHealthGoals(),
+              onPressed: () =>
+                  ref.read(healthGoalsProvider.notifier).loadHealthGoals(),
               child: const Text('重试'),
             ),
           ],
@@ -129,27 +132,37 @@ class _HealthGoalsSheetState extends ConsumerState<HealthGoalsSheet> {
         if (goals.isEmpty) {
           return _buildEmptyState();
         }
-        
+
         return SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 进行中的目标
-              if (ref.read(healthGoalsProvider.notifier).activeGoals.isNotEmpty) ...[
+              if (ref
+                  .read(healthGoalsProvider.notifier)
+                  .activeGoals
+                  .isNotEmpty) ...[
                 _buildSectionTitle('进行中的目标'),
                 const SizedBox(height: 12),
-                ...ref.read(healthGoalsProvider.notifier).activeGoals
+                ...ref
+                    .read(healthGoalsProvider.notifier)
+                    .activeGoals
                     .map((goal) => _buildGoalCard(goal))
                     .toList(),
                 const SizedBox(height: 24),
               ],
-              
+
               // 已完成的目标
-              if (ref.read(healthGoalsProvider.notifier).completedGoals.isNotEmpty) ...[
+              if (ref
+                  .read(healthGoalsProvider.notifier)
+                  .completedGoals
+                  .isNotEmpty) ...[
                 _buildSectionTitle('已完成的目标'),
                 const SizedBox(height: 12),
-                ...ref.read(healthGoalsProvider.notifier).completedGoals
+                ...ref
+                    .read(healthGoalsProvider.notifier)
+                    .completedGoals
                     .map((goal) => _buildGoalCard(goal))
                     .toList(),
               ],
@@ -165,7 +178,8 @@ class _HealthGoalsSheetState extends ConsumerState<HealthGoalsSheet> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(LucideIcons.target, size: 64, color: AppColors.textSecondary),
+          const Icon(LucideIcons.target,
+              size: 64, color: AppColors.textSecondary),
           const SizedBox(height: 16),
           Text(
             '暂无健康目标',
@@ -229,7 +243,8 @@ class _HealthGoalsSheetState extends ConsumerState<HealthGoalsSheet> {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Icon(LucideIcons.target, size: 16, color: AppColors.textSecondary),
+                const Icon(LucideIcons.target,
+                    size: 16, color: AppColors.textSecondary),
                 const SizedBox(width: 8),
                 Text(
                   '目标体重: ${goal.targetWeight}kg',
@@ -244,7 +259,8 @@ class _HealthGoalsSheetState extends ConsumerState<HealthGoalsSheet> {
             const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(LucideIcons.calendar, size: 16, color: AppColors.textSecondary),
+                const Icon(LucideIcons.calendar,
+                    size: 16, color: AppColors.textSecondary),
                 const SizedBox(width: 8),
                 Text(
                   '目标日期: ${goal.targetDate!.split('T')[0]}',
@@ -277,8 +293,10 @@ class _HealthGoalsSheetState extends ConsumerState<HealthGoalsSheet> {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () => _confirmDeleteGoal(goal),
-                  icon: const Icon(LucideIcons.trash2, size: 16, color: AppColors.error),
-                  label: const Text('删除', style: TextStyle(color: AppColors.error)),
+                  icon: const Icon(LucideIcons.trash2,
+                      size: 16, color: AppColors.error),
+                  label: const Text('删除',
+                      style: TextStyle(color: AppColors.error)),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     side: const BorderSide(color: AppColors.error),
@@ -295,7 +313,7 @@ class _HealthGoalsSheetState extends ConsumerState<HealthGoalsSheet> {
   Widget _buildStatusChip(int status) {
     Color color;
     String text;
-    
+
     switch (status) {
       case 1:
         color = AppColors.primary;
@@ -317,7 +335,7 @@ class _HealthGoalsSheetState extends ConsumerState<HealthGoalsSheet> {
         color = AppColors.textSecondary;
         text = '未知';
     }
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -389,12 +407,21 @@ class _AddGoalForm extends ConsumerStatefulWidget {
 class _AddGoalFormState extends ConsumerState<_AddGoalForm> {
   final _formKey = GlobalKey<FormState>();
   final _targetWeightController = TextEditingController();
+  final ApiService _apiService = ApiService();
 
   int _selectedGoalType = 1;
   String? _selectedTargetDate;
   bool _isLoading = false;
 
-  final List<Map<String, dynamic>> _goalTypes = [
+  static const Map<int, IconData> _goalTypeIcons = {
+    1: LucideIcons.trendingDown,
+    2: LucideIcons.trendingUp,
+    3: LucideIcons.minus,
+    4: LucideIcons.dumbbell,
+    5: LucideIcons.flame,
+  };
+
+  List<Map<String, dynamic>> _goalTypes = [
     {'value': 1, 'label': '减重', 'icon': LucideIcons.trendingDown},
     {'value': 2, 'label': '增重', 'icon': LucideIcons.trendingUp},
     {'value': 3, 'label': '维持', 'icon': LucideIcons.minus},
@@ -416,6 +443,31 @@ class _AddGoalFormState extends ConsumerState<_AddGoalForm> {
       if (goal.targetDate != null) {
         _selectedTargetDate = goal.targetDate;
       }
+    }
+    _fetchGoalTypes();
+  }
+
+  Future<void> _fetchGoalTypes() async {
+    try {
+      final response = await _apiService.get('/goals/types');
+      if (response.success && response.data != null) {
+        final items = response.data['items'] as List<dynamic>?;
+        if (items != null && mounted) {
+          setState(() {
+            _goalTypes = items.map((item) {
+              final id = (item['id'] as num).toInt();
+              final name = item['name'] as String;
+              return {
+                'value': id,
+                'label': name,
+                'icon': _goalTypeIcons[id] ?? LucideIcons.target,
+              };
+            }).toList();
+          });
+        }
+      }
+    } catch (_) {
+      // Silently fallback to hardcoded data
     }
   }
 
@@ -544,15 +596,13 @@ class _AddGoalFormState extends ConsumerState<_AddGoalForm> {
               Icon(
                 isSelected ? LucideIcons.checkCircle : LucideIcons.circle,
                 size: 20,
-                color:
-                    isSelected ? AppColors.primary : AppColors.textSecondary,
+                color: isSelected ? AppColors.primary : AppColors.textSecondary,
               ),
               const SizedBox(width: 12),
               Icon(
                 icon,
                 size: 20,
-                color:
-                    isSelected ? AppColors.primary : AppColors.textSecondary,
+                color: isSelected ? AppColors.primary : AppColors.textSecondary,
               ),
               const SizedBox(width: 12),
               Text(
@@ -649,8 +699,7 @@ class _AddGoalFormState extends ConsumerState<_AddGoalForm> {
           widget.onSuccess?.call();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content:
-                  Text(_isEditing ? '健康目标更新成功' : '健康目标创建成功'),
+              content: Text(_isEditing ? '健康目标更新成功' : '健康目标创建成功'),
               backgroundColor: AppColors.success,
             ),
           );

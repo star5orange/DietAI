@@ -78,6 +78,10 @@ class UserProfile {
   final String? constitutionType;
   @JsonKey(name: 'crowd_tag')
   final String? crowdTag;
+  @JsonKey(name: 'daily_water_goal')
+  final int? dailyWaterGoal;
+  @JsonKey(name: 'target_calories')
+  final int? targetCalories;
   @JsonKey(name: 'created_at')
   final String createdAt;
   @JsonKey(name: 'updated_at')
@@ -105,6 +109,8 @@ class UserProfile {
     this.onboardingStep,
     this.constitutionType,
     this.crowdTag,
+    this.dailyWaterGoal,
+    this.targetCalories,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -136,6 +142,8 @@ class UserProfile {
     int? onboardingStep,
     String? constitutionType,
     String? crowdTag,
+    int? dailyWaterGoal,
+    int? targetCalories,
     String? createdAt,
     String? updatedAt,
   }) {
@@ -161,6 +169,8 @@ class UserProfile {
       onboardingStep: onboardingStep ?? this.onboardingStep,
       constitutionType: constitutionType ?? this.constitutionType,
       crowdTag: crowdTag ?? this.crowdTag,
+      dailyWaterGoal: dailyWaterGoal ?? this.dailyWaterGoal,
+      targetCalories: targetCalories ?? this.targetCalories,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -349,6 +359,10 @@ class UserProfileUpdateRequest {
   final String? constitutionType;
   @JsonKey(name: 'crowd_tag')
   final String? crowdTag;
+  @JsonKey(name: 'daily_water_goal')
+  final int? dailyWaterGoal;
+  @JsonKey(name: 'target_calories')
+  final int? targetCalories;
 
   const UserProfileUpdateRequest({
     this.realName,
@@ -367,6 +381,8 @@ class UserProfileUpdateRequest {
     this.healthStatus,
     this.constitutionType,
     this.crowdTag,
+    this.dailyWaterGoal,
+    this.targetCalories,
   });
 
   factory UserProfileUpdateRequest.fromJson(Map<String, dynamic> json) =>

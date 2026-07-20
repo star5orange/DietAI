@@ -3,6 +3,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
+import '../../../../core/services/api_service.dart';
 
 /// 消费输入组件
 /// 用于在记录食物时输入消费金额和来源
@@ -25,9 +26,10 @@ class CostInputWidget extends StatefulWidget {
 class _CostInputWidgetState extends State<CostInputWidget> {
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _sourceController = TextEditingController();
+  final ApiService _apiService = ApiService();
   bool _showCostInput = false;
 
-  final List<String> _commonSources = ['外卖', '食堂', '餐厅', '自制', '便利店', '其他'];
+  List<String> _commonSources = ['外卖', '食堂', '餐厅', '自制', '便利店', '其他'];
 
   @override
   void initState() {
@@ -38,6 +40,25 @@ class _CostInputWidgetState extends State<CostInputWidget> {
     }
     if (widget.initialSource != null) {
       _sourceController.text = widget.initialSource!;
+    }
+    _fetchSources();
+  }
+
+  Future<void> _fetchSources() async {
+    try {
+      final response = await _apiService.get('/foods/source-tags');
+      if (response.success && response.data != null) {
+        final items = response.data['items'] as List<dynamic>?;
+        if (items != null && mounted) {
+          setState(() {
+            _commonSources = items
+                .map((item) => (item['label'] ?? item['value']).toString())
+                .toList();
+          });
+        }
+      }
+    } catch (_) {
+      // Silently fallback to hardcoded data
     }
   }
 

@@ -127,7 +127,8 @@ def analyze_conversation_context(state: ChatState) -> ChatState:
             2: "健康评估 - 专注于健康状况分析、指标评估、改善建议", 
             3: "食物识别 - 专注于食物识别、营养成分分析",
             4: "运动建议 - 专注于运动计划、健身指导、运动营养",
-            5: "养生咨询 - 专注于节气养生、体质调理、药膳茶饮、起居建议"
+            5: "养生咨询 - 专注于节气养生、体质调理、药膳茶饮、起居建议",
+            6: "宠物健康咨询 - 专注于宠物饮食管理、体重控制、疫苗接种、日常护理建议"
         }
         
         context_analysis = f"会话类型: {session_type_context.get(state['session_type'], '通用咨询')}"
@@ -139,7 +140,16 @@ def analyze_conversation_context(state: ChatState) -> ChatState:
             context_analysis += f"\n人群标签: {state['crowd_tag']}"
         if state.get('constitution_type'):
             context_analysis += f"\n体质类型: {state['constitution_type']}"
-        
+
+        # 宠物健康咨询：注入安全守则和免责声明
+        if state['session_type'] == 6:
+            context_analysis += (
+                "\n\n【安全守则 - 必须严格遵守】"
+                "\n1. 遇到以下症状，必须建议立即就医：呕吐、腹泻超过24小时、不吃不喝超过24小时、精神萎靡、抽搐、呼吸困难、外伤出血、中毒"
+                "\n2. 不可给出诊断结论、药物推荐或治疗方案"
+                "\n3. 每次回答末尾必须附带免责声明：「⚠️ 我是AI助手，建议仅供参考。宠物健康问题请咨询专业兽医。」"
+            )
+
         # 注入当前节气信息（养生咨询时特别有用）
         if state.get('session_type') == 5:
             from agent.common_utils.solar_term_utils import get_current_solar_term
@@ -315,6 +325,14 @@ def generate_suggestions_by_type(session_type: int, user_message: str) -> List[s
                 "推荐养生药膳和茶饮",
                 "获取起居作息建议"
             ]
+
+    elif session_type == 6:  # 宠物健康咨询
+        return [
+            "查看宠物今日饮食分析",
+            "获取宠物体重管理建议",
+            "了解宠物疫苗接种计划",
+            "推荐适合的宠物食品",
+        ]
     
     else:
         return [

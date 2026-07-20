@@ -34,6 +34,9 @@ class FastingPlan(Base):
     # 禁忌筛查结果
     health_assessment = Column(JSONB, nullable=True)
 
+    # 断食日配置
+    fasting_days = Column(JSONB, nullable=True, comment="断食日列表，如[0,2]表示周一、周三")
+
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
@@ -66,6 +69,9 @@ class FastingCheckin(Base):
 
     # 备注
     notes = Column(Text, nullable=True)
+
+    # 断食日标记
+    is_fasting_day = Column(Boolean, nullable=False, default=True, comment="当天是否是断食日")
 
     created_at = Column(DateTime, nullable=False, default=func.now())
 

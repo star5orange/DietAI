@@ -185,6 +185,33 @@ async def add_exp(
         )
 
 
+@router.get("/breeds", response_model=BaseResponse)
+async def get_breeds(species: Optional[str] = Query(None, description="物种: cat/dog, 不传则返回全部")):
+    """获取猫狗品种列表
+
+    可传入 species 参数筛选: cat / dog，不传则返回全部
+    """
+    cat_breeds = [
+        "橘猫", "英短（英国短毛猫）", "布偶猫", "暹罗猫",
+        "美短（美国短毛猫）", "波斯猫", "缅因猫", "金吉拉",
+        "中华田园猫", "狸花猫", "玄猫", "三花猫", "混血（串串）", "其他",
+    ]
+    dog_breeds = [
+        "泰迪（贵宾犬）", "柯基", "金毛", "拉布拉多", "哈士奇", "博美",
+        "比熊", "萨摩耶", "边境牧羊犬", "德国牧羊犬", "雪纳瑞",
+        "法斗（法国斗牛犬）", "柴犬", "中华田园犬", "混血（串串）", "其他",
+    ]
+
+    if species == "cat":
+        data = {"cat": cat_breeds}
+    elif species == "dog":
+        data = {"dog": dog_breeds}
+    else:
+        data = {"cat": cat_breeds, "dog": dog_breeds}
+
+    return BaseResponse(success=True, message="获取品种列表成功", data=data)
+
+
 @router.get("/growth", response_model=BaseResponse)
 async def pet_growth(
     start_date: Optional[str] = Query(None, description="开始日期 YYYY-MM-DD"),

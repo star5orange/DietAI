@@ -9,7 +9,7 @@ class ChatState(TypedDict):
     # 输入信息
     user_message: str
     session_id: Optional[str]
-    session_type: int  # 1:营养咨询 2:健康评估 3:食物识别 4:运动建议 5:养生咨询
+    session_type: int  # 1:营养咨询 2:健康评估 3:食物识别 4:运动建议 5:养生咨询 6:宠物健康
     user_id: int
     
     # 上下文信息

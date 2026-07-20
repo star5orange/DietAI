@@ -28,6 +28,91 @@ from shared.utils.model import decimal_to_float
 
 settings = get_settings()
 
+# 食物营养成分数据库（每100g）
+# 从前端 _foodNutritionDB 迁移至后端统一管理
+_NUTRITION_DB = {
+    '米饭': {'calories': 116, 'protein': 2.6, 'fat': 0.3, 'carbs': 25.9},
+    '白米饭': {'calories': 116, 'protein': 2.6, 'fat': 0.3, 'carbs': 25.9},
+    '馒头': {'calories': 221, 'protein': 7.0, 'fat': 1.1, 'carbs': 47.0},
+    '面条': {'calories': 110, 'protein': 3.5, 'fat': 0.5, 'carbs': 23.0},
+    '面包': {'calories': 312, 'protein': 8.3, 'fat': 5.1, 'carbs': 58.6},
+    '饺子': {'calories': 196, 'protein': 7.8, 'fat': 6.5, 'carbs': 26.0},
+    '包子': {'calories': 174, 'protein': 6.4, 'fat': 4.5, 'carbs': 27.0},
+    '粥': {'calories': 46, 'protein': 1.1, 'fat': 0.3, 'carbs': 9.8},
+    '白粥': {'calories': 46, 'protein': 1.1, 'fat': 0.3, 'carbs': 9.8},
+    '鸡蛋': {'calories': 144, 'protein': 13.3, 'fat': 8.8, 'carbs': 2.8},
+    '煮鸡蛋': {'calories': 144, 'protein': 13.3, 'fat': 8.8, 'carbs': 2.8},
+    '煎蛋': {'calories': 199, 'protein': 14.1, 'fat': 15.2, 'carbs': 1.2},
+    '牛奶': {'calories': 54, 'protein': 3.0, 'fat': 3.2, 'carbs': 3.4},
+    '豆浆': {'calories': 31, 'protein': 3.0, 'fat': 1.6, 'carbs': 1.2},
+    '酸奶': {'calories': 72, 'protein': 2.5, 'fat': 2.7, 'carbs': 9.3},
+    '鸡胸肉': {'calories': 133, 'protein': 19.4, 'fat': 5.0, 'carbs': 2.5},
+    '鸡腿': {'calories': 181, 'protein': 16.0, 'fat': 13.0, 'carbs': 0},
+    '鸡翅': {'calories': 194, 'protein': 17.4, 'fat': 13.6, 'carbs': 0},
+    '红烧肉': {'calories': 337, 'protein': 13.2, 'fat': 30.5, 'carbs': 4.2},
+    '排骨': {'calories': 264, 'protein': 16.7, 'fat': 20.4, 'carbs': 3.5},
+    '牛肉': {'calories': 125, 'protein': 19.9, 'fat': 4.2, 'carbs': 2.0},
+    '猪肉': {'calories': 143, 'protein': 20.3, 'fat': 6.2, 'carbs': 1.5},
+    '羊肉': {'calories': 118, 'protein': 20.5, 'fat': 3.9, 'carbs': 0},
+    '鱼': {'calories': 104, 'protein': 17.6, 'fat': 3.3, 'carbs': 0},
+    '三文鱼': {'calories': 139, 'protein': 17.2, 'fat': 7.8, 'carbs': 0},
+    '虾': {'calories': 87, 'protein': 16.4, 'fat': 2.4, 'carbs': 0},
+    '豆腐': {'calories': 81, 'protein': 8.1, 'fat': 3.7, 'carbs': 4.2},
+    '蔬菜': {'calories': 23, 'protein': 1.5, 'fat': 0.3, 'carbs': 3.5},
+    '白菜': {'calories': 18, 'protein': 1.5, 'fat': 0.2, 'carbs': 2.8},
+    '西兰花': {'calories': 36, 'protein': 4.1, 'fat': 0.6, 'carbs': 4.3},
+    '番茄': {'calories': 15, 'protein': 0.9, 'fat': 0.2, 'carbs': 2.5},
+    '西红柿': {'calories': 15, 'protein': 0.9, 'fat': 0.2, 'carbs': 2.5},
+    '土豆': {'calories': 76, 'protein': 2.0, 'fat': 0.2, 'carbs': 16.5},
+    '黄瓜': {'calories': 15, 'protein': 0.7, 'fat': 0.2, 'carbs': 2.4},
+    '胡萝卜': {'calories': 37, 'protein': 1.0, 'fat': 0.2, 'carbs': 7.7},
+    '苹果': {'calories': 53, 'protein': 0.2, 'fat': 0.2, 'carbs': 13.5},
+    '香蕉': {'calories': 93, 'protein': 1.4, 'fat': 0.2, 'carbs': 22.0},
+    '橙子': {'calories': 48, 'protein': 0.8, 'fat': 0.2, 'carbs': 11.1},
+    '葡萄': {'calories': 44, 'protein': 0.5, 'fat': 0.2, 'carbs': 10.3},
+    '西瓜': {'calories': 25, 'protein': 0.5, 'fat': 0.1, 'carbs': 5.8},
+    '草莓': {'calories': 30, 'protein': 1.0, 'fat': 0.2, 'carbs': 6.2},
+    '沙拉': {'calories': 35, 'protein': 1.5, 'fat': 1.0, 'carbs': 5.5},
+    '汉堡': {'calories': 295, 'protein': 14.0, 'fat': 14.5, 'carbs': 28.0},
+    '披萨': {'calories': 266, 'protein': 11.0, 'fat': 10.0, 'carbs': 33.0},
+    '炸鸡': {'calories': 279, 'protein': 18.5, 'fat': 18.0, 'carbs': 10.5},
+    '薯条': {'calories': 298, 'protein': 3.3, 'fat': 15.0, 'carbs': 36.0},
+    '可乐': {'calories': 43, 'protein': 0, 'fat': 0, 'carbs': 10.6},
+    '咖啡': {'calories': 2, 'protein': 0.3, 'fat': 0, 'carbs': 0},
+    '奶茶': {'calories': 52, 'protein': 0.8, 'fat': 1.5, 'carbs': 9.2},
+    '绿茶': {'calories': 1, 'protein': 0, 'fat': 0, 'carbs': 0},
+    '火锅': {'calories': 150, 'protein': 8.0, 'fat': 8.5, 'carbs': 10.0},
+    '炒饭': {'calories': 174, 'protein': 4.5, 'fat': 6.5, 'carbs': 25.0},
+    '炒面': {'calories': 160, 'protein': 4.0, 'fat': 5.5, 'carbs': 24.0},
+    '拉面': {'calories': 130, 'protein': 5.0, 'fat': 3.0, 'carbs': 21.0},
+    '方便面': {'calories': 472, 'protein': 9.5, 'fat': 21.1, 'carbs': 61.6},
+    '饼干': {'calories': 433, 'protein': 7.5, 'fat': 14.8, 'carbs': 70.3},
+    '蛋糕': {'calories': 348, 'protein': 7.0, 'fat': 15.0, 'carbs': 46.0},
+    '巧克力': {'calories': 544, 'protein': 5.3, 'fat': 31.0, 'carbs': 60.0},
+    '冰淇淋': {'calories': 127, 'protein': 2.4, 'fat': 5.3, 'carbs': 17.7},
+    '花生': {'calories': 563, 'protein': 24.8, 'fat': 44.3, 'carbs': 21.7},
+    '核桃': {'calories': 627, 'protein': 14.9, 'fat': 58.8, 'carbs': 19.1},
+    '红枣': {'calories': 276, 'protein': 3.2, 'fat': 0.5, 'carbs': 67.8},
+    '燕麦': {'calories': 367, 'protein': 15.0, 'fat': 6.7, 'carbs': 61.6},
+    '玉米': {'calories': 112, 'protein': 4.0, 'fat': 1.2, 'carbs': 22.8},
+    '紫薯': {'calories': 82, 'protein': 1.5, 'fat': 0.2, 'carbs': 18.0},
+    '红薯': {'calories': 86, 'protein': 1.1, 'fat': 0.2, 'carbs': 20.1},
+    '茄子': {'calories': 23, 'protein': 1.1, 'fat': 0.2, 'carbs': 3.6},
+    '青椒': {'calories': 22, 'protein': 1.0, 'fat': 0.2, 'carbs': 3.7},
+    '蘑菇': {'calories': 24, 'protein': 2.7, 'fat': 0.1, 'carbs': 4.1},
+    '海带': {'calories': 16, 'protein': 1.2, 'fat': 0.1, 'carbs': 2.1},
+    '紫菜': {'calories': 207, 'protein': 26.7, 'fat': 1.1, 'carbs': 22.5},
+    '鸡蛋灌饼': {'calories': 248, 'protein': 8.0, 'fat': 11.0, 'carbs': 30.0},
+    '油条': {'calories': 386, 'protein': 6.9, 'fat': 17.6, 'carbs': 51.0},
+    '烧饼': {'calories': 326, 'protein': 8.0, 'fat': 10.5, 'carbs': 50.0},
+    '煎饼果子': {'calories': 235, 'protein': 7.5, 'fat': 8.5, 'carbs': 32.0},
+    '小笼包': {'calories': 204, 'protein': 8.0, 'fat': 7.5, 'carbs': 26.0},
+    '馄饨': {'calories': 110, 'protein': 5.5, 'fat': 3.0, 'carbs': 14.0},
+    '粽子': {'calories': 195, 'protein': 4.5, 'fat': 3.5, 'carbs': 37.0},
+    '汤圆': {'calories': 311, 'protein': 5.0, 'fat': 6.0, 'carbs': 60.0},
+    '月饼': {'calories': 421, 'protein': 8.0, 'fat': 19.0, 'carbs': 55.0},
+}
+
 router = APIRouter(prefix="/foods", tags=["食物记录"])
 
 
@@ -1436,6 +1521,84 @@ async def analyze_food_enhanced(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"增强分析失败: {str(e)}"
         )
+
+
+
+
+@router.get("/nutrition-db", response_model=BaseResponse)
+async def search_nutrition_db(
+    name: str = Query(..., description="食物名称"),
+):
+    """查询食物营养成分数据库
+
+    支持精确匹配和模糊匹配，返回每100g的营养数据
+    """
+    result = _NUTRITION_DB.get(name)
+    match_type = "exact" if result else None
+
+    if not result:
+        # 模糊匹配：食物名包含关键词（最长匹配优先）
+        fuzzy_key = None
+        fuzzy_len = 0
+        for k in _NUTRITION_DB:
+            if name in k and len(k) > fuzzy_len:
+                fuzzy_key = k
+                fuzzy_len = len(k)
+        if fuzzy_key is None:
+            # 反向：关键词包含食物名
+            for k, v in _NUTRITION_DB.items():
+                if k in name:
+                    result = v
+                    match_type = "fuzzy"
+                    break
+        else:
+            result = _NUTRITION_DB[fuzzy_key]
+            match_type = "fuzzy"
+
+    if not result:
+        return BaseResponse(
+            success=True,
+            message="未找到匹配的食物数据",
+            data={"food_name": name, "found": False},
+        )
+
+    return BaseResponse(
+        success=True,
+        message="查询成功",
+        data={
+            "food_name": name,
+            "matched_name": fuzzy_key if fuzzy_key else name,
+            "found": True,
+            "match_type": match_type,
+            "nutrition_per_100g": {
+                "calories": result["calories"],
+                "protein": result["protein"],
+                "fat": result["fat"],
+                "carbs": result["carbs"],
+            },
+        },
+    )
+
+
+@router.get("/categories", response_model=BaseResponse)
+async def get_food_categories():
+    """获取食物分类列表"""
+    categories = ['主食', '蔬菜', '肉类', '汤类', '小食', '饮品', '甜品', '其他']
+    return BaseResponse(success=True, message="获取分类成功", data={"items": categories})
+
+
+@router.get("/source-tags", response_model=BaseResponse)
+async def get_source_tags():
+    """获取食物来源标签"""
+    tags = [
+        {"value": "canteen", "label": "食堂"},
+        {"value": "delivery", "label": "外卖"},
+        {"value": "home", "label": "家里"},
+        {"value": "restaurant", "label": "餐厅"},
+        {"value": "snack", "label": "零食"},
+        {"value": "other", "label": "其他"},
+    ]
+    return BaseResponse(success=True, message="获取来源标签成功", data={"items": tags})
 
 
 def _get_daily_exercise_calories(db: Session, user_id: int, summary_date: date) -> float:

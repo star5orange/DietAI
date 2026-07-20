@@ -360,6 +360,8 @@ class ChatService {
       2: '健康评估',
       3: '食物识别',
       4: '运动建议',
+      5: '养生咨询',
+      6: '宠物健康',
     };
     return sessionTypes[sessionType] ?? '通用咨询';
   }

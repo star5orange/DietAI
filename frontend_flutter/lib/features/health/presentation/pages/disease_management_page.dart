@@ -18,11 +18,14 @@ class _DiseaseManagemenetPageState extends ConsumerState<DiseaseManagemenetPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final UserService _userService = UserService(ApiService());
+  final ApiService _api = ApiService();
 
   List<DiseaseInfo> _diseases = [];
   List<AllergyInfo> _allergies = [];
   bool _isLoading = false;
   String? _errorMessage;
+  Map<String, List<String>> _diseaseAdviceMap = {};
+  Map<String, List<String>> _allergyAdviceMap = {};
 
   @override
   void initState() {
@@ -66,6 +69,46 @@ class _DiseaseManagemenetPageState extends ConsumerState<DiseaseManagemenetPage>
         _errorMessage = '加载医疗信息失败: $e';
         _isLoading = false;
       });
+    }
+
+    // 从后端加载疾病/过敏原饮食建议
+    _loadAdviceFromApi();
+  }
+
+  Future<void> _loadAdviceFromApi() async {
+    // 加载疾病建议
+    for (final disease in _diseases) {
+      try {
+        final res = await _api.get('/health/disease-advice',
+            queryParameters: {'name': disease.diseaseName});
+        if (res.isSuccess && res.data != null && mounted) {
+          final advice =
+              (res.data as Map<String, dynamic>)['advice'] as List<dynamic>?;
+          if (advice != null) {
+            setState(() {
+              _diseaseAdviceMap[disease.diseaseName] =
+                  advice.map((e) => e.toString()).toList();
+            });
+          }
+        }
+      } catch (_) {}
+    }
+    // 加载过敏原建议
+    for (final allergy in _allergies) {
+      try {
+        final res = await _api.get('/health/allergy-advice',
+            queryParameters: {'allergen': allergy.allergenName});
+        if (res.isSuccess && res.data != null && mounted) {
+          final advice =
+              (res.data as Map<String, dynamic>)['advice'] as List<dynamic>?;
+          if (advice != null) {
+            setState(() {
+              _allergyAdviceMap[allergy.allergenName] =
+                  advice.map((e) => e.toString()).toList();
+            });
+          }
+        }
+      } catch (_) {}
     }
   }
 
@@ -340,8 +383,7 @@ class _DiseaseManagemenetPageState extends ConsumerState<DiseaseManagemenetPage>
                     PopupMenuItem(
                         value: 'delete',
                         child: Row(children: [
-                          Icon(LucideIcons.trash2,
-                              size: 16, color: Colors.red),
+                          Icon(LucideIcons.trash2, size: 16, color: Colors.red),
                           const SizedBox(width: 8),
                           Text('删除', style: TextStyle(color: Colors.red))
                         ])),
@@ -641,8 +683,7 @@ class _DiseaseManagemenetPageState extends ConsumerState<DiseaseManagemenetPage>
                     PopupMenuItem(
                         value: 'delete',
                         child: Row(children: [
-                          Icon(LucideIcons.trash2,
-                              size: 16, color: Colors.red),
+                          Icon(LucideIcons.trash2, size: 16, color: Colors.red),
                           const SizedBox(width: 8),
                           Text('删除', style: TextStyle(color: Colors.red))
                         ])),
@@ -931,53 +972,19 @@ class _DiseaseManagemenetPageState extends ConsumerState<DiseaseManagemenetPage>
   }
 
   List<String> _getDiseaseAdvice(String diseaseName) {
-    // 这里应该有一个疾病-饮食建议的数据库或API
-    // 目前用硬编码的示例
-    final advice = {
-      '糖尿病': [
-        '控制碳水化合物摄入，选择低升糖指数食物',
-        '定时定量进餐，避免暴饮暴食',
-        '增加膳食纤维摄入，多吃蔬菜',
-        '限制糖分和甜食',
-      ],
-      '高血压': [
-        '减少钠盐摄入，每日不超过6克',
-        '增加钾元素摄入，多吃香蕉、橙子等',
-        '控制总热量，维持健康体重',
-        '限制饱和脂肪酸摄入',
-      ],
-      '高血脂': [
-        '减少饱和脂肪和反式脂肪摄入',
-        '增加ω-3脂肪酸摄入，多吃深海鱼',
-        '多吃富含可溶性纤维的食物',
-        '控制胆固醇摄入',
-      ],
-    };
-
-    return advice[diseaseName] ??
-        [
-          '请咨询医生或营养师获得专业建议',
-          '保持均衡饮食，注意营养搭配',
-          '定期复查，监测病情变化',
-        ];
+    if (_diseaseAdviceMap.containsKey(diseaseName)) {
+      return _diseaseAdviceMap[diseaseName]!;
+    }
+    // API 未返回时显示兜底文案
+    return ['请咨询医生或营养师获得专业建议', '保持均衡饮食，注意营养搭配'];
   }
 
   List<String> _getAllergyAvoidanceAdvice(AllergyInfo allergy) {
-    // 这里应该有一个过敏原-避免建议的数据库
-    final advice = {
-      '牛奶': ['避免所有乳制品', '仔细阅读食品标签', '选择植物奶替代'],
-      '鸡蛋': ['避免含蛋食品', '注意疫苗成分', '寻找蛋白质替代来源'],
-      '花生': ['严格避免花生及其制品', '注意交叉污染', '随身携带急救药物'],
-      '大豆': ['避免豆制品', '注意隐藏成分', '选择其他蛋白质来源'],
-    };
-
-    return advice[allergy.allergenName] ??
-        [
-          '严格避免该过敏原',
-          '仔细阅读食品标签和成分表',
-          '告知餐厅服务员您的过敏情况',
-          '随身携带抗过敏药物',
-        ];
+    if (_allergyAdviceMap.containsKey(allergy.allergenName)) {
+      return _allergyAdviceMap[allergy.allergenName]!;
+    }
+    // API 未返回时显示兜底文案
+    return ['严格避免该过敏原', '仔细阅读食品标签和成分表', '告知餐厅服务员您的过敏情况'];
   }
 
   String _formatDate(String dateString) {
@@ -1403,7 +1410,8 @@ class _DiseaseManagemenetPageState extends ConsumerState<DiseaseManagemenetPage>
 
   void _showEditAllergyDialog(AllergyInfo allergy) {
     final nameController = TextEditingController(text: allergy.allergenName);
-    final reactionController = TextEditingController(text: allergy.reactionDescription);
+    final reactionController =
+        TextEditingController(text: allergy.reactionDescription);
     int allergenType = allergy.allergenType;
     int severityLevel = allergy.severityLevel;
 

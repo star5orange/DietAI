@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../../../../core/services/api_service.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../data/services/fasting_service.dart';
@@ -23,6 +24,8 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
   int _streakDays = 0;
   int _checkinCount = 0;
   int _weekCount = 0;
+  int _weeklyCheckins = 0;
+  int _weeklyTarget = 0;
   bool _isLoading = true;
 
   @override
@@ -34,7 +37,12 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
   Future<void> _loadPlans() async {
     try {
       final service = ref.read(fastingServiceProvider);
-      final plans = await service.getPlans(status: 'active');
+      // 并行加载活动计划和断食计划类型
+      final results = await Future.wait([
+        service.getPlans(status: 'active'),
+        _fetchPlanTypes(),
+      ]);
+      final plans = results[0] as List<FastingPlan>;
       if (plans.isNotEmpty) {
         final plan = plans.first;
         // Parallel load progress and checkins
@@ -58,6 +66,8 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
             _weekCount = progress != null
                 ? ((progress.daysElapsed / 7).ceil()).clamp(1, 52)
                 : 1;
+            _weeklyCheckins = progress?.weeklyCheckins ?? 0;
+            _weeklyTarget = progress?.weeklyTarget ?? 0;
           });
         }
       }
@@ -82,7 +92,44 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
     }
   }
 
-  final List<Map<String, dynamic>> _planTypes = [
+  Future<void> _fetchPlanTypes() async {
+    try {
+      final response = await ApiService().get('/fasting/plan-types');
+      if (response.success &&
+          response.data != null &&
+          response.data['items'] != null) {
+        final items = response.data['items'] as List;
+        final planIcons = {
+          '16_8': LucideIcons.clock,
+          '5_2': LucideIcons.calendar,
+          'basic_fasting': LucideIcons.moon,
+        };
+        final planNames = {
+          '16_8': '16:8 轻断食',
+          '5_2': '5:2 轻断食',
+          'basic_fasting': '基础断食',
+        };
+        final updated = items.map((item) {
+          final id = (item['plan_type'] ?? item['id'] ?? '').toString();
+          return {
+            'id': id,
+            'name': (item['name'] ?? planNames[id] ?? id).toString(),
+            'desc': (item['description'] ?? item['desc'] ?? '').toString(),
+            'icon': planIcons[id] ?? LucideIcons.clock,
+          };
+        }).toList();
+
+        if (updated.isNotEmpty && mounted) {
+          setState(() => _planTypes = updated);
+        }
+      }
+    } catch (_) {
+      // API 失败，使用硬编码回退数据
+    }
+  }
+
+  // 计划类型数据——优先从后端获取，硬编码数据作为回退
+  static const List<Map<String, dynamic>> _fallbackPlanTypes = [
     {
       'id': '16_8',
       'name': '16:8 轻断食',
@@ -102,6 +149,8 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
       'icon': LucideIcons.moon
     },
   ];
+
+  List<Map<String, dynamic>> _planTypes = List.from(_fallbackPlanTypes);
 
   @override
   Widget build(BuildContext context) {
@@ -143,7 +192,11 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
               const SizedBox(height: 8),
               _buildProgressSummary(),
               const SizedBox(height: 24),
-              _buildStreakCard(),
+              // 16:8 显示连续打卡卡片，5:2/基础断食显示本周进度卡片
+              if (_activePlan?.planType == '16_8')
+                _buildStreakCard()
+              else
+                _buildWeeklyProgressCard(),
             ],
           ],
         ),
@@ -204,14 +257,24 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
             ],
           ),
           const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildStatItem('连续打卡', '${_streakDays}天', LucideIcons.flame),
-              _buildStatItem('累计打卡', '${_checkinCount}次', LucideIcons.check),
-              _buildStatItem('当前周期', '第${_weekCount}周', LucideIcons.calendar),
-            ],
-          ),
+          Builder(builder: (context) {
+            // 根据计划类型显示不同的进度指标
+            final planType = _activePlan!.planType;
+            final is16_8 = planType == '16_8';
+
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                if (is16_8)
+                  _buildStatItem('连续打卡', '${_streakDays}天', LucideIcons.flame)
+                else
+                  _buildStatItem('本周打卡', '${_weeklyCheckins}/${_weeklyTarget}天',
+                      LucideIcons.flame),
+                _buildStatItem('累计打卡', '${_checkinCount}次', LucideIcons.check),
+                _buildStatItem('当前周期', '第${_weekCount}周', LucideIcons.calendar),
+              ],
+            );
+          }),
         ],
       ),
     );
@@ -235,22 +298,26 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
   // ==================== 操作按钮 ====================
   Widget _buildActionButtons() {
     final plan = _activePlan!;
+    final isFastingDay = plan.isFastingDayToday();
+
     return Row(
       children: [
         Expanded(
           child: _buildActionButton(
             icon: LucideIcons.clipboardCheck,
-            label: '今日打卡',
-            color: AppColors.primary,
-            onTap: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => FastingCheckinPage(planId: plan.planId),
-                ),
-              );
-              _loadPlans();
-            },
+            label: isFastingDay ? '今日打卡' : '今日非断食日',
+            color: isFastingDay ? AppColors.primary : AppColors.textTertiary,
+            onTap: isFastingDay
+                ? () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => FastingCheckinPage(
+                            planId: plan.planId, planType: plan.planType),
+                      ),
+                    ).then((_) => _loadPlans());
+                  }
+                : () {}, // 空回调，按钮不可用时
           ),
         ),
         const SizedBox(width: 10),
@@ -259,8 +326,8 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
             icon: LucideIcons.trendingUp,
             label: '进度追踪',
             color: AppColors.success,
-            onTap: () async {
-              await Navigator.push(
+            onTap: () {
+              Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) =>
@@ -515,20 +582,191 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
     );
   }
 
+  // ==================== 本周进度卡片（5:2/基础断食） ====================
+  Widget _buildWeeklyProgressCard() {
+    final rate =
+        _weeklyTarget > 0 ? (_weeklyCheckins / _weeklyTarget * 100).toInt() : 0;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(LucideIcons.calendarCheck, color: AppColors.primary, size: 32),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('本周打卡 $_weeklyCheckins/$_weeklyTarget 天',
+                    style: AppTextStyles.bodyLarge
+                        .copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: rate / 100,
+                    backgroundColor: AppColors.divider,
+                    valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+                    minHeight: 6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text('$rate%',
+              style: AppTextStyles.h5.copyWith(
+                  color: AppColors.primary, fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+
   // ==================== 业务逻辑 ====================
 
   void _startPlan(String planId) async {
+    // 5:2 和基础断食需要先选择断食日
+    if (planId == '5_2' || planId == 'basic_fasting') {
+      final requiredDays = planId == '5_2' ? 2 : null; // null 表示 1-2 天
+      final selectedDays = await _showDaySelectionDialog(requiredDays);
+      if (selectedDays == null || selectedDays.isEmpty) return;
+
+      await _createPlanWithDays(planId, selectedDays);
+    } else {
+      // 16:8 直接创建
+      await _createPlanWithDays(planId, null);
+    }
+  }
+
+  /// 显示断食日选择对话框
+  Future<List<int>?> _showDaySelectionDialog(int? requiredDays) async {
+    final selectedDays = <int>[];
+    final dayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+    return showDialog<List<int>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: Text(
+            requiredDays == 2 ? '选择2天断食日' : '选择1-2天断食日',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                requiredDays == 2 ? '请选择每周的2天作为断食日' : '请选择每周的1-2天作为断食日',
+                style: AppTextStyles.bodySmall
+                    .copyWith(color: AppColors.textTertiary),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: List.generate(7, (index) {
+                  final day = index + 1;
+                  final isSelected = selectedDays.contains(day);
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        if (isSelected) {
+                          selectedDays.remove(day);
+                        } else {
+                          // 检查是否超过限制
+                          if (requiredDays == null) {
+                            // basic_fasting: 最多2天
+                            if (selectedDays.length < 2) {
+                              selectedDays.add(day);
+                            }
+                          } else if (selectedDays.length < requiredDays) {
+                            selectedDays.add(day);
+                          }
+                        }
+                      });
+                    },
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.primary
+                            : AppColors.backgroundCard,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.divider,
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          dayNames[index],
+                          style: AppTextStyles.bodySmall.copyWith(
+                            color: isSelected
+                                ? Colors.white
+                                : AppColors.textPrimary,
+                            fontWeight:
+                                isSelected ? FontWeight.w600 : FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                // 验证选择数量
+                if (requiredDays != null &&
+                    selectedDays.length != requiredDays) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('请选择$requiredDays天')),
+                  );
+                  return;
+                }
+                if (requiredDays == null &&
+                    (selectedDays.isEmpty || selectedDays.length > 2)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('请选择1-2天')),
+                  );
+                  return;
+                }
+                Navigator.pop(ctx, selectedDays);
+              },
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 创建断食计划（带断食日）
+  Future<void> _createPlanWithDays(
+      String planType, List<int>? fastingDays) async {
     try {
       final service = ref.read(fastingServiceProvider);
       final result = await service.createPlan(
-        planType: planId,
+        planType: planType,
         startDate: DateTime.now().toIso8601String().split('T')[0],
+        fastingDays: fastingDays,
       );
       final planIdCreated = result['plan_id'] ?? 0;
       setState(() {
         _activePlan = FastingPlan(
           planId: planIdCreated,
-          planType: planId,
+          planType: planType,
           status: 'active',
           startDate: DateTime.now().toIso8601String().split('T')[0],
         );

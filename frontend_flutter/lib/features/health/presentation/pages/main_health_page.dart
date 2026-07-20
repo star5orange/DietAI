@@ -5,11 +5,14 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../services/food_service.dart';
 import '../../../../services/water_service.dart';
 import '../../../../services/health_analysis_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/domain/models/api_response.dart';
+import '../../../../shared/domain/models/user_model.dart';
+import '../../../profile/domain/services/user_service.dart';
 import '../../../health/presentation/pages/health_goals_page.dart';
 import '../../../health/presentation/pages/weight_tracking_page.dart';
 import '../../../health/presentation/pages/data_visualization_page.dart';
@@ -42,6 +45,11 @@ class _HealthPageState extends ConsumerState<HealthPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 确保Provider已加载数据
+      ref.read(userProfileProvider.notifier).loadUserProfile();
+      _loadTargetCalories();
+    });
     _loadTodayData();
   }
 
@@ -49,6 +57,8 @@ class _HealthPageState extends ConsumerState<HealthPage> {
     setState(() => _isLoading = true);
     try {
       final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+      // 并行加载所有数据
       final results = await Future.wait([
         _foodService.getDailyNutritionSummary(dateStr),
         _waterService.getDailySummary(dateStr),
@@ -71,8 +81,210 @@ class _HealthPageState extends ConsumerState<HealthPage> {
     }
   }
 
+  /// 从用户资料加载卡路里目标和饮水目标
+  void _loadTargetCalories() {
+    try {
+      final userProfile = ref.read(userProfileProvider).value;
+      if (userProfile != null) {
+        _targetCalories = userProfile.targetCalories?.toDouble() ?? 2000.0;
+        _waterGoal = userProfile.dailyWaterGoal?.toDouble() ?? 2000.0;
+        debugPrint('[HealthPage] 加载目标: 卡路里=$_targetCalories, 饮水=$_waterGoal');
+      }
+    } catch (e) {
+      debugPrint('[HealthPage] 加载目标失败: $e');
+    }
+  }
+
+  /// 显示卡路里目标修改对话框
+  void _showCalorieGoalDialog() {
+    // 从 Provider 读取最新值
+    final currentTarget =
+        ref.read(userProfileProvider).value?.targetCalories?.toDouble() ??
+            _targetCalories;
+    final controller =
+        TextEditingController(text: currentTarget.toInt().toString());
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('设置每日卡路里目标'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: '目标 (kcal)',
+            hintText: '例如：2000',
+            suffixText: 'kcal',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newGoal = int.tryParse(controller.text);
+              if (newGoal != null && newGoal > 0) {
+                Navigator.pop(context);
+                await _saveCalorieGoal(newGoal);
+              }
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 显示饮水目标修改对话框
+  void _showWaterGoalDialog() {
+    // 从 Provider 读取最新值
+    final currentGoal =
+        ref.read(userProfileProvider).value?.dailyWaterGoal?.toDouble() ??
+            _waterGoal;
+    final controller =
+        TextEditingController(text: (currentGoal / 1000).toStringAsFixed(1));
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('设置每日饮水目标'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: '目标 (升)',
+            hintText: '例如：2.5',
+            suffixText: '升',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final liters = double.tryParse(controller.text);
+              if (liters != null && liters > 0) {
+                Navigator.pop(context);
+                await _saveWaterGoal((liters * 1000).round());
+              }
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 保存卡路里目标到后端
+  Future<void> _saveCalorieGoal(int goalCalories) async {
+    try {
+      debugPrint('[HealthPage] 开始保存卡路里目标: $goalCalories');
+
+      final success =
+          await ref.read(userProfileProvider.notifier).updateUserProfile(
+                UserProfileUpdateRequest(targetCalories: goalCalories),
+              );
+
+      debugPrint('[HealthPage] 更新结果: success=$success');
+
+      // 检查更新后的Provider状态
+      final updatedProfile = ref.read(userProfileProvider).value;
+      debugPrint(
+          '[HealthPage] 更新后Provider中的targetCalories: ${updatedProfile?.targetCalories}');
+
+      if (success && mounted) {
+        // 直接更新本地状态，确保立即生效
+        setState(() {
+          _targetCalories = goalCalories.toDouble();
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('卡路里目标已更新为 $goalCalories kcal'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('更新失败，请稍后重试'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[HealthPage] 保存卡路里目标失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('保存失败，请稍后重试'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  /// 保存饮水目标到后端
+  Future<void> _saveWaterGoal(int goalMl) async {
+    try {
+      final response = await _waterService.setGoal(goalMl);
+
+      if (response.isSuccess) {
+        // 刷新用户资料Provider获取最新数据
+        ref.invalidate(userProfileProvider);
+        await ref.read(userProfileProvider.notifier).loadUserProfile();
+
+        if (mounted) {
+          setState(() {
+            _waterGoal = goalMl.toDouble();
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('饮水目标已更新为 ${(goalMl / 1000).toStringAsFixed(1)} L'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('更新失败: ${response.message}'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('[HealthPage] 保存饮水目标失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('保存失败，请稍后重试'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // 直接从Provider读取最新的卡路里目标和饮水目标
+    final userProfile = ref.watch(userProfileProvider).value;
+    final displayTargetCalories =
+        userProfile?.targetCalories?.toDouble() ?? _targetCalories;
+    final displayWaterGoal =
+        userProfile?.dailyWaterGoal?.toDouble() ?? _waterGoal;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -89,7 +301,7 @@ class _HealthPageState extends ConsumerState<HealthPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHealthSummaryCard(),
+              _buildHealthSummaryCard(displayTargetCalories, displayWaterGoal),
               const SizedBox(height: 24),
               if (_weeklySummary != null) ...[
                 _buildWeeklySummaryCard(),
@@ -105,7 +317,8 @@ class _HealthPageState extends ConsumerState<HealthPage> {
     );
   }
 
-  Widget _buildHealthSummaryCard() {
+  Widget _buildHealthSummaryCard(
+      double displayTargetCalories, double displayWaterGoal) {
     final calories = _dailySummary?.totalCalories ?? 0.0;
 
     // 统一单位显示水量：≥1000ml 用 L，否则用 ml，最多两位小数去尾部零
@@ -114,19 +327,21 @@ class _HealthPageState extends ConsumerState<HealthPage> {
       return liters.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
     }
 
-    final useLiter = _waterGoal >= 1000;
+    final useLiter = displayWaterGoal >= 1000;
     final waterIntakeDisplay =
         useLiter ? _fmtLiter(_waterIntake) : _waterIntake.toInt().toString();
-    final waterGoalDisplay =
-        useLiter ? _fmtLiter(_waterGoal) : _waterGoal.toInt().toString();
+    final waterGoalDisplay = useLiter
+        ? _fmtLiter(displayWaterGoal)
+        : displayWaterGoal.toInt().toString();
     final waterValue = '$waterIntakeDisplay / $waterGoalDisplay';
     final waterUnit = useLiter ? 'L' : 'ml';
 
-    final caloriesProgress = _targetCalories > 0
-        ? (calories / _targetCalories).clamp(0.0, 1.0)
+    final caloriesProgress = displayTargetCalories > 0
+        ? (calories / displayTargetCalories).clamp(0.0, 1.0)
         : 0.0;
-    final waterProgress =
-        _waterGoal > 0 ? (_waterIntake / _waterGoal).clamp(0.0, 1.0) : 0.0;
+    final waterProgress = displayWaterGoal > 0
+        ? (_waterIntake / displayWaterGoal).clamp(0.0, 1.0)
+        : 0.0;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -172,9 +387,10 @@ class _HealthPageState extends ConsumerState<HealthPage> {
               Expanded(
                 child: _buildSummaryItem(
                   '卡路里',
-                  '${_formatNumber(calories)} / ${_formatNumber(_targetCalories)}',
+                  '${_formatNumber(calories)} / ${_formatNumber(displayTargetCalories)}',
                   'kcal',
                   caloriesProgress,
+                  onTap: _showCalorieGoalDialog,
                 ),
               ),
               const SizedBox(width: 16),
@@ -184,6 +400,7 @@ class _HealthPageState extends ConsumerState<HealthPage> {
                   waterValue,
                   waterUnit,
                   waterProgress,
+                  onTap: _showWaterGoalDialog,
                 ),
               ),
             ],
@@ -588,39 +805,57 @@ class _HealthPageState extends ConsumerState<HealthPage> {
   }
 
   Widget _buildSummaryItem(
-      String title, String value, String unit, double progress) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.white70,
+      String title, String value, String unit, double progress,
+      {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.white70,
+                  ),
+                ),
+                if (onTap != null) ...[
+                  const SizedBox(width: 4),
+                  const Icon(
+                    Icons.edit,
+                    size: 12,
+                    color: Colors.white70,
+                  ),
+                ],
+              ],
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          LinearProgressIndicator(
-            value: progress,
-            backgroundColor: Colors.white.withValues(alpha: 0.3),
-            valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-          ),
-        ],
+            const SizedBox(height: 8),
+            LinearProgressIndicator(
+              value: progress,
+              backgroundColor: Colors.white.withValues(alpha: 0.3),
+              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+              minHeight: 4,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ],
+        ),
       ),
     );
   }

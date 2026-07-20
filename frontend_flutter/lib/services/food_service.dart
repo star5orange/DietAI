@@ -1096,12 +1096,37 @@ class FoodService {
     '月饼': {'calories': 421, 'protein': 8.0, 'fat': 19.0, 'carbs': 55.0},
   };
 
-  Map<String, double?> estimateNutrition(String foodName, double portion) {
+  /// 通过后端 API 估算食物营养（优先），失败则回退到本地数据库
+  Future<Map<String, double?>> estimateNutrition(
+      String foodName, double portion) async {
     final key = foodName.trim();
     if (key.isEmpty) {
       return {'calories': 0, 'protein': 0, 'fat': 0, 'carbs': 0};
     }
 
+    // 优先调用后端 API
+    try {
+      final response = await _apiService.get(
+        '/foods/nutrition-db',
+        queryParameters: {'name': key},
+      );
+      if (response.isSuccess && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        if (data['found'] == true) {
+          final nutrition = data['nutrition_per_100g'] as Map<String, dynamic>;
+          return {
+            'calories':
+                ((nutrition['calories'] as num?)?.toDouble() ?? 100) * portion,
+            'protein':
+                ((nutrition['protein'] as num?)?.toDouble() ?? 5) * portion,
+            'fat': ((nutrition['fat'] as num?)?.toDouble() ?? 3) * portion,
+            'carbs': ((nutrition['carbs'] as num?)?.toDouble() ?? 15) * portion,
+          };
+        }
+      }
+    } catch (_) {}
+
+    // API 失败或未匹配时，回退到本地数据库
     final exactMatch = _foodNutritionDB[key];
     if (exactMatch != null) {
       return {
@@ -1112,12 +1137,12 @@ class FoodService {
       };
     }
 
-    final tokens = _splitFoodName(key);
-    if (tokens.length > 1) {
-      return _estimateMultipleFoods(tokens, portion);
-    }
-
-    return _estimateSingleFood(key, portion);
+    return {
+      'calories': 100 * portion,
+      'protein': 5 * portion,
+      'fat': 3 * portion,
+      'carbs': 15 * portion,
+    };
   }
 
   List<String> _splitFoodName(String foodName) {

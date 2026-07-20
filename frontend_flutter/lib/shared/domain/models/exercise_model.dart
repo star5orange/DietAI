@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// Note: ApiService import is intentionally avoided here since this is a pure model file.
+// For API-based exercise types, use ExerciseType.fetchFromApi() which accepts an ApiService instance.
+
 class ExerciseRecord {
   final String id;
   final String exerciseName;
@@ -133,6 +136,8 @@ class DailyExerciseSummary {
 }
 
 class ExerciseType {
+  /// 硬编码运动类型映射——作为 API 不可用时的回退数据。
+  /// 主要数据源应通过 [fetchFromApi] 方法从 GET /exercises/types 获取。
   static const Map<String, String> types = {
     'running': '跑步',
     'walking': '步行',
@@ -152,6 +157,36 @@ class ExerciseType {
   static String getLabel(String key) => types[key] ?? key;
 
   static List<MapEntry<String, String>> get entries => types.entries.toList();
+
+  /// 从后端 API 获取运动类型列表，失败时回退到 [types]。
+  /// [get] 应为 ApiService().get 方法引用，以避免模型文件直接依赖 ApiService。
+  static Future<Map<String, String>> fetchFromApi(
+    Future<dynamic> Function(String path,
+            {Map<String, dynamic>? queryParameters})
+        get,
+  ) async {
+    try {
+      final response = await get('/exercises/types');
+      if (response is dynamic &&
+          response.success == true &&
+          response.data != null) {
+        final data = response.data;
+        if (data['items'] != null) {
+          final items = data['items'] as List;
+          final result = <String, String>{};
+          for (final item in items) {
+            final key = (item['type'] ?? item['id'] ?? '').toString();
+            final label = (item['label'] ?? item['name'] ?? key).toString();
+            if (key.isNotEmpty) result[key] = label;
+          }
+          if (result.isNotEmpty) return result;
+        }
+      }
+    } catch (_) {
+      // 请求失败，使用硬编码回退数据
+    }
+    return Map.from(types);
+  }
 }
 
 class ExerciseRecordStorage {

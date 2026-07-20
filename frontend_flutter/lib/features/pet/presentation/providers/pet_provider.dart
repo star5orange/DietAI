@@ -143,6 +143,7 @@ class PetNotifier extends StateNotifier<PetState> {
         _storage?.exp = state.exp;
         _storage?.currentStreak = state.currentStreak;
         _storage?.longestStreak = state.longestStreak;
+        _storage?.petNames = petNames; // 保存各皮肤命名到本地
       }
     } catch (_) {
       // 后端不可用时继续使用本地数据
@@ -152,14 +153,23 @@ class PetNotifier extends StateNotifier<PetState> {
   void _syncFromStorage() {
     if (_storage == null) return;
     final currentLevel = _storage!.level;
+    final petType = _storage!.petType;
+    final currentSkin = PetSkin.fromKey(petType);
+
+    // 从本地存储获取各皮肤命名，并获取当前皮肤的名称
+    final petNames = _storage!.petNames;
+    final currentPetName = petNames[petType] ?? currentSkin.defaultName;
+
     state = state.copyWith(
       level: currentLevel,
       exp: _storage!.exp,
       maxExp: _calcMaxExp(currentLevel),
       levelName: _storage!.levelName,
       visible: _storage!.petVisible,
-      petType: _storage!.petType,
-      petName: _storage!.petName,
+      petType: petType,
+      petName: currentPetName,
+      petNames: petNames,
+      currentSkin: currentSkin, // 从本地存储恢复当前皮肤
       currentStreak: _storage!.currentStreak,
       longestStreak: _storage!.longestStreak,
     );
@@ -258,6 +268,12 @@ class PetNotifier extends StateNotifier<PetState> {
       );
     } else {
       state = state.copyWith(petNames: newPetNames);
+    }
+
+    // 保存到本地存储
+    _storage?.petNames = newPetNames;
+    if (targetSkin == state.currentSkin) {
+      _storage?.petName = petName;
     }
 
     // 保存到后端

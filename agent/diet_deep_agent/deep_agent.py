@@ -44,6 +44,38 @@ from agent.diet_deep_agent.skills.fasting_advisor.fasting_advisor_skill import (
     generate_refeed_guide,
 )
 
+# 宠物健康工具
+from agent.diet_deep_agent.tools.pet_data import (
+    get_pet_profile,
+    get_user_pets,
+    get_pet_weight_trend,
+    get_pet_feeding_records,
+    calculate_pet_nutrition_target,
+    get_pet_daily_summary,
+)
+from agent.diet_deep_agent.tools.pet_diet_trend import (
+    analyze_weight_trend_alert,
+    analyze_weekly_diet_trend,
+)
+from agent.diet_deep_agent.tools.pet_reminder import (
+    get_vaccine_records,
+    get_vaccine_schedule,
+    get_health_reminders,
+)
+from agent.diet_deep_agent.tools.pet_food_ocr import (
+    parse_pet_food_ocr,
+    compare_pet_foods,
+    get_food_db,
+    add_food_to_db,
+)
+from agent.diet_deep_agent.tools.pet_avatar_generator import (
+    generate_pet_avatar,
+    generate_emotion_variants,
+    remove_background,
+)
+from agent.diet_deep_agent.tools.pet_feedback_tools import PET_FEEDBACK_TOOLS
+from agent.diet_deep_agent.prompts.pet_health_prompts import PET_HEALTH_SYSTEM_PROMPT
+
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +149,31 @@ def create_diet_deep_agent(config: DietDeepConfig | None = None, use_custom_pers
         get_health_summary,
         # 记忆学习
         learn_preference,
+
+        # 宠物健康
+        get_pet_profile,
+        get_user_pets,
+        get_pet_weight_trend,
+        get_pet_feeding_records,
+        calculate_pet_nutrition_target,
+        get_pet_daily_summary,
+        analyze_weight_trend_alert,
+        analyze_weekly_diet_trend,
+        # 宠物疫苗/提醒
+        get_vaccine_records,
+        get_vaccine_schedule,
+        get_health_reminders,
+        # 宠物食品OCR/换粮
+        parse_pet_food_ocr,
+        compare_pet_foods,
+        get_food_db,
+        add_food_to_db,
+        # 宠物形象生成
+        generate_pet_avatar,
+        generate_emotion_variants,
+        remove_background,
+        # 宠物反馈
+        *PET_FEEDBACK_TOOLS,
     ]
 
     extra_kwargs = {}
@@ -130,7 +187,7 @@ def create_diet_deep_agent(config: DietDeepConfig | None = None, use_custom_pers
     agent = create_deep_agent(
         model=model,
         tools=tools,
-        system_prompt=DIET_DEEP_SYSTEM_PROMPT,
+        system_prompt=DIET_DEEP_SYSTEM_PROMPT + "\n\n" + PET_HEALTH_SYSTEM_PROMPT,
         skills=[config.skills_dir],
         subagents=ALL_SUBAGENTS,
         # Layer 2: Deep Agent 原生 Backend 路由

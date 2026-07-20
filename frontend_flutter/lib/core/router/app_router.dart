@@ -20,6 +20,12 @@ import '../../features/health/presentation/pages/wellness_page.dart';
 import '../../features/cost/presentation/pages/cost_statistics_page.dart';
 import '../../features/advisor/presentation/pages/advisor_style_page.dart';
 import '../../features/pet/presentation/pages/pet_home_page.dart';
+import '../../features/pet/presentation/pages/real_pet_detail_page.dart';
+import '../../features/pet/presentation/pages/add_pet_page.dart';
+import '../../features/pet/presentation/pages/pet_feeding_page.dart';
+import '../../features/pet/presentation/pages/pet_food_library_page.dart';
+import '../../features/pet/presentation/pages/generate_pet_avatar_page.dart';
+import '../../features/pet/presentation/pages/pet_weekly_report_page.dart';
 import '../../features/fast/presentation/pages/fasting_plan_page.dart';
 import '../../features/fast/presentation/pages/fasting_assessment_page.dart';
 import '../../features/fast/presentation/pages/fasting_checkin_page.dart';
@@ -208,14 +214,69 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const ProfilePage(),
           ),
 
-          // 保存菜品页面 — 不再注册为 GoRouter 路由，只通过 Navigator.push 直接打开
-          // 避免 ShellRoute nested Navigator 冲突导致返回值丢失
-
           // 提醒设置页面
           GoRoute(
             path: '/reminder-settings',
             name: 'reminder_settings',
             builder: (context, state) => const ReminderSettingsPage(),
+          ),
+
+          // 真实宠物详情页（从首页宠物健康跳转）
+          GoRoute(
+            path: '/real-pet-detail/:petId',
+            name: 'real_pet_detail',
+            builder: (context, state) {
+              final pet = state.extra as Map<String, dynamic>;
+              return RealPetDetailPage(pet: pet);
+            },
+          ),
+
+          // 宠物添加页面
+          GoRoute(
+            path: '/add-pet',
+            name: 'add_pet',
+            builder: (context, state) => const AddPetPage(),
+          ),
+
+          // 宠物饮食日报（完整报告）
+          GoRoute(
+            path: '/pet-feeding',
+            name: 'pet_feeding',
+            builder: (context, state) {
+              final pet = state.extra as Map<String, dynamic>;
+              return PetFeedingPage(pet: pet);
+            },
+          ),
+
+          // 宠物食品库
+          GoRoute(
+            path: '/pet-food-library',
+            name: 'pet_food_library',
+            builder: (context, state) => const PetFoodLibraryPage(),
+          ),
+
+          // 宠物AI形象生成
+          GoRoute(
+            path: '/generate-pet-avatar',
+            name: 'generate_pet_avatar',
+            builder: (context, state) {
+              final extra = state.extra as Map<String, dynamic>;
+              return GeneratePetAvatarPage(
+                petId: (extra['petId'] as num?)?.toInt() ?? 0,
+                petName: extra['petName'] as String? ?? '未命名',
+                species: extra['species'] as String? ?? '猫',
+              );
+            },
+          ),
+
+          // 宠物饮食周报
+          GoRoute(
+            path: '/pet-weekly-report',
+            name: 'pet_weekly_report',
+            builder: (context, state) {
+              final pet = state.extra as Map<String, dynamic>;
+              return PetWeeklyReportPage(pet: pet);
+            },
           ),
 
           // 体质自测页面

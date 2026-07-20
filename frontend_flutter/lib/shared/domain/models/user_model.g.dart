@@ -56,6 +56,8 @@ UserProfile _$UserProfileFromJson(Map<String, dynamic> json) => UserProfile(
       onboardingStep: (json['onboarding_step'] as num?)?.toInt(),
       constitutionType: json['constitution_type'] as String?,
       crowdTag: json['crowd_tag'] as String?,
+      dailyWaterGoal: (json['daily_water_goal'] as num?)?.toInt(),
+      targetCalories: (json['target_calories'] as num?)?.toInt(),
       createdAt: json['created_at'] as String,
       updatedAt: json['updated_at'] as String,
     );
@@ -83,6 +85,8 @@ Map<String, dynamic> _$UserProfileToJson(UserProfile instance) =>
       'onboarding_step': instance.onboardingStep,
       'constitution_type': instance.constitutionType,
       'crowd_tag': instance.crowdTag,
+      'daily_water_goal': instance.dailyWaterGoal,
+      'target_calories': instance.targetCalories,
       'created_at': instance.createdAt,
       'updated_at': instance.updatedAt,
     };
@@ -179,6 +183,8 @@ UserProfileUpdateRequest _$UserProfileUpdateRequestFromJson(
       healthStatus: (json['health_status'] as num?)?.toInt(),
       constitutionType: json['constitution_type'] as String?,
       crowdTag: json['crowd_tag'] as String?,
+      dailyWaterGoal: (json['daily_water_goal'] as num?)?.toInt(),
+      targetCalories: (json['target_calories'] as num?)?.toInt(),
     );
 
 Map<String, dynamic> _$UserProfileUpdateRequestToJson(
@@ -202,6 +208,8 @@ Map<String, dynamic> _$UserProfileUpdateRequestToJson(
       if (instance.constitutionType case final value?)
         'constitution_type': value,
       if (instance.crowdTag case final value?) 'crowd_tag': value,
+      if (instance.dailyWaterGoal case final value?) 'daily_water_goal': value,
+      if (instance.targetCalories case final value?) 'target_calories': value,
     };
 
 HealthGoal _$HealthGoalFromJson(Map<String, dynamic> json) => HealthGoal(

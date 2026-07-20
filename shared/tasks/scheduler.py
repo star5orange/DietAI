@@ -401,6 +401,28 @@ def setup_scheduler() -> AsyncIOScheduler:
     )
     logger.info("Solar term change check task registered (daily 00:05)")
 
+    # M3: 宠物疫苗/驱虫到期检查 (daily 08:00)
+    try:
+        from shared.tasks.pet_tasks import check_pet_vaccine_reminders, check_pet_weight_anomaly
+        _scheduler.add_job(
+            check_pet_vaccine_reminders,
+            trigger=CronTrigger(hour=8, minute=0),
+            id="check_pet_vaccine_reminders",
+            name="Pet Vaccine/Deworming Reminder Check",
+            replace_existing=True,
+        )
+        logger.info("Pet vaccine reminder check task registered (daily 08:00)")
+        _scheduler.add_job(
+            check_pet_weight_anomaly,
+            trigger=CronTrigger(hour=8, minute=5),
+            id="check_pet_weight_anomaly",
+            name="Pet Weight Anomaly Detection",
+            replace_existing=True,
+        )
+        logger.info("Pet weight anomaly check task registered (daily 08:05)")
+    except ImportError as e:
+        logger.warning(f"Pet scheduled tasks not registered: {e}")
+
     _scheduler.start()
     logger.info("Background task scheduler started")
 

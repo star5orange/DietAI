@@ -14,7 +14,8 @@ class ConstitutionQuizPage extends ConsumerStatefulWidget {
   const ConstitutionQuizPage({super.key});
 
   @override
-  ConsumerState<ConstitutionQuizPage> createState() => _ConstitutionQuizPageState();
+  ConsumerState<ConstitutionQuizPage> createState() =>
+      _ConstitutionQuizPageState();
 }
 
 class _ConstitutionQuizPageState extends ConsumerState<ConstitutionQuizPage> {
@@ -26,6 +27,11 @@ class _ConstitutionQuizPageState extends ConsumerState<ConstitutionQuizPage> {
   String? _resultDescription;
   String? _resultAdvice;
 
+  // 体质信息（可能被API更新）
+  Map<String, _ConstitutionInfo> _constitutionInfo =
+      Map.from(_fallbackConstitutionInfo);
+
+  // 测评问题——这些是测评逻辑本身，保持硬编码
   static const _questions = [
     _QuizQuestion(
       title: '体力与精力',
@@ -149,7 +155,8 @@ class _ConstitutionQuizPageState extends ConsumerState<ConstitutionQuizPage> {
     ),
   ];
 
-  static const _constitutionInfo = {
+  // 体质信息——优先从后端获取，硬编码数据作为回退
+  static const _fallbackConstitutionInfo = {
     'pinghe': _ConstitutionInfo(
       name: '平和质',
       emoji: '☯️',
@@ -214,6 +221,45 @@ class _ConstitutionQuizPageState extends ConsumerState<ConstitutionQuizPage> {
       advice: '明确过敏原并避免接触。饮食宜清淡均衡，增强体质。季节交替时注意防护。',
     ),
   };
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchConstitutions();
+  }
+
+  Future<void> _fetchConstitutions() async {
+    try {
+      final response = await ApiService().get('/health/constitutions');
+      if (response.success &&
+          response.data != null &&
+          response.data['items'] != null) {
+        final items = response.data['items'] as List;
+        final updated = <String, _ConstitutionInfo>{};
+        for (final item in items) {
+          final key =
+              (item['constitution_key'] ?? item['type'] ?? '').toString();
+          if (key.isEmpty) continue;
+          final colorHex = item['color'] as String?;
+          updated[key] = _ConstitutionInfo(
+            name: (item['name'] ?? '').toString(),
+            emoji: (item['emoji'] ?? '☯️').toString(),
+            color: colorHex != null
+                ? Color(int.parse(colorHex.replaceFirst('#', '0xFF')))
+                : _fallbackConstitutionInfo[key]?.color ??
+                    const Color(0xFF22C55E),
+            description: (item['description'] ?? '').toString(),
+            advice: (item['advice'] ?? '').toString(),
+          );
+        }
+        if (updated.isNotEmpty && mounted) {
+          setState(() => _constitutionInfo = updated);
+        }
+      }
+    } catch (_) {
+      // API 失败，使用硬编码回退数据
+    }
+  }
 
   void _selectOption(int questionIndex, int optionIndex) {
     setState(() {
@@ -336,11 +382,12 @@ class _ConstitutionQuizPageState extends ConsumerState<ConstitutionQuizPage> {
               ),
               const SizedBox(height: 16),
               Text('选择体质类型',
-                  style: AppTextStyles.h5.copyWith(fontWeight: FontWeight.w700)),
+                  style:
+                      AppTextStyles.h5.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               Text('您可以手动选择您的体质类型',
-                  style:
-                      AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.textSecondary)),
               const SizedBox(height: 16),
               ..._constitutionInfo.entries.map((entry) => Padding(
                     padding: const EdgeInsets.only(bottom: 8),
@@ -412,7 +459,8 @@ class _ConstitutionQuizPageState extends ConsumerState<ConstitutionQuizPage> {
     return Scaffold(
       backgroundColor: AppColors.backgroundSecondary,
       appBar: AppBar(
-        title: const Text('体质自测', style: TextStyle(fontWeight: FontWeight.w700)),
+        title:
+            const Text('体质自测', style: TextStyle(fontWeight: FontWeight.w700)),
         centerTitle: true,
         backgroundColor: AppColors.backgroundCard,
         foregroundColor: AppColors.textPrimary,
@@ -535,8 +583,7 @@ class _ConstitutionQuizPageState extends ConsumerState<ConstitutionQuizPage> {
                                             size: 16, color: Colors.white)
                                         : Center(
                                             child: Text(
-                                              String.fromCharCode(
-                                                  65 + optIdx),
+                                              String.fromCharCode(65 + optIdx),
                                               style: TextStyle(
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.w600,
@@ -548,7 +595,8 @@ class _ConstitutionQuizPageState extends ConsumerState<ConstitutionQuizPage> {
                                   const SizedBox(width: 14),
                                   Expanded(
                                     child: Text(opt.text,
-                                        style: AppTextStyles.bodyMedium.copyWith(
+                                        style:
+                                            AppTextStyles.bodyMedium.copyWith(
                                           fontWeight: isSelected
                                               ? FontWeight.w600
                                               : FontWeight.normal,

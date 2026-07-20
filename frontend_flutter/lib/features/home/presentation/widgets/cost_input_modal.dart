@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
+import '../../../../core/services/api_service.dart';
 
 /// 消费信息输入模态框
 /// 用于记录食物消费的金额和来源信息
@@ -23,10 +24,29 @@ class CostInputModal extends StatefulWidget {
 
 class _CostInputModalState extends State<CostInputModal> {
   final _amountController = TextEditingController();
+  final ApiService _apiService = ApiService();
   String _selectedSource = 'canteen';
   bool _isSaving = false;
 
-  final List<Map<String, dynamic>> _sourceOptions = [
+  static const Map<String, IconData> _sourceIcons = {
+    'canteen': LucideIcons.utensils,
+    'delivery': LucideIcons.package,
+    'home': LucideIcons.home,
+    'restaurant': LucideIcons.store,
+    'snack': LucideIcons.cookie,
+    'other': LucideIcons.moreHorizontal,
+  };
+
+  static const Map<String, Color> _sourceColors = {
+    'canteen': AppColors.breakfastStart,
+    'delivery': AppColors.accent,
+    'home': AppColors.primary,
+    'restaurant': AppColors.lunchStart,
+    'snack': AppColors.snackStart,
+    'other': AppColors.dinnerStart,
+  };
+
+  List<Map<String, dynamic>> _sourceOptions = [
     {
       'value': 'canteen',
       'label': '食堂',
@@ -64,6 +84,37 @@ class _CostInputModalState extends State<CostInputModal> {
       'color': AppColors.dinnerStart
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchSourceOptions();
+  }
+
+  Future<void> _fetchSourceOptions() async {
+    try {
+      final response = await _apiService.get('/foods/source-tags');
+      if (response.success && response.data != null) {
+        final items = response.data['items'] as List<dynamic>?;
+        if (items != null && mounted) {
+          setState(() {
+            _sourceOptions = items.map((item) {
+              final value = item['value'] as String;
+              final label = item['label'] as String;
+              return {
+                'value': value,
+                'label': label,
+                'icon': _sourceIcons[value] ?? LucideIcons.moreHorizontal,
+                'color': _sourceColors[value] ?? AppColors.dinnerStart,
+              };
+            }).toList();
+          });
+        }
+      }
+    } catch (_) {
+      // Silently fallback to hardcoded data
+    }
+  }
 
   @override
   void dispose() {

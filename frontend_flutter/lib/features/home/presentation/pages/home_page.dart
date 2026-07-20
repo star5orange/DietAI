@@ -24,7 +24,11 @@ import '../../../camera/presentation/pages/camera_page.dart';
 import '../../../chat/presentation/pages/chat_page.dart';
 import '../../../health/presentation/pages/exercise_record_page.dart';
 import '../../../pet/presentation/providers/pet_provider.dart';
+import '../../../pet/presentation/widgets/pet_health_score_card.dart';
+import '../../../pet/presentation/widgets/add_feeding_record_modal.dart';
+import '../../../pet/data/real_pet_api_service.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
+import '../../../../shared/domain/models/user_model.dart';
 import '../../../cost/data/services/cost_service.dart';
 import '../../../cost/presentation/widgets/budget_progress_card.dart';
 import 'meal_selection_page.dart';
@@ -59,6 +63,21 @@ class _HomePageState extends ConsumerState<HomePage> {
   String? _solarTermWellness; // 新节气养生要点
   Map<String, dynamic>? _upcomingSolarTerm; // 即将到来的节气（3天内）
   final ExerciseService _exerciseService = ExerciseService();
+
+  // ===== 宠物健康切换 =====
+  int? _selectedPetIndex; // null = 我的健康, 0/1... = 宠物
+  final RealPetApiService _petApi = RealPetApiService();
+  List<Map<String, dynamic>> _pets = [];
+  bool _isLoadingPets = true;
+  // 宠物饮食记录（从 API 获取）
+  List<Map<String, dynamic>> _petFeedingRecords = [];
+  bool _isLoadingPetData = false;
+  Map<String, dynamic>? _petDailySummary;
+  List<Map<String, dynamic>> _petVaccineRecords = [];
+  Map<String, dynamic>? _petFeedingPlan;
+  // 当前宠物最新体重
+  double? _petLatestWeight;
+  // ============================
   final SavedMealService _savedMealService = SavedMealService();
   final CostService _costService = CostService(ApiService());
   double _todayExerciseCalories = 0.0;
@@ -71,6 +90,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   void initState() {
     super.initState();
     _loadTodayData();
+    _loadPets();
   }
 
   Future<void> _loadTodayData() async {
@@ -163,28 +183,49 @@ class _HomePageState extends ConsumerState<HomePage> {
         } catch (_) {}
       }
 
-      // 加载收藏餐食（取前6个常用）
+      // 加载收藏餐食（取前6个常用，去重）
       try {
-        final mealsResult = await _savedMealService.getSavedMeals(pageSize: 6);
+        final mealsResult = await _savedMealService.getSavedMeals(pageSize: 20);
         if (mealsResult.success && mealsResult.data != null) {
-          _favoriteMeals = mealsResult.data!;
+          // 根据菜品名称去重
+          final uniqueMeals = <String, SavedMeal>{};
+          for (final meal in mealsResult.data!) {
+            uniqueMeals[meal.mealName] = meal;
+          }
+          _favoriteMeals = uniqueMeals.values.take(6).toList();
         }
       } catch (_) {}
 
       // 加载个性化每日营养目标
       try {
+        // 先确保用户资料已加载
+        final userProfile = await ref
+            .read(userProfileProvider.notifier)
+            .loadUserProfileAndGet();
+
+        // 卡路里目标优先使用用户设置的值（不依赖 getDailyStatus API）
+        if (userProfile?.targetCalories != null) {
+          _targetCalories = userProfile!.targetCalories!.toDouble();
+          print('✅ 使用用户设置的卡路里目标: $_targetCalories');
+        }
+
         final goalResult = await _goalTrackingService.getDailyStatus();
         if (goalResult.success && goalResult.data != null) {
           final targets =
               goalResult.data!['daily_targets'] as Map<String, dynamic>?;
           if (targets != null) {
-            _targetCalories =
-                (targets['calories'] as num?)?.toDouble() ?? _targetCalories;
             _targetProtein =
                 (targets['protein'] as num?)?.toDouble() ?? _targetProtein;
             _targetCarbs =
                 (targets['carbs'] as num?)?.toDouble() ?? _targetCarbs;
             _targetFat = (targets['fat'] as num?)?.toDouble() ?? _targetFat;
+
+            // 如果用户未设置卡路里目标，使用系统计算值
+            if (userProfile?.targetCalories == null) {
+              _targetCalories =
+                  (targets['calories'] as num?)?.toDouble() ?? _targetCalories;
+              print('📊 使用系统计算的卡路里目标: $_targetCalories');
+            }
           }
         }
       } catch (_) {}
@@ -235,11 +276,837 @@ class _HomePageState extends ConsumerState<HomePage> {
   void _updatePetState() {
     final currentCalories = _dailySummary?.totalCalories ?? 0.0;
     final noRecordToday = _todayRecords.isEmpty;
+    final effectiveTarget =
+        ref.read(userProfileProvider).value?.targetCalories?.toDouble() ??
+            _targetCalories;
     ref.read(petProvider.notifier).updateState(
           consumed: currentCalories,
-          target: _targetCalories,
+          target: effectiveTarget,
           noRecordToday: noRecordToday,
         );
+  }
+
+  /// 宠物健康切换器 —— "我的健康" 与宠物名称的 Chip 切换
+  Widget _buildPetSwitcher() {
+    return Container(
+      color: AppColors.backgroundCard,
+      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+      child: Row(
+        children: [
+          _buildPetChip('我的健康', null, _selectedPetIndex == null),
+          const SizedBox(width: 8),
+          if (_isLoadingPets)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            ..._pets.asMap().entries.map(
+                  (e) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: _buildPetChip(
+                      e.value['name'] as String? ?? '宠物',
+                      e.key,
+                      _selectedPetIndex == e.key,
+                    ),
+                  ),
+                ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPetChip(String label, int? index, bool isSelected) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedPetIndex = index;
+          // 切换时初始化宠物饮食记录
+          if (index != null) {
+            _initPetFeedingRecords(index);
+          }
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.borderLight,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              index == null ? LucideIcons.user : Icons.pets,
+              size: 14,
+              color: isSelected ? Colors.white : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? Colors.white : AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _initPetFeedingRecords(int petIndex) {
+    // 选中宠物时从 API 加载数据
+    if (petIndex < _pets.length) {
+      final petId = (_pets[petIndex]['id'] as num?)?.toInt() ?? 0;
+      _loadPetData(petId);
+    }
+  }
+
+  /// 从后端 API 加载当前用户的宠物列表
+  Future<void> _loadPets() async {
+    try {
+      final result = await _petApi.getPets();
+      if (mounted && result.isSuccess && result.data != null) {
+        final pets =
+            List<Map<String, dynamic>>.from(result.data!['pets'] ?? []);
+        setState(() {
+          _pets = pets;
+          _isLoadingPets = false;
+        });
+      } else {
+        if (mounted) setState(() => _isLoadingPets = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingPets = false);
+    }
+  }
+
+  /// 从后端 API 加载指定宠物的今日饮食、汇总、疫苗和喂食计划
+  Future<void> _loadPetData(int petId) async {
+    setState(() => _isLoadingPetData = true);
+    try {
+      final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+      // 并行请求
+      final results = await Future.wait([
+        _petApi.getFeedingRecords(petId, limit: 50),
+        _petApi.getDailySummary(petId, todayStr),
+        _petApi.getVaccineRecords(petId),
+        _petApi.getFeedingPlan(petId),
+        _petApi.getWeightRecords(petId),
+      ]);
+
+      final feedingResult = results[0];
+      final summaryResult = results[1];
+      final vaccineResult = results[2];
+      final planResult = results[3];
+      final weightResult = results[4];
+
+      if (!mounted) return;
+
+      // 饮食记录
+      List<Map<String, dynamic>> records = [];
+      if (feedingResult.isSuccess && feedingResult.data != null) {
+        final raw = feedingResult.data!['records'] as List?;
+        if (raw != null) {
+          records = raw.map((r) {
+            final m = Map<String, dynamic>.from(r as Map);
+            // 映射字段名以兼容现有 UI
+            m['food'] = m['food_name'] ?? '';
+            m['amount_g'] = (m['amount_grams'] as num?)?.toDouble() ?? 0;
+            m['calories'] = (m['calories'] as num?)?.toDouble() ?? 0;
+            m['protein'] = (m['protein'] as num?)?.toDouble() ?? 0;
+            m['fat'] = 0.0; // feeding record may not have fat
+            m['type'] = '干粮'; // default
+            final rt = m['record_time'] as String?;
+            m['time'] = rt != null
+                ? rt.substring(
+                    rt.length >= 16 ? 11 : 0, rt.length >= 16 ? 16 : rt.length)
+                : '';
+            return m;
+          }).toList();
+        }
+      }
+
+      // 每日汇总
+      Map<String, dynamic>? dailySummary;
+      if (summaryResult.isSuccess && summaryResult.data != null) {
+        dailySummary = summaryResult.data;
+      }
+
+      // 疫苗记录
+      List<Map<String, dynamic>> vaccineRecords = [];
+      if (vaccineResult.isSuccess && vaccineResult.data != null) {
+        final raw = vaccineResult.data!['records'] as List?;
+        if (raw != null) {
+          vaccineRecords = raw.map((r) {
+            final m = Map<String, dynamic>.from(r as Map);
+            // 计算疫苗状态
+            final nextDate = m['next_vaccination_date'] as String?;
+            final today = DateTime.now();
+            if (nextDate != null) {
+              final next = DateTime.tryParse(nextDate);
+              if (next != null) {
+                m['status'] = next.isBefore(today) ? '已过期' : '正常';
+              } else {
+                m['status'] = '正常';
+              }
+            } else {
+              m['status'] = '正常';
+            }
+            m['name'] = m['vaccine_name'] ?? '';
+            m['date'] = m['vaccinated_at'] ?? '';
+            m['next_date'] = nextDate ?? '';
+            return m;
+          }).toList();
+        }
+      }
+
+      // 喂食计划（含目标热量等）
+      Map<String, dynamic>? feedingPlan;
+      if (planResult.isSuccess && planResult.data != null) {
+        feedingPlan = planResult.data;
+      }
+
+      // 最新体重
+      double? latestWeight;
+      if (weightResult.isSuccess && weightResult.data != null) {
+        final weightList = weightResult.data!['records'] as List?;
+        if (weightList != null && weightList.isNotEmpty) {
+          final latest = Map<String, dynamic>.from(weightList.last as Map);
+          latestWeight = (latest['weight'] as num?)?.toDouble();
+        }
+      }
+
+      setState(() {
+        _petFeedingRecords = records;
+        _petDailySummary = dailySummary;
+        _petVaccineRecords = vaccineRecords;
+        _petFeedingPlan = feedingPlan;
+        _petLatestWeight = latestWeight;
+        _isLoadingPetData = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingPetData = false);
+    }
+  }
+
+  /// 宠物健康视图 — 替换首页内容（从后端 API 获取数据）
+  Widget _buildPetHealthView() {
+    final pet = _pets[_selectedPetIndex!];
+    final petName = pet['name'] as String? ?? '宠物';
+    final petId = (pet['id'] as num?)?.toInt() ?? 0;
+    final species = pet['species'] as String? ?? '';
+    final breed = pet['breed'] as String? ?? '';
+    final birthDate = pet['birth_date'] as String?;
+
+    // 计算年龄
+    String ageText = '未知';
+    if (birthDate != null) {
+      try {
+        final birth = DateTime.parse(birthDate);
+        final now = DateTime.now();
+        final years = now.year - birth.year;
+        if (years > 0) {
+          ageText = '$years岁';
+        } else {
+          final months =
+              now.month - birth.month + (now.day >= birth.day ? 0 : -1);
+          ageText = '${months > 0 ? months : 1}个月';
+        }
+      } catch (_) {
+        ageText = '未知';
+      }
+    }
+
+    // 体重
+    final weight = _petLatestWeight ?? '未知';
+    final weightText =
+        weight is double ? '${weight.toStringAsFixed(1)}kg' : '$weight';
+
+    // 目标热量：优先使用喂食计划，其次用每日汇总，最后估算
+    double targetCal;
+    if (_petFeedingPlan != null &&
+        (_petFeedingPlan!['daily_calories'] != null ||
+            _petFeedingPlan!['target_calories'] != null)) {
+      targetCal = ((_petFeedingPlan!['daily_calories'] ??
+              _petFeedingPlan!['target_calories']) as num)
+          .toDouble();
+    } else if (_petDailySummary != null &&
+        _petDailySummary!['target_calories'] != null) {
+      targetCal = (_petDailySummary!['target_calories'] as num).toDouble();
+    } else {
+      targetCal = _estimateCalorieTarget(pet);
+    }
+
+    // 从饮食记录汇总
+    final totalCalories = _petFeedingRecords.fold<double>(
+      0,
+      (sum, r) => sum + ((r['calories'] as num?)?.toDouble() ?? 0),
+    );
+    final totalProtein = _petFeedingRecords.fold<double>(
+      0,
+      (sum, r) => sum + ((r['protein'] as num?)?.toDouble() ?? 0),
+    );
+    final totalFat = _petFeedingRecords.fold<double>(
+      0,
+      (sum, r) => sum + ((r['fat'] as num?)?.toDouble() ?? 0),
+    );
+
+    // 如果每日汇总有更准确的数据，优先使用
+    final summaryCalories = _petDailySummary?['total_calories'] != null
+        ? (_petDailySummary!['total_calories'] as num).toDouble()
+        : null;
+    final displayCalories = summaryCalories != null && summaryCalories > 0
+        ? summaryCalories
+        : totalCalories;
+    final displayProtein = _petDailySummary?['total_protein'] != null
+        ? (_petDailySummary!['total_protein'] as num).toDouble()
+        : totalProtein;
+    final displayFat = _petDailySummary?['total_fat'] != null
+        ? (_petDailySummary!['total_fat'] as num).toDouble()
+        : totalFat;
+
+    final progress =
+        targetCal > 0 ? (displayCalories / targetCal).clamp(0.0, 1.5) : 0.0;
+
+    // 蛋白质和脂肪目标估算
+    final proteinTarget = _estimateProteinTarget(pet);
+    final fatTarget = _estimateFatTarget(pet);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 宠物信息头部
+        Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppColors.primarySurface,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Center(
+                child: Icon(
+                  species == 'cat' ? Icons.pets : Icons.pets,
+                  color: AppColors.primary,
+                  size: 24,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$petName 的健康',
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                  Text(
+                    '$breed · $ageText · $weightText',
+                    style: AppTextStyles.bodySmall
+                        .copyWith(color: AppColors.textTertiary),
+                  ),
+                ],
+              ),
+            ),
+            // 跳转到宠物详情
+            GestureDetector(
+              onTap: () => context.push('/real-pet-detail/$petId', extra: pet),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.primarySurface,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  '详情',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+
+        // 加载中
+        if (_isLoadingPetData)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(40),
+              child: CircularProgressIndicator(),
+            ),
+          )
+        else ...[
+          // 卡路里圆环
+          _buildPetCalorieCard(displayCalories, targetCal, progress, petName),
+          const SizedBox(height: 20),
+
+          // 营养素进度
+          _buildPetNutrientRow(
+              '蛋白质', displayProtein, proteinTarget, AppColors.info),
+          const SizedBox(height: 10),
+          _buildPetNutrientRow('脂肪', displayFat, fatTarget, AppColors.warning),
+
+          const SizedBox(height: 20),
+
+          // 健康评分卡
+          PetHealthScoreCard.autoCompute(
+            feedingRecords: _petFeedingRecords,
+            targetCalories: targetCal,
+            weight: weight is double ? weight : 5.0,
+            vaccineRecords: _petVaccineRecords,
+          ),
+
+          // 疫苗到期提醒
+          _buildVaccineReminder(),
+
+          const SizedBox(height: 24),
+
+          // 今日饮食
+          Row(
+            children: [
+              const Text('今日饮食',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              Text(
+                '目标 ${targetCal.round()} kcal',
+                style: AppTextStyles.bodySmall
+                    .copyWith(color: AppColors.textTertiary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // 饮食记录列表
+          if (_petFeedingRecords.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Center(
+                child: Text('暂未记录饮食',
+                    style: TextStyle(color: AppColors.textTertiary)),
+              ),
+            )
+          else
+            ..._petFeedingRecords.asMap().entries.map(
+                  (entry) => _buildPetFeedingDismissible(
+                      entry.key, entry.value, petId),
+                ),
+        ],
+
+        const SizedBox(height: 40),
+      ],
+    );
+  }
+
+  Widget _buildPetFeedingDismissible(
+      int index, Map<String, dynamic> record, int petId) {
+    final recordId = record['id'];
+    return Dismissible(
+      key: ValueKey('home_pet_feed_${recordId ?? index}_${record['time']}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: AppColors.error,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Icon(LucideIcons.trash2, color: Colors.white),
+      ),
+      confirmDismiss: (_) async {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('确认删除'),
+            content: Text('删除「${record['food']}」的饮食记录？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                child: const Text('删除'),
+              ),
+            ],
+          ),
+        );
+        return confirmed ?? false;
+      },
+      onDismissed: (_) async {
+        final recordId = record['id'] as int?;
+        if (recordId != null) {
+          try {
+            await _petApi.deleteFeedingRecord(petId, recordId);
+          } catch (_) {}
+        }
+        setState(() {
+          _petFeedingRecords.removeAt(index);
+        });
+      },
+      child: _buildPetFeedingItem(record),
+    );
+  }
+
+  Widget _buildPetCalorieCard(
+      double total, double target, double progress, String petName) {
+    final color = progress > 1.1
+        ? AppColors.error
+        : progress < 0.5
+            ? AppColors.warning
+            : AppColors.primary;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 90,
+            height: 90,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: 90,
+                  height: 90,
+                  child: CircularProgressIndicator(
+                    value: progress.clamp(0.0, 1.0),
+                    strokeWidth: 8,
+                    backgroundColor: AppColors.borderLight,
+                    valueColor: AlwaysStoppedAnimation<Color>(color),
+                  ),
+                ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${total.round()}',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: color,
+                      ),
+                    ),
+                    Text(
+                      'kcal',
+                      style: AppTextStyles.bodySmall
+                          .copyWith(color: AppColors.textTertiary),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$petName 今日摄入',
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '目标 $target kcal',
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.textTertiary),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  progress > 1.0
+                      ? '已超出 ${(total - target).round()} kcal'
+                      : '还差 ${(target - total).round()} kcal',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: progress > 1.0 ? AppColors.error : AppColors.success,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 疫苗到期提醒卡片
+  Widget _buildVaccineReminder() {
+    final now = DateTime.now();
+    final warnings = <Map<String, dynamic>>[];
+    for (final v in _petVaccineRecords) {
+      final nextStr = v['next_vaccination_date'] as String?;
+      if (nextStr == null || nextStr.isEmpty) continue;
+      final next = DateTime.tryParse(nextStr);
+      if (next == null) continue;
+      final daysLeft = next.difference(now).inDays;
+      if (daysLeft <= 30) {
+        warnings.add({
+          'name': v['vaccine_name'] ?? v['name'] ?? '',
+          'next': nextStr,
+          'daysLeft': daysLeft,
+        });
+      }
+    }
+    if (warnings.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        const SizedBox(height: 16),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.warning.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border:
+                Border.all(color: AppColors.warning.withValues(alpha: 0.25)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(LucideIcons.syringe,
+                      size: 16, color: AppColors.warning),
+                  const SizedBox(width: 6),
+                  const Text('疫苗提醒',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.warning)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ...warnings.map((w) {
+                final days = w['daysLeft'] as int;
+                final isOverdue = days < 0;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Text(isOverdue ? '🔴' : '🟡',
+                          style: const TextStyle(fontSize: 12)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text('${w['name']}',
+                            style: const TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w500)),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isOverdue
+                              ? AppColors.error.withValues(alpha: 0.1)
+                              : AppColors.warning.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          isOverdue ? '已过期 ${-days}天' : '${days}天后',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color:
+                                isOverdue ? AppColors.error : AppColors.warning,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPetNutrientRow(
+      String label, double value, double target, Color color) {
+    final progress = target > 0 ? (value / target).clamp(0.0, 1.0) : 1.0;
+    return Row(
+      children: [
+        SizedBox(
+          width: 48,
+          child: Text(label, style: AppTextStyles.bodySmall),
+        ),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: AppColors.borderLight,
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 64,
+          child: Text(
+            '${value.toStringAsFixed(0)} / ${target.toStringAsFixed(0)}g',
+            style:
+                AppTextStyles.bodySmall.copyWith(color: AppColors.textTertiary),
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPetFeedingItem(Map<String, dynamic> record) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderLight),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.primarySurface,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Center(
+              child: Text(
+                record['type'] == '干粮'
+                    ? '🟤'
+                    : record['type'] == '湿粮'
+                        ? '🥫'
+                        : record['type'] == '鲜食'
+                            ? '🍖'
+                            : '🍪',
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  (record['food'] as String?) ?? '',
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${record['type'] ?? '干粮'} · ${record['amount_g'] ?? 0}g',
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.textTertiary),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${((record['calories'] as num?)?.toDouble() ?? 0).round()} kcal',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                ),
+              ),
+              Text(
+                (record['time'] as String?) ?? '',
+                style: AppTextStyles.bodySmall
+                    .copyWith(color: AppColors.textTertiary),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  double _estimateCalorieTarget(Map<String, dynamic> pet) {
+    final weight = _petLatestWeight;
+    final species = pet['species'] as String? ?? '';
+    if (weight == null) return species == 'cat' ? 250.0 : 350.0;
+    // 粗略估算：猫每天约 50 kcal/kg，狗约 40 kcal/kg
+    return species == 'cat' ? weight * 50 : weight * 40;
+  }
+
+  double _estimateProteinTarget(Map<String, dynamic> pet) {
+    final weight = _petLatestWeight;
+    final species = pet['species'] as String? ?? '';
+    if (weight == null) return species == 'cat' ? 20.0 : 25.0;
+    return species == 'cat' ? weight * 4.5 : weight * 3.2;
+  }
+
+  double _estimateFatTarget(Map<String, dynamic> pet) {
+    final weight = _petLatestWeight;
+    final species = pet['species'] as String? ?? '';
+    if (weight == null) return species == 'cat' ? 10.0 : 14.0;
+    return species == 'cat' ? weight * 1.8 : weight * 1.4;
+  }
+
+  void _showAddPetFeedingModal() async {
+    if (_selectedPetIndex == null || _selectedPetIndex! >= _pets.length) return;
+    final pet = _pets[_selectedPetIndex!];
+    final petId = (pet['id'] as num?)?.toInt() ?? 0;
+
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => AddFeedingRecordModal(petId: petId),
+    );
+
+    if (result == null || !mounted) return;
+
+    // 立即更新本地列表
+    setState(() {
+      _petFeedingRecords.add(Map<String, dynamic>.from(result));
+    });
+
+    // 重新加载完整数据以同步
+    _loadPetData(petId);
   }
 
   Future<void> _refreshData() async {
@@ -255,72 +1122,80 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget build(BuildContext context) {
     final currentCalories = _dailySummary?.totalCalories ?? 0.0;
     final remainingCalories = (_targetCalories - currentCalories).round();
-    final userProfile = ref.watch(userProfileProvider).value;
-    final crowdTag = userProfile?.crowdTag ?? '普通';
+    final crowdTag = ref.watch(userProfileProvider).value?.crowdTag ?? '普通';
 
     return Scaffold(
       backgroundColor: AppColors.backgroundSecondary,
-      floatingActionButton: LayoutBuilder(
-        builder: (context, constraints) {
-          // 初始化位置：右下角默认FAB位置
-          if (!_fabInitialized) {
-            _fabOffset = Offset(
-              constraints.maxWidth - 64,
-              constraints.maxHeight - 160,
-            );
-            _fabInitialized = true;
-          }
-          return Stack(
-            children: [
-              Positioned(
-                left: _fabOffset.dx,
-                top: _fabOffset.dy,
-                child: GestureDetector(
-                  onPanUpdate: (details) {
-                    setState(() {
-                      _fabOffset = Offset(
-                        (_fabOffset.dx + details.delta.dx)
-                            .clamp(0, constraints.maxWidth - 56),
-                        (_fabOffset.dy + details.delta.dy)
-                            .clamp(0, constraints.maxHeight - 56),
-                      );
-                    });
-                  },
-                  onPanEnd: (_) {
-                    // 松手后吸附到左侧或右侧
-                    setState(() {
-                      final snapLeft = _fabOffset.dx < constraints.maxWidth / 2;
-                      _fabOffset = Offset(
-                        snapLeft ? 16.0 : constraints.maxWidth - 72,
-                        _fabOffset.dy,
-                      );
-                    });
-                  },
-                  child: FloatingActionButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            const ChatPage(sessionType: 1, title: 'AI营养顾问'),
+      floatingActionButton: _selectedPetIndex != null
+          ? FloatingActionButton(
+              onPressed: _showAddPetFeedingModal,
+              backgroundColor: AppColors.primary,
+              heroTag: 'pet_feed_fab',
+              child: const Icon(LucideIcons.plus, color: Colors.white),
+            )
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                // 初始化位置：右下角默认FAB位置
+                if (!_fabInitialized) {
+                  _fabOffset = Offset(
+                    constraints.maxWidth - 64,
+                    constraints.maxHeight - 160,
+                  );
+                  _fabInitialized = true;
+                }
+                return Stack(
+                  children: [
+                    Positioned(
+                      left: _fabOffset.dx,
+                      top: _fabOffset.dy,
+                      child: GestureDetector(
+                        onPanUpdate: (details) {
+                          setState(() {
+                            _fabOffset = Offset(
+                              (_fabOffset.dx + details.delta.dx)
+                                  .clamp(0, constraints.maxWidth - 56),
+                              (_fabOffset.dy + details.delta.dy)
+                                  .clamp(0, constraints.maxHeight - 56),
+                            );
+                          });
+                        },
+                        onPanEnd: (_) {
+                          // 松手后吸附到左侧或右侧
+                          setState(() {
+                            final snapLeft =
+                                _fabOffset.dx < constraints.maxWidth / 2;
+                            _fabOffset = Offset(
+                              snapLeft ? 16.0 : constraints.maxWidth - 72,
+                              _fabOffset.dy,
+                            );
+                          });
+                        },
+                        child: FloatingActionButton(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ChatPage(
+                                  sessionType: 1, title: 'AI营养顾问'),
+                            ),
+                          ),
+                          backgroundColor: AppColors.primary,
+                          elevation: 6,
+                          heroTag: 'ai_chat_fab',
+                          child: const Icon(LucideIcons.messageCircle,
+                              size: 28, color: Colors.white),
+                        ),
                       ),
                     ),
-                    backgroundColor: AppColors.primary,
-                    elevation: 6,
-                    heroTag: 'ai_chat_fab',
-                    child: const Icon(LucideIcons.messageCircle,
-                        size: 28, color: Colors.white),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+                  ],
+                );
+              },
+            ),
       body: SafeArea(
         child: Column(
           children: [
             _buildAppBar(),
-            _buildDateSelector(),
+            _buildPetSwitcher(),
+            if (_selectedPetIndex == null) _buildDateSelector(),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _refreshData,
@@ -328,80 +1203,84 @@ class _HomePageState extends ConsumerState<HomePage> {
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
                   physics: const AlwaysScrollableScrollPhysics(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (_isLoading)
-                        const Center(child: CircularProgressIndicator())
-                      else ...[
-                        _buildCrowdTagHighlight(crowdTag),
-                        const SizedBox(height: 20),
-                        _buildCalorieCard(
-                            remainingCalories, currentCalories, crowdTag),
-                        const SizedBox(height: 20),
-                        Row(
+                  child: _selectedPetIndex != null
+                      ? _buildPetHealthView()
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              flex: 5,
-                              child: SizedBox(
-                                height: 300,
-                                child: WaterIntakeWidget(
-                                  onTapDetails: () {},
-                                  onWaterRecorded: _onWaterRecorded,
-                                  selectedDate: _selectedDate,
-                                ),
+                            if (_isLoading)
+                              const Center(child: CircularProgressIndicator())
+                            else ...[
+                              _buildCrowdTagHighlight(crowdTag),
+                              const SizedBox(height: 20),
+                              _buildCalorieCard(
+                                  remainingCalories, currentCalories, crowdTag),
+                              const SizedBox(height: 20),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    flex: 5,
+                                    child: SizedBox(
+                                      height: 300,
+                                      child: WaterIntakeWidget(
+                                        onTapDetails: () {},
+                                        onWaterRecorded: _onWaterRecorded,
+                                        selectedDate: _selectedDate,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    flex: 3,
+                                    child: SizedBox(
+                                      height: 300,
+                                      child: ExerciseQuickAdd(
+                                        todayCalories:
+                                            _todayExerciseCalories > 0
+                                                ? _todayExerciseCalories
+                                                : null,
+                                        todayDuration:
+                                            _todayExerciseDuration > 0
+                                                ? _todayExerciseDuration
+                                                : null,
+                                        onTap: () => Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                              builder: (context) =>
+                                                  const ExerciseRecordPage()),
+                                        ).then((_) => _refreshData()),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              flex: 3,
-                              child: SizedBox(
-                                height: 300,
-                                child: ExerciseQuickAdd(
-                                  todayCalories: _todayExerciseCalories > 0
-                                      ? _todayExerciseCalories
-                                      : null,
-                                  todayDuration: _todayExerciseDuration > 0
-                                      ? _todayExerciseDuration
-                                      : null,
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (context) =>
-                                            const ExerciseRecordPage()),
-                                  ).then((_) => _refreshData()),
-                                ),
+                              const SizedBox(height: 20),
+                              // 节气切换通知横幅
+                              if (_solarTermChanged != null) ...[
+                                _buildSolarTermChangeBanner(),
+                                const SizedBox(height: 12),
+                              ],
+                              // 节气预告横幅（3天内即将到来）
+                              if (_upcomingSolarTerm != null) ...[
+                                _buildUpcomingSolarTermBanner(),
+                                const SizedBox(height: 12),
+                              ],
+                              SolarTermTodayWidget(
+                                onTapDetails: () => context.push('/wellness'),
+                                crowdTag: crowdTag,
                               ),
-                            ),
+                              const SizedBox(height: 24),
+                              // M2: 消费概览卡片
+                              _buildCostOverviewCard(),
+                              const SizedBox(height: 20),
+                              if (_favoriteMeals.isNotEmpty) ...[
+                                _buildFavoriteMealsSection(),
+                                const SizedBox(height: 24),
+                              ],
+                              _buildFoodIntakeSection(),
+                            ],
                           ],
                         ),
-                        const SizedBox(height: 20),
-                        // 节气切换通知横幅
-                        if (_solarTermChanged != null)
-                          _buildSolarTermChangeBanner(),
-                        if (_solarTermChanged != null)
-                          const SizedBox(height: 12),
-                        // 节气预告横幅（3天内即将到来）
-                        if (_upcomingSolarTerm != null)
-                          _buildUpcomingSolarTermBanner(),
-                        if (_upcomingSolarTerm != null)
-                          const SizedBox(height: 12),
-                        SolarTermTodayWidget(
-                          onTapDetails: () => context.push('/wellness'),
-                          crowdTag: crowdTag,
-                        ),
-                        const SizedBox(height: 24),
-                        // M2: 消费概览卡片
-                        _buildCostOverviewCard(),
-                        const SizedBox(height: 20),
-                        if (_favoriteMeals.isNotEmpty) ...[
-                          _buildFavoriteMealsSection(),
-                          const SizedBox(height: 24),
-                        ],
-                        _buildFoodIntakeSection(),
-                      ],
-                    ],
-                  ),
                 ),
               ),
             ),
@@ -1138,7 +2017,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         Text('食物摄入', style: AppTextStyles.h4),
         const SizedBox(height: 16),
         ...meals.map((meal) => _buildMealItem(
-              meal['name'] as String,
+              meal['name'] as String? ?? '',
               meal['icon'] as IconData,
               meal['gradient'] as LinearGradient,
               meal['type'] as int,
@@ -1533,7 +2412,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             builder: (context) => MealSelectionPage(recordMethod: method)),
       ).then((result) {
         if (result != null) {
-          _executeRecordMethod(method, result['mealName'] as String,
+          _executeRecordMethod(method, result['mealName'] as String? ?? '',
               result['mealType'] as int, selectedTime.toIso8601String());
         }
       });
@@ -1936,29 +2815,30 @@ class _HomePageState extends ConsumerState<HomePage> {
           _CalorieGoalDialog(initialValue: _targetCalories.round().toString()),
     );
     if (result != null) {
-      setState(() => _targetCalories = result);
-      // 尝试同步到后端重新计算目标
+      // 保存到用户资料，确保数据持久化
       try {
-        final recalcResult = await _goalTrackingService.recalculateTargets();
-        if (recalcResult.success && recalcResult.data != null) {
-          final targets =
-              recalcResult.data!['daily_targets'] as Map<String, dynamic>?;
-          if (targets != null) {
-            setState(() {
-              _targetCalories =
-                  (targets['calories'] as num?)?.toDouble() ?? _targetCalories;
-              _targetProtein =
-                  (targets['protein'] as num?)?.toDouble() ?? _targetProtein;
-              _targetCarbs =
-                  (targets['carbs'] as num?)?.toDouble() ?? _targetCarbs;
-              _targetFat = (targets['fat'] as num?)?.toDouble() ?? _targetFat;
-            });
-          }
+        final success =
+            await ref.read(userProfileProvider.notifier).updateUserProfile(
+                  UserProfileUpdateRequest(targetCalories: result.round()),
+                );
+        if (success) {
+          setState(() => _targetCalories = result);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('卡路里目标已设置为 ${result.round()} kcal'),
+            backgroundColor: AppColors.success,
+          ));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('保存失败，请稍后重试'),
+            backgroundColor: AppColors.error,
+          ));
         }
-      } catch (_) {}
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('卡路里目标已设置为 ${result.round()} kcal'),
-          backgroundColor: AppColors.success));
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('保存失败，请稍后重试'),
+          backgroundColor: AppColors.error,
+        ));
+      }
     }
   }
 
@@ -2122,11 +3002,11 @@ class _HomePageState extends ConsumerState<HomePage> {
           ...nutrientList.map((n) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _buildNutrientProgress(
-                  n['name'] as String,
-                  n['current'] as double,
-                  n['target'] as double,
-                  n['color'] as Color,
-                  isHighlight: n['highlight'] as bool,
+                  n['name'] as String? ?? '',
+                  (n['current'] as num?)?.toDouble() ?? 0,
+                  (n['target'] as num?)?.toDouble() ?? 0,
+                  n['color'] as Color? ?? AppColors.primary,
+                  isHighlight: n['highlight'] as bool? ?? false,
                 ),
               )),
         ],
