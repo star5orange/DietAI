@@ -13,7 +13,7 @@ class PetProfileCreate(BaseModel):
     gender: Optional[str] = Field(None, description="male/female")
     birth_date: Optional[date] = None
     is_neutered: bool = False
-    avatar_url: Optional[str] = Field(None, max_length=500)
+    avatar_url: Optional[str] = Field(None, max_length=2000)
 
 
 class PetProfileUpdate(BaseModel):
@@ -23,7 +23,7 @@ class PetProfileUpdate(BaseModel):
     gender: Optional[str] = None
     birth_date: Optional[date] = None
     is_neutered: Optional[bool] = None
-    avatar_url: Optional[str] = Field(None, max_length=500)
+    avatar_url: Optional[str] = Field(None, max_length=2000)
 
 
 # ========== 体重 ==========

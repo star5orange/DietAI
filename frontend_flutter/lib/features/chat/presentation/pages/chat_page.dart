@@ -13,6 +13,7 @@ class ChatPage extends ConsumerStatefulWidget {
   final int sessionType;
   final String? title;
   final bool hideAppBar;
+  final int? petId; // 宠物ID（session_type=6时必填）
 
   const ChatPage({
     super.key,
@@ -20,6 +21,7 @@ class ChatPage extends ConsumerStatefulWidget {
     this.sessionType = 1,
     this.title,
     this.hideAppBar = false,
+    this.petId,
   });
 
   @override
@@ -231,6 +233,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         message: message,
         sessionId: _currentSessionId,
         sessionType: widget.sessionType,
+        petId: widget.petId,
       )) {
         if (event.isSession && event.sessionId != null) {
           // 更新会话ID

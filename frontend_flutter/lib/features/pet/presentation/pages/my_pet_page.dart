@@ -84,7 +84,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                 children: [
                   // AppBar 部分
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Row(
                       children: [
                         IconButton(
@@ -222,9 +223,11 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
           ),
           const SizedBox(height: 12),
           Text(
-            petState.dialogue,
-            style: AppTextStyles.bodyMedium.copyWith(
-              color: AppColors.textSecondary,
+            (petState.dialogue.isEmpty) ? '嗯~' : petState.dialogue,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textPrimary,
             ),
             textAlign: TextAlign.center,
           ),
@@ -260,7 +263,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
           _buildStatusItem(
             LucideIcons.flame,
             '连续',
-            '${petState.streak}天',
+            '${petState.currentStreak}天',
             AppColors.error,
           ),
         ],
@@ -268,7 +271,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
     );
   }
 
-  Widget _buildStatusItem(IconData icon, String label, String value, Color color) {
+  Widget _buildStatusItem(
+      IconData icon, String label, String value, Color color) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(12),
@@ -290,7 +294,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
             ),
             Text(
               label,
-              style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+              style:
+                  const TextStyle(fontSize: 11, color: AppColors.textTertiary),
             ),
           ],
         ),
@@ -306,7 +311,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
             LucideIcons.candy,
             '喂食',
             AppColors.caloriesColor,
-            () => _petService.feedPet(ref),
+            () => _petService.petFeed(),
           ),
         ),
         const SizedBox(width: 12),
@@ -315,7 +320,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
             LucideIcons.droplet,
             '喂水',
             AppColors.info,
-            () => _petService.giveWater(ref),
+            () => _petService.petInteract(action: 'water'),
           ),
         ),
         const SizedBox(width: 12),
@@ -324,14 +329,15 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
             LucideIcons.heart,
             '抚摸',
             AppColors.error,
-            () => _petService.petPet(ref),
+            () => _petService.petTouch(),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildActionCard(IconData icon, String label, Color color, VoidCallback onTap) {
+  Widget _buildActionCard(
+      IconData icon, String label, Color color, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -426,7 +432,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                 borderRadius: BorderRadius.circular(50),
               ),
               child: const Center(
-                child: Icon(LucideIcons.cat, size: 48, color: AppColors.primary),
+                child:
+                    Icon(LucideIcons.cat, size: 48, color: AppColors.primary),
               ),
             ),
             const SizedBox(height: 20),
@@ -449,7 +456,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -526,7 +534,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: AppColors.primarySurface,
                           borderRadius: BorderRadius.circular(4),

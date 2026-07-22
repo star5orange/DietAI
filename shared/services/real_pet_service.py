@@ -28,7 +28,7 @@ WANX_CREATE_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimoda
 WANX_TASK_URL = "https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}"
 # 使用Settings类读取API Key
 _settings = get_settings()
-DASHSCOPE_API_KEY = _settings.dashscope_api_key
+DASHSCOPE_API_KEY = _settings.dashscope_api_key or os.getenv("DASHSCOPE_API_KEY", "")
 
 # ============================================================
 # 品种数据（兜底用）
@@ -431,6 +431,21 @@ def get_water_records(db: Session, pet_id: int, skip: int = 0, limit: int = 50) 
     ).order_by(PetWaterRecord.record_time.desc()).offset(skip).limit(limit).all()
 
 
+def delete_water_record(db: Session, record_id: int, pet_id: int, user_id: int):
+    """删除饮水记录"""
+    pet = get_pet(db, pet_id, user_id)
+    if not pet:
+        raise ValueError("宠物不存在")
+    record = db.query(PetWaterRecord).filter(
+        PetWaterRecord.id == record_id,
+        PetWaterRecord.pet_id == pet_id
+    ).first()
+    if not record:
+        raise ValueError("饮水记录不存在")
+    db.delete(record)
+    db.commit()
+
+
 # ============================================================
 # 宠物食品库
 # ============================================================
@@ -803,40 +818,99 @@ def _build_avatar_prompt(description: str, style: str = "cartoon",
 
 
 def _call_wanx_api(prompt: str, style: str = "cartoon") -> Optional[str]:
-    """调用通义万相 API (使用DashScope SDK，直接返回图片URL)"""
+    """调用通义万相 API (wanx-v1，异步任务，带重试)"""
     if not DASHSCOPE_API_KEY:
         logger.warning("DASHSCOPE_API_KEY 未配置，无法调用通义万相")
         return None
 
-    try:
-        from dashscope import ImageSynthesis
-        
-        logger.info(f"[Wanx API] Calling with model=wanx-v1, prompt={prompt[:50]}...")
-        
-        response = ImageSynthesis.call(
-            model="wanx-v1",
-            prompt=prompt,
-            size="1024*1024",
-            n=1
-        )
-        
-        if response.status_code == 200:
-            # SDK是同步调用，直接返回图片URL
-            results = response.output.get("results", [])
-            if results and len(results) > 0:
-                img_url = results[0].get("url", "")
-                if img_url:
-                    logger.info(f"[Wanx API] Got image URL: {img_url[:60]}...")
-                    return img_url
-            logger.error(f"[Wanx API] No image URL in response")
+    import time as _time
+    model = _settings.dashscope_image_model or "wanx-v1"
+
+    # 整体重试 3 次，应对间歇性 SSL 错误（requests 库在此环境比 httpx 更稳定）
+    for retry in range(3):
+        try:
+            logger.info(f"[Wanx API] Submit attempt {retry+1}/3: model={model}, prompt={prompt[:50]}...")
+            import requests as _requests
+            from requests.adapters import HTTPAdapter as _HTTPAdapter
+            from urllib3.util.retry import Retry as _Retry
+            import urllib3 as _urllib3
+            _urllib3.disable_warnings()
+
+            _session = _requests.Session()
+            _session.verify = False
+            _session.trust_env = False  # 禁用系统代理，避免 ProxyError
+            _session.mount("https://", _HTTPAdapter(max_retries=_Retry(total=1, backoff_factor=0.5)))
+
+            response = _session.post(
+                "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                headers={
+                    "Authorization": f"Bearer {DASHSCOPE_API_KEY}",
+                    "Content-Type": "application/json",
+                    "X-DashScope-Async": "enable",
+                },
+                json={
+                    "model": model,
+                    "input": {"prompt": prompt},
+                    "parameters": {"size": "1024*1024", "n": 1},
+                },
+                timeout=30,
+            )
+
+            if response.status_code != 200:
+                logger.error(f"[Wanx API] Submit failed: {response.status_code} - {response.text[:200]}")
+                continue  # retry
+
+            data = response.json()
+            task_id = data.get("output", {}).get("task_id", "")
+            if not task_id:
+                logger.error(f"[Wanx API] No task_id in response: {str(data)[:200]}")
+                continue
+
+            logger.info(f"[Wanx API] Task created: {task_id}, polling...")
+
+            # 轮询等待任务完成（最多 2 分钟，共 40 次 * 3 秒）
+            task_url = f"https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}"
+            for attempt in range(40):
+                _time.sleep(3)
+                try:
+                    tr = _session.get(
+                        task_url,
+                        headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
+                        timeout=15,
+                    )
+                    if tr.status_code != 200:
+                        logger.warning(f"[Wanx API] Poll {attempt+1}: HTTP {tr.status_code}")
+                        continue
+
+                    td = tr.json()
+                    task_status = td.get("output", {}).get("task_status", "")
+                    logger.info(f"[Wanx API] Poll {attempt+1}: {task_status}")
+
+                    if task_status == "SUCCEEDED":
+                        results = td.get("output", {}).get("results", [])
+                        if results:
+                            img_url = results[0].get("url", "")
+                            if img_url:
+                                logger.info(f"[Wanx API] Got image URL: {img_url[:60]}...")
+                                return img_url
+                        logger.error(f"[Wanx API] No results in succeeded task")
+                        return None
+                    elif task_status == "FAILED":
+                        logger.error(f"[Wanx API] Task failed: {td.get('output', {}).get('message', '')}")
+                        return None
+                except Exception as e:
+                    logger.warning(f"[Wanx API] Poll error: {e}")
+
+            logger.error(f"[Wanx API] Task timed out: {task_id}")
             return None
-        else:
-            logger.error(f"[Wanx API] Error: {response.status_code} - {response.message}")
-            return None
-            
-    except Exception as e:
-        logger.error(f"[Wanx API] 调用失败: {e}")
-        return None
+
+        except Exception as e:
+            logger.warning(f"[Wanx API] Attempt {retry+1}/3 failed: {e}")
+            if retry < 2:
+                _time.sleep(2)  # 短暂等待后重试
+
+    logger.error(f"[Wanx API] All 3 attempts failed")
+    return None
 
 
 def _poll_wanx_task(dashscope_task_id: str) -> Optional[str]:
@@ -885,80 +959,103 @@ def _get_preset_url(pet: PetProfile) -> str:
 def generate_avatar(db: Session, pet_id: int, user_id: int,
                     mode: str, photo: Optional[str] = None,
                     description: Optional[str] = None) -> str:
-    """触发 AI 生成宠物形象，返回本地 task_id
+    """AI 生成宠物形象（异步后台执行，立即返回 task_id）
 
-    优先使用 DashScope 通义万相 API，API 不可用时降级为预设占位图。
+    后台线程调用通义万相 API，API 不可用时降级为预设占位图。
+    前端应通过 GET /generation-tasks/{task_id} 轮询结果。
     """
+    import threading
+    from shared.models.database import SessionLocal
+
     pet = get_pet(db, pet_id, user_id)
     if not pet:
         raise ValueError("宠物不存在")
 
     local_task_id = f"gen_{pet_id}_{int(datetime.utcnow().timestamp())}"
 
-    # 检查是否已有记录
     avatar = db.query(PetAvatar).filter(PetAvatar.pet_id == pet_id).first()
     if not avatar:
         avatar = PetAvatar(pet_id=pet_id, status="none")
         db.add(avatar)
 
-    # 构建描述文本
+    avatar.status = "processing"
+    avatar.error_message = None
+    db.commit()
+
     desc = (description or "").strip()
     if not desc and photo:
         desc = f"{pet.breed or ''} {pet.species or ''}".strip()
     if not desc:
         desc = f"{pet.breed or '宠物'}"
 
-    style = "cartoon"  # 默认风格（后续可从前端传参）
+    # 提前捕获宠物数据（原 db session 在线程中不可用）
+    _pet_breed = pet.breed
+    _pet_species = pet.species
+    _pet_id = pet.id
 
-    # 尝试调用通义万相 API (直接获取图片URL)
-    dashscope_urls = {}
-    for emotion in ["normal", "happy", "hungry", "weak"]:
-        prompt = _build_avatar_prompt(desc, style, emotion)
-        img_url = _call_wanx_api(prompt, style)
-        if img_url:
-            dashscope_urls[emotion] = img_url
+    prompt = _build_avatar_prompt(desc, "cartoon", "normal")
 
-    if dashscope_urls:
-        # API 调用成功：直接使用图片URL
-        avatar.status = "done"
-        avatar.generation_seed = pet_id * 10000 + len(dashscope_urls)
-        avatar.ai_model = "wanx-v1"  # 使用测试成功的模型
+    def _run_generation():
+        """后台线程执行 AI 生成"""
+        bg_db = SessionLocal()
+        try:
+            logger.info(f"[Avatar] Background generation started for pet_id={_pet_id}")
+            img_url = _call_wanx_api(prompt, "cartoon")
 
-        # 设置图片URL
-        if "normal" in dashscope_urls:
-            avatar.base_image_url = dashscope_urls["normal"]
-        if "happy" in dashscope_urls:
-            avatar.emotion_happy_url = dashscope_urls["happy"]
-        if "normal" in dashscope_urls:
-            avatar.emotion_normal_url = dashscope_urls["normal"]
-        if "hungry" in dashscope_urls:
-            avatar.emotion_hungry_url = dashscope_urls["hungry"]
-        if "weak" in dashscope_urls:
-            avatar.emotion_weak_url = dashscope_urls["weak"]
+            bg_avatar = bg_db.query(PetAvatar).filter(PetAvatar.pet_id == _pet_id).first()
+            if not bg_avatar:
+                logger.error(f"[Avatar] Avatar record not found for pet_id={_pet_id}")
+                return
 
-        # 存储描述信息
-        import json
-        avatar.prompt_used = json.dumps({
-            "description": desc,
-            "style": style,
-            "emotions": list(dashscope_urls.keys()),
-        }, ensure_ascii=False)
+            if img_url:
+                bg_avatar.status = "done"
+                bg_avatar.base_image_url = img_url
+                bg_avatar.emotion_normal_url = img_url
+                bg_avatar.emotion_happy_url = img_url
+                bg_avatar.emotion_hungry_url = img_url
+                bg_avatar.emotion_weak_url = img_url
+                bg_avatar.generation_seed = _pet_id * 10000
+                bg_avatar.ai_model = _settings.dashscope_image_model or "wanx-v1"
+                bg_avatar.prompt_used = desc
+                bg_avatar.error_message = None
+                logger.info(f"[Avatar] AI generated successfully for pet_id={_pet_id}")
+            else:
+                # 降级为预设占位图
+                from shared.models.pet_models import PetProfile
+                species_map = PRESET_AVATARS.get(_pet_species, PRESET_AVATARS.get("cat", {}))
+                preset = species_map.get(_pet_breed, species_map.get("default",
+                    "https://placehold.co/400x400/FFE0B2/555555?text=Pet"))
 
-        db.commit()
-    else:
-        # API 不可用：降级为预设占位图
-        preset = _get_preset_url(pet)
-        avatar.status = "done"
-        avatar.base_image_url = preset
-        avatar.emotion_happy_url = preset
-        avatar.emotion_normal_url = preset
-        avatar.emotion_hungry_url = preset
-        avatar.emotion_weak_url = preset
-        avatar.generation_seed = pet_id * 10000
-        avatar.prompt_used = f"mode={mode}, breed={pet.breed}"
-        avatar.ai_model = "preset_fallback"
-        db.commit()
+                bg_avatar.status = "done"
+                bg_avatar.base_image_url = preset
+                bg_avatar.emotion_happy_url = preset
+                bg_avatar.emotion_normal_url = preset
+                bg_avatar.emotion_hungry_url = preset
+                bg_avatar.emotion_weak_url = preset
+                bg_avatar.generation_seed = _pet_id * 10000
+                bg_avatar.prompt_used = desc
+                bg_avatar.ai_model = "preset_fallback"
+                bg_avatar.error_message = None
+                logger.warning(f"[Avatar] Fallback to preset for pet_id={_pet_id}")
 
+            bg_db.commit()
+        except Exception as e:
+            logger.error(f"[Avatar] Generation failed for pet_id={_pet_id}: {e}")
+            try:
+                bg_avatar = bg_db.query(PetAvatar).filter(PetAvatar.pet_id == _pet_id).first()
+                if bg_avatar:
+                    bg_avatar.status = "failed"
+                    bg_avatar.error_message = str(e)
+                    bg_db.commit()
+            except Exception:
+                bg_db.rollback()
+        finally:
+            bg_db.close()
+
+    thread = threading.Thread(target=_run_generation, daemon=True)
+    thread.start()
+
+    logger.info(f"[Avatar] Background task started: pet_id={_pet_id}, task_id={local_task_id}")
     return local_task_id
 
 

@@ -300,6 +300,16 @@ class RealPetApiService {
     }
   }
 
+  /// 删除饮水记录
+  Future<ApiResponse<void>> deleteWaterRecord(int petId, int recordId) async {
+    try {
+      await _api.delete('/pets/$petId/water-records/$recordId');
+      return ApiResponse.success(message: '饮水记录已删除');
+    } catch (e) {
+      return ApiResponse.failure(message: '删除饮水记录失败', error: e.toString());
+    }
+  }
+
   // ==================== AI 建议 ====================
 
   /// 获取宠物 AI 健康建议

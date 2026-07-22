@@ -113,6 +113,7 @@ async def send_chat_message_stream(
     session_id: Optional[int] = None,
     message: str = "",
     session_type: int = 1,
+    pet_id: Optional[int] = None,
     current_user: user_models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -208,6 +209,7 @@ async def send_chat_message_stream(
                     "session_id": str(session.id),
                     "session_type": session_type,
                     "user_id": current_user.id,
+                    "pet_id": pet_id,
                     "user_context": user_context,
                     "recent_meals": recent_meals,
                     "health_goals": health_goals,
@@ -1136,6 +1138,8 @@ def get_session_type_name(session_type: int) -> str:
         1: "营养咨询",
         2: "健康评估",
         3: "食物识别",
-        4: "运动建议"
+        4: "运动建议",
+        5: "养生咨询",
+        6: "宠物健康咨询"
     }
     return session_types.get(session_type, "通用咨询")

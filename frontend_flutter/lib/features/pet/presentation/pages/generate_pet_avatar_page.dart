@@ -34,7 +34,7 @@ class GeneratePetAvatarPage extends ConsumerStatefulWidget {
 class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
   final _descriptionController = TextEditingController();
   final _imagePicker = ImagePicker();
-  
+
   String _selectedMode = 'description'; // 'photo' 或 'description'
   String _selectedStyle = 'cartoon';
   File? _selectedImage;
@@ -73,7 +73,8 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(LucideIcons.chevronLeft, color: AppColors.textPrimary),
+          icon:
+              const Icon(LucideIcons.chevronLeft, color: AppColors.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
@@ -189,7 +190,8 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
           Center(
             child: Text(
               '预计需要 15-30 秒',
-              style: AppTextStyles.bodySmall.copyWith(color: AppColors.textTertiary),
+              style: AppTextStyles.bodySmall
+                  .copyWith(color: AppColors.textTertiary),
             ),
           ),
         ],
@@ -288,21 +290,22 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
       children: [
         _buildSectionTitle('上传宠物照片'),
         const SizedBox(height: 12),
-        
+
         // 照片预览或上传按钮
         if (_selectedImage != null)
           _buildImagePreview()
         else
           _buildUploadButtons(),
-        
+
         const SizedBox(height: 16),
-        
+
         // 补充描述(可选)
         _buildSectionTitle('补充描述(可选)'),
         const SizedBox(height: 8),
         Text(
           '添加更多细节可以获得更好的生成效果',
-          style: AppTextStyles.bodySmall.copyWith(color: AppColors.textTertiary),
+          style:
+              AppTextStyles.bodySmall.copyWith(color: AppColors.textTertiary),
         ),
         const SizedBox(height: 12),
         _buildDescriptionInput(),
@@ -364,7 +367,8 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
                   ],
                 ),
                 child: IconButton(
-                  icon: const Icon(LucideIcons.x, size: 20, color: AppColors.error),
+                  icon: const Icon(LucideIcons.x,
+                      size: 20, color: AppColors.error),
                   onPressed: () {
                     setState(() {
                       _selectedImage = null;
@@ -456,23 +460,28 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
           spacing: 8,
           runSpacing: 8,
           children: _presetDescriptions.map((preset) {
-            final isSelected = _descriptionController.text.contains(preset['value']!);
+            final isSelected =
+                _descriptionController.text.contains(preset['value']!);
             return GestureDetector(
               onTap: () => _togglePreset(preset['value']!),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
                   color: isSelected ? AppColors.primarySurface : Colors.white,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: isSelected ? AppColors.primary : AppColors.borderLight,
+                    color:
+                        isSelected ? AppColors.primary : AppColors.borderLight,
                   ),
                 ),
                 child: Text(
                   preset['label']!,
                   style: TextStyle(
                     fontSize: 13,
-                    color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                    color: isSelected
+                        ? AppColors.primary
+                        : AppColors.textSecondary,
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                   ),
                 ),
@@ -537,7 +546,8 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                  color:
+                      isSelected ? AppColors.primary : AppColors.textSecondary,
                 ),
               ),
             ],
@@ -554,7 +564,8 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
       maxLength: 100,
       decoration: InputDecoration(
         hintText: '例如：橘猫，白色手套，绿色眼睛，体型圆润',
-        hintStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.textTertiary),
+        hintStyle:
+            AppTextStyles.bodyMedium.copyWith(color: AppColors.textTertiary),
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(
@@ -667,7 +678,8 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(res.message.isNotEmpty ? res.message : '生成服务暂不可用，请稍后重试'),
+            content:
+                Text(res.message.isNotEmpty ? res.message : '生成服务暂不可用，请稍后重试'),
             backgroundColor: AppColors.error,
           ),
         );
@@ -682,16 +694,28 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
 
     _pollTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
       elapsed++;
-      final progressMsgs = [
-        '正在分析特征...',
-        '正在生成基础形象...',
-        '正在优化细节...',
-        '正在创建情绪变体...'
-      ];
+
+      // 根据时间显示具体步骤
+      String stepMsg;
+      if (elapsed <= 3) {
+        stepMsg = '🎨 正在生成基础形象...';
+      } else if (elapsed <= 6) {
+        stepMsg = '😊 正在生成开心表情...';
+      } else if (elapsed <= 9) {
+        stepMsg = '😌 正在生成平静表情...';
+      } else if (elapsed <= 12) {
+        stepMsg = '🍖 正在生成饥饿表情...';
+      } else if (elapsed <= 15) {
+        stepMsg = '😴 正在生成虚弱表情...';
+      } else if (elapsed <= 18) {
+        stepMsg = '✨ 正在优化细节...';
+      } else {
+        stepMsg = '🔄 即将完成...';
+      }
 
       setState(() {
-        _progressValue = elapsed / maxTicks;
-        _progressMessage = progressMsgs[(elapsed ~/ 2) % progressMsgs.length];
+        _progressValue = 0.3 + (elapsed / maxTicks) * 0.7;
+        _progressMessage = stepMsg;
       });
 
       if (_currentTaskId == null) {
@@ -766,16 +790,19 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(LucideIcons.checkCircle, color: AppColors.success, size: 48),
+              const Icon(LucideIcons.checkCircle,
+                  color: AppColors.success, size: 48),
               const SizedBox(height: 12),
               Text(
                 _regenCount > 1 ? '重新生成完成！' : '形象生成成功！',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 4),
               Text(
                 _regenCount > 1 ? '试试看是否更满意？' : '看起来不错吧？',
-                style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                style: const TextStyle(
+                    fontSize: 13, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 16),
               Container(
@@ -788,6 +815,7 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
                 child: PetAvatarDisplay(
                   emotion: 'happy',
                   size: 80,
+                  customImageUrl: result['image_url'] as String?,
                 ),
               ),
               const SizedBox(height: 20),

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # 从Settings获取DashScope配置
 settings = get_settings()
-DASHSCOPE_API_KEY = settings.dashscope_api_key
+DASHSCOPE_API_KEY = settings.dashscope_api_key or os.getenv("DASHSCOPE_API_KEY", "")
 DASHSCOPE_IMAGE_MODEL = settings.dashscope_image_model
 
 # 本地位图存储目录（开发环境降级用）

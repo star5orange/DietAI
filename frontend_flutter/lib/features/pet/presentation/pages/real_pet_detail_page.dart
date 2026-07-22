@@ -37,6 +37,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
   // API 数据
   List<Map<String, dynamic>> _weightRecords = [];
   List<Map<String, dynamic>> _feedingRecords = [];
+  List<Map<String, dynamic>> _waterRecords = []; // 新增：饮水记录
   List<Map<String, dynamic>> _vaccineRecords = [];
   List<Map<String, dynamic>> _dewormingRecords = [];
   Map<String, dynamic>? _nutritionTargets;
@@ -63,6 +64,12 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
     final api = RealPetApiService();
 
     await Future.wait([
+      // 刷新宠物基本信息（年龄、体重等）
+      api.getPet(_petId).then((r) {
+        if (r.isSuccess && r.data != null) {
+          widget.pet.addAll(r.data!);
+        }
+      }).catchError((_) {}),
       // 体重记录
       api.getWeightRecords(_petId).then((r) {
         if (r.isSuccess && r.data != null) {
@@ -98,6 +105,14 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
         if (r.isSuccess && r.data != null) {
           final records = r.data!['records'] as List<dynamic>? ?? [];
           _dewormingRecords =
+              records.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
+      }).catchError((_) {}),
+      // 饮水记录
+      api.getWaterRecords(_petId).then((r) {
+        if (r.isSuccess && r.data != null) {
+          final records = r.data!['records'] as List<dynamic>? ?? [];
+          _waterRecords =
               records.map((e) => Map<String, dynamic>.from(e as Map)).toList();
         }
       }).catchError((_) {}),
@@ -314,6 +329,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                   size: 100,
                   breed: pet['breed'] as String?,
                   species: pet['species'] as String?,
+                  customImageUrl: pet['avatar_url'] as String?,
                 ),
                 const SizedBox(height: 12),
                 ElevatedButton.icon(
@@ -340,12 +356,22 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
               _buildInfoRow(
                   '物种', pet['species'] == 'cat' ? '猫咪' : '狗狗', speciesIcon),
               _buildInfoRow('品种', pet['breed'] ?? '-', LucideIcons.tag),
-              _buildInfoRow(
-                  '年龄', '${pet['age'] ?? '-'}岁', LucideIcons.calendar),
+              _buildInfoRow('年龄', () {
+                final age = pet['age'];
+                return age != null ? '$age' : '-';
+              }(), LucideIcons.calendar),
               _buildInfoRow(
                   '性别', pet['gender'] == 'male' ? '公' : '母', Icons.male),
-              _buildInfoRow(
-                  '体重', '${pet['weight'] ?? '-'}kg', LucideIcons.scale),
+              _buildInfoRow('体重', () {
+                // 优先从本地体重记录获取最新体重
+                if (_weightRecords.isNotEmpty) {
+                  final latest = _weightRecords.last;
+                  final w = latest['weight'];
+                  if (w != null) return '${w} kg';
+                }
+                final w = pet['weight'];
+                return w != null ? '$w kg' : '-';
+              }(), LucideIcons.scale),
             ],
           ),
           const SizedBox(height: 16),
@@ -456,7 +482,14 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
 
   /// 饮食Tab
   Widget _buildDietTab() {
-    final totalCalories = _feedingRecords.fold<int>(
+    // 过滤出今天的记录
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final todayRecords = _feedingRecords.where((r) {
+      final recordTime = r['time'] as String?;
+      return recordTime != null && recordTime.startsWith(today);
+    }).toList();
+
+    final totalCalories = todayRecords.fold<int>(
         0, (sum, r) => sum + ((r['calories'] as num?)?.toInt() ?? 0));
     final targetCalories = _dailySummary?['target_calories'] as int? ?? 250;
     final ratio =
@@ -540,7 +573,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
-          ..._feedingRecords.asMap().entries.map(
+          ...todayRecords.asMap().entries.map(
                 (entry) => Dismissible(
                   key: ValueKey('feed_${entry.key}_${entry.value['time']}'),
                   direction: DismissDirection.endToStart,
@@ -770,12 +803,12 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${record['weight']} kg',
+                  '${record['weight'] ?? '-'} kg',
                   style: const TextStyle(
                       fontSize: 15, fontWeight: FontWeight.w600),
                 ),
                 Text(
-                  record['date'],
+                  (record['measured_at'] as String?) ?? '-',
                   style: const TextStyle(
                       fontSize: 12, color: AppColors.textTertiary),
                 ),
@@ -945,13 +978,27 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
     if (result == 'deleted') {
       Navigator.pop(context, 'deleted');
     } else if (result is Map) {
-      setState(() {
-        widget.pet.addAll(result.cast<String, dynamic>());
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('信息已更新'), backgroundColor: AppColors.success),
-      );
+      // 重新从后端获取最新数据，确保年龄和体重正确
+      try {
+        final api = RealPetApiService();
+        final res = await api.getPet(_petId);
+        if (res.isSuccess && res.data != null) {
+          setState(() {
+            widget.pet.addAll(res.data!);
+          });
+        }
+      } catch (_) {
+        // 兜底：用编辑返回的数据
+        setState(() {
+          widget.pet.addAll(result.cast<String, dynamic>());
+        });
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('信息已更新'), backgroundColor: AppColors.success),
+        );
+      }
     }
   }
 
@@ -962,6 +1009,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
       MaterialPageRoute(
         builder: (_) => ChatPage(
           sessionType: 6,
+          petId: _petId,
           title: '${widget.pet['name']} - 健康咨询',
         ),
       ),
@@ -1017,73 +1065,475 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
     final recommended =
         latestWeight != null ? (latestWeight * mlPerKg).round() : 150;
 
+    // 计算今日饮水量
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final todayRecords = _waterRecords.where((r) {
+      final recordTime = r['record_time'] as String?;
+      return recordTime != null && recordTime.startsWith(today);
+    }).toList();
+
+    final totalMl = todayRecords.fold<double>(0, (sum, r) {
+      return sum + ((r['amount_ml'] as num?)?.toDouble() ?? 0);
+    });
+
+    final progress = (totalMl / recommended).clamp(0.0, 1.0);
+    final isGoalReached = totalMl >= recommended;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF4FC3F7), Color(0xFF29B6F6)],
+        gradient: LinearGradient(
+          colors: isGoalReached
+              ? [AppColors.success, AppColors.success.withValues(alpha: 0.8)]
+              : [const Color(0xFF4FC3F7), const Color(0xFF29B6F6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: (isGoalReached ? AppColors.success : const Color(0xFF29B6F6))
+                .withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         children: [
-          const Icon(LucideIcons.droplets, size: 32, color: Colors.white),
-          const SizedBox(height: 8),
-          Text(
-            '$species · 每日推荐 ${recommended}ml',
-            style: const TextStyle(fontSize: 15, color: Colors.white70),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _showAddWaterModal,
-              icon: const Icon(LucideIcons.plus, size: 18),
-              label: const Text('记录饮水'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF29B6F6),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+          // 标题行
+          Row(
+            children: [
+              const Icon(LucideIcons.droplets, color: Colors.white, size: 22),
+              const SizedBox(width: 8),
+              const Text('今日饮水',
+                  style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600)),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(LucideIcons.target,
+                        color: Colors.white, size: 12),
+                    const SizedBox(width: 3),
+                    Text('${recommended}ml',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500)),
+                  ],
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // 进度环
+          Center(
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // 进度环背景
+                SizedBox(
+                  width: 140,
+                  height: 140,
+                  child: CircularProgressIndicator(
+                    value: progress,
+                    strokeWidth: 10,
+                    color: Colors.white,
+                    backgroundColor: Colors.white.withValues(alpha: 0.25),
+                    strokeCap: StrokeCap.round,
+                  ),
+                ),
+                // 中心内容
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                        totalMl >= 1000
+                            ? '${(totalMl / 1000).toStringAsFixed(1)}'
+                            : '${totalMl.round()}',
+                        style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white)),
+                    Text(totalMl >= 1000 ? '升' : 'ml',
+                        style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.white.withValues(alpha: 0.7))),
+                    const SizedBox(height: 4),
+                    Text(
+                      isGoalReached
+                          ? '✅ 已达标'
+                          : '还差 ${recommended - totalMl.round()}ml',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.7)),
+                    ),
+                  ],
+                ),
+              ],
             ),
+          ),
+          const SizedBox(height: 16),
+
+          // 快捷添加按钮
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              Expanded(
+                child: _buildQuickWaterButton('50ml', 50),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildQuickWaterButton('100ml', 100),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildCustomWaterButton(),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
+  /// 快捷添加饮水按钮
+  Widget _buildQuickWaterButton(String label, int amountMl) {
+    return GestureDetector(
+      onTap: () => _quickAddWater(amountMl: amountMl),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(LucideIcons.plus, color: Colors.white, size: 16),
+            const SizedBox(width: 4),
+            Text(label,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 自定义添加饮水按钮
+  Widget _buildCustomWaterButton() {
+    return GestureDetector(
+      onTap: _showAddWaterModal,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.slidersHorizontal, color: Colors.white, size: 16),
+            SizedBox(width: 4),
+            Text('自定义',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 快捷添加饮水
+  Future<void> _quickAddWater({required int amountMl}) async {
+    final api = RealPetApiService();
+    final now = DateTime.now();
+    final result = await api.addWater(_petId, {
+      'amount_ml': amountMl,
+      'record_time': now.toIso8601String(),
+      'from_source': '手动',
+    });
+
+    if (result.isSuccess) {
+      // 重新加载数据
+      await _loadAllData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已添加 ${amountMl}ml 饮水'),
+            backgroundColor: AppColors.success,
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('添加失败: ${result.message}'),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
   /// 饮水Tab
   Widget _buildWaterTab() {
+    // 计算今日饮水量
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final todayRecords = _waterRecords.where((r) {
+      final recordTime = r['record_time'] as String?;
+      return recordTime != null && recordTime.startsWith(today);
+    }).toList();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(LucideIcons.droplets,
-                  color: AppColors.primary, size: 20),
-              const SizedBox(width: 8),
-              const Text('今日饮水',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            ],
-          ),
-          const SizedBox(height: 16),
           // 推荐量（根据品种/体重动态计算）
           _buildWaterRecommendation(),
+
+          const SizedBox(height: 16),
+
+          // 今日饮水记录列表
+          if (todayRecords.isNotEmpty)
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        const Icon(LucideIcons.history,
+                            color: AppColors.primary, size: 18),
+                        const SizedBox(width: 8),
+                        const Text('今日记录',
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w600)),
+                        const Spacer(),
+                        if (todayRecords.isNotEmpty)
+                          TextButton.icon(
+                            onPressed: () => _undoLastWaterRecord(),
+                            icon: const Icon(LucideIcons.undo2, size: 14),
+                            label: const Text('撤回'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.textTertiary,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  ...todayRecords.map((record) {
+                    return _buildWaterRecordItem(record);
+                  }).toList(),
+                ],
+              ),
+            ),
         ],
       ),
     );
   }
 
+  /// 饮水记录项
+  Widget _buildWaterRecordItem(Map<String, dynamic> record) {
+    final amountMl = (record['amount_ml'] as num?)?.toInt() ?? 0;
+    final recordTime = record['record_time'] as String?;
+    final source = record['from_source'] as String? ?? '手动';
+
+    String timeText = '';
+    if (recordTime != null) {
+      try {
+        final dt = DateTime.parse(recordTime);
+        timeText =
+            '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      } catch (_) {}
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: AppColors.border, width: 0.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.infoLight,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(LucideIcons.droplet,
+                color: AppColors.info, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('$amountMl ml',
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600)),
+                if (source.isNotEmpty)
+                  Text(source,
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textTertiary)),
+              ],
+            ),
+          ),
+          Text(timeText,
+              style:
+                  const TextStyle(fontSize: 13, color: AppColors.textTertiary)),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(LucideIcons.trash2,
+                size: 16, color: AppColors.error),
+            onPressed: () => _deleteWaterRecord(record['id']),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            tooltip: '删除',
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 撤回最后一条饮水记录
+  Future<void> _undoLastWaterRecord() async {
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final todayRecords = _waterRecords.where((r) {
+      final recordTime = r['record_time'] as String?;
+      return recordTime != null && recordTime.startsWith(today);
+    }).toList();
+
+    if (todayRecords.isEmpty) return;
+
+    final lastRecord = todayRecords.first;
+    final recordId = lastRecord['id'];
+
+    // 删除记录
+    final api = RealPetApiService();
+    final result = await api.deleteWaterRecord(_petId, recordId);
+
+    if (result.isSuccess) {
+      await _loadAllData();
+      if (mounted) {
+        final amountMl = (lastRecord['amount_ml'] as num?)?.toInt() ?? 0;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已撤回 ${amountMl}ml 饮水记录'),
+            backgroundColor: AppColors.info,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('撤回失败: ${result.message}'),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  /// 删除单条饮水记录
+  Future<void> _deleteWaterRecord(int recordId) async {
+    // 确认对话框
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认删除'),
+        content: const Text('确定要删除这条饮水记录吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final api = RealPetApiService();
+    final result = await api.deleteWaterRecord(_petId, recordId);
+
+    if (result.isSuccess) {
+      // 本地移除记录，避免 _loadAllData() 导致的 loading 状态问题
+      setState(() {
+        _waterRecords.removeWhere((r) => r['id'] == recordId);
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('饮水记录已删除'),
+            backgroundColor: AppColors.success,
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('删除失败: ${result.message}'),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
   /// 跳转到形象生成页
-  void _navigateToGenerateAvatar() {
-    Navigator.push(
+  void _navigateToGenerateAvatar() async {
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => GeneratePetAvatarPage(
@@ -1093,6 +1543,63 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
         ),
       ),
     );
+
+    // 处理返回的生成结果
+    if (result != null && result is Map<String, dynamic>) {
+      final imageUrl = result['image_url'] as String?;
+      if (imageUrl != null && imageUrl.isNotEmpty) {
+        // 显示加载提示
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('正在应用专属形象...'),
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
+
+        // 更新宠物档案的 avatar_url
+        final api = RealPetApiService();
+        final updateResult = await api.updatePet(_petId, {
+          'avatar_url': imageUrl,
+        });
+
+        if (updateResult.isSuccess) {
+          // 刷新数据
+          await _loadAllData();
+
+          // 显示成功提示
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('专属形象已应用'),
+                backgroundColor: AppColors.success,
+              ),
+            );
+          }
+        } else {
+          // 显示失败提示
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('应用形象失败: ${updateResult.message}'),
+                backgroundColor: AppColors.error,
+              ),
+            );
+          }
+        }
+      } else {
+        // image_url 为空
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('生成的形象无效'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    }
   }
 
   /// 疫苗Tab

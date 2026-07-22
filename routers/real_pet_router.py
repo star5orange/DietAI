@@ -9,6 +9,7 @@ from shared.models.database import get_db
 from shared.models.schemas import BaseResponse
 from shared.utils.auth import get_current_user
 from shared.models.user_models import User
+from shared.models.pet_models import PetWeightRecord  # 用于查询最新体重
 from shared.models.schemas.real_pet import (
     PetProfileCreate, PetProfileUpdate,
     PetWeightCreate, PetVaccineCreate, PetVaccineUpdate,
@@ -22,7 +23,7 @@ from shared.services.real_pet_service import (
     add_vaccine, update_vaccine, delete_vaccine, get_vaccine_records, get_due_vaccines,
     add_deworming, update_deworming, delete_deworming, get_deworming_records,
     add_feeding, get_feeding_records, get_pet_daily_summary, get_feeding_plan,
-    add_water, get_water_records,
+    add_water, get_water_records, delete_water_record,
     search_food_database, get_ai_advice,
     compare_pet_foods, calculate_health_score,
     generate_avatar, get_generation_task, regenerate_emotion, upgrade_to_gif,
@@ -31,8 +32,14 @@ from shared.services.real_pet_service import (
 router = APIRouter(prefix="/pets", tags=["真实宠物"])
 
 
-def _pet_to_dict(p) -> dict:
-    return {
+def _pet_to_dict(p, db: Session = None) -> dict:
+    """将 PetProfile 对象转为字典，包含年龄和体重
+
+    Args:
+        p: PetProfile 对象
+        db: 数据库会话，提供后自动填充 age 和 weight 字段
+    """
+    result = {
         "id": p.id, "user_id": p.user_id, "name": p.name,
         "species": p.species, "breed": p.breed, "gender": p.gender,
         "birth_date": p.birth_date.isoformat() if p.birth_date else None,
@@ -40,7 +47,36 @@ def _pet_to_dict(p) -> dict:
         "is_active": p.is_active,
         "created_at": p.created_at.isoformat() if p.created_at else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+        "age": None,
+        "weight": None,
     }
+
+    # 计算年龄
+    if p.birth_date:
+        today = date.today()
+        years = today.year - p.birth_date.year
+        months = today.month - p.birth_date.month
+        if months < 0:
+            years -= 1
+            months += 12
+        if years > 0:
+            result["age"] = f"{years}岁{months}个月" if months > 0 else f"{years}岁"
+        else:
+            result["age"] = f"{months}个月" if months > 0 else "不足1个月"
+
+    # 获取最新体重
+    if db is not None:
+        try:
+            latest = db.query(PetWeightRecord).filter(
+                PetWeightRecord.pet_id == p.id,
+                PetWeightRecord.is_deleted == False
+            ).order_by(PetWeightRecord.measured_at.desc()).first()
+            if latest:
+                result["weight"] = round(float(latest.weight), 2)
+        except Exception:
+            pass
+
+    return result
 
 
 # ========== 品种列表 ==========
@@ -121,7 +157,7 @@ async def api_create_pet(data: PetProfileCreate, current_user: User = Depends(ge
     """创建宠物档案"""
     try:
         pet = create_pet(db, current_user.id, data.model_dump())
-        return BaseResponse(success=True, message="宠物档案创建成功", data=_pet_to_dict(pet))
+        return BaseResponse(success=True, message="宠物档案创建成功", data=_pet_to_dict(pet, db))
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
@@ -130,7 +166,7 @@ async def api_create_pet(data: PetProfileCreate, current_user: User = Depends(ge
 async def api_list_pets(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """获取当前用户的宠物列表"""
     pets = get_pets(db, current_user.id)
-    return BaseResponse(success=True, message="获取宠物列表成功", data={"pets": [_pet_to_dict(p) for p in pets]})
+    return BaseResponse(success=True, message="获取宠物列表成功", data={"pets": [_pet_to_dict(p, db) for p in pets]})
 
 
 @router.get("/{pet_id}", response_model=BaseResponse)
@@ -139,7 +175,7 @@ async def api_get_pet(pet_id: int, current_user: User = Depends(get_current_user
     pet = get_pet(db, pet_id, current_user.id)
     if not pet:
         raise HTTPException(status_code=404, detail="宠物不存在")
-    return BaseResponse(success=True, message="获取宠物详情成功", data=_pet_to_dict(pet))
+    return BaseResponse(success=True, message="获取宠物详情成功", data=_pet_to_dict(pet, db))
 
 
 @router.put("/{pet_id}", response_model=BaseResponse)
@@ -147,7 +183,7 @@ async def api_update_pet(pet_id: int, data: PetProfileUpdate, current_user: User
     """更新宠物信息"""
     try:
         pet = update_pet(db, pet_id, current_user.id, data.model_dump(exclude_none=True))
-        return BaseResponse(success=True, message="宠物信息更新成功", data=_pet_to_dict(pet))
+        return BaseResponse(success=True, message="宠物信息更新成功", data=_pet_to_dict(pet, db))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -213,8 +249,14 @@ async def api_add_vaccine(pet_id: int, data: PetVaccineCreate, current_user: Use
     """添加疫苗记录"""
     try:
         r = add_vaccine(db, pet_id, current_user.id, data.model_dump())
-        result = {"id": r.id, "vaccine_name": r.vaccine_name, "vaccinated_at": r.vaccinated_at.isoformat(),
-                  "next_vaccination_date": r.next_vaccination_date.isoformat() if r.next_vaccination_date else None}
+        result = {
+            "id": r.id,
+            "vaccine_name": r.vaccine_name,
+            "vaccinated_at": r.vaccinated_at.isoformat() if r.vaccinated_at else None,
+            "expiry_date": r.expiry_date.isoformat() if r.expiry_date else None,
+            "next_vaccination_date": r.next_vaccination_date.isoformat() if r.next_vaccination_date else None,
+            "notes": r.notes
+        }
         return BaseResponse(success=True, message="疫苗记录添加成功", data=result)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -236,9 +278,14 @@ async def api_update_vaccine(pet_id: int, record_id: int, data: PetVaccineUpdate
     """更新疫苗记录"""
     try:
         r = update_vaccine(db, record_id, pet_id, current_user.id, data.model_dump(exclude_none=True))
-        result = {"id": r.id, "vaccine_name": r.vaccine_name, "vaccinated_at": r.vaccinated_at.isoformat(),
-                  "next_vaccination_date": r.next_vaccination_date.isoformat() if r.next_vaccination_date else None,
-                  "expiry_date": r.expiry_date.isoformat() if r.expiry_date else None, "notes": r.notes}
+        result = {
+            "id": r.id,
+            "vaccine_name": r.vaccine_name,
+            "vaccinated_at": r.vaccinated_at.isoformat() if r.vaccinated_at else None,
+            "expiry_date": r.expiry_date.isoformat() if r.expiry_date else None,
+            "next_vaccination_date": r.next_vaccination_date.isoformat() if r.next_vaccination_date else None,
+            "notes": r.notes
+        }
         return BaseResponse(success=True, message="疫苗记录更新成功", data=result)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -262,8 +309,13 @@ async def api_add_deworming(pet_id: int, data: PetDewormingCreate, current_user:
     """添加驱虫记录"""
     try:
         r = add_deworming(db, pet_id, current_user.id, data.model_dump())
-        result = {"id": r.id, "deworming_type": r.deworming_type, "treated_at": r.treated_at.isoformat(),
-                  "next_treatment_date": r.next_treatment_date.isoformat() if r.next_treatment_date else None}
+        result = {
+            "id": r.id,
+            "deworming_type": r.deworming_type,
+            "treated_at": r.treated_at.isoformat() if r.treated_at else None,
+            "next_treatment_date": r.next_treatment_date.isoformat() if r.next_treatment_date else None,
+            "notes": r.notes
+        }
         return BaseResponse(success=True, message="驱虫记录添加成功", data=result)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -285,9 +337,13 @@ async def api_update_deworming(pet_id: int, record_id: int, data: PetDewormingUp
     """更新驱虫记录"""
     try:
         r = update_deworming(db, record_id, pet_id, current_user.id, data.model_dump(exclude_none=True))
-        result = {"id": r.id, "deworming_type": r.deworming_type, "treated_at": r.treated_at.isoformat(),
-                  "next_treatment_date": r.next_treatment_date.isoformat() if r.next_treatment_date else None,
-                  "notes": r.notes}
+        result = {
+            "id": r.id,
+            "deworming_type": r.deworming_type,
+            "treated_at": r.treated_at.isoformat() if r.treated_at else None,
+            "next_treatment_date": r.next_treatment_date.isoformat() if r.next_treatment_date else None,
+            "notes": r.notes
+        }
         return BaseResponse(success=True, message="驱虫记录更新成功", data=result)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -389,6 +445,17 @@ async def api_get_waters(pet_id: int, skip: int = 0, limit: int = 50,
     items = [{"id": r.id, "amount_ml": r.amount_ml,
               "record_time": r.record_time.isoformat(), "from_source": r.from_source} for r in records]
     return BaseResponse(success=True, message="获取饮水记录成功", data={"records": items})
+
+
+@router.delete("/{pet_id}/water-records/{record_id}", response_model=BaseResponse)
+async def api_delete_water(pet_id: int, record_id: int,
+                           current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """删除饮水记录"""
+    try:
+        delete_water_record(db, record_id, pet_id, current_user.id)
+        return BaseResponse(success=True, message="饮水记录已删除")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 # ========== AI 建议 ==========

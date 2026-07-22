@@ -78,12 +78,109 @@ class _PetFoodLibraryPageState extends State<PetFoodLibraryPage> {
   }
 
   Future<void> _scanFood() async {
-    // 拍照获取食品包装图片
-    final XFile? image = await _picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 85,
+    // 弹出选择来源对话框
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.borderLight,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                '选择识别方式',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '拍摄或选择宠物食品包装照片，AI将自动识别营养成分',
+                style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              // 拍照选项
+              ListTile(
+                leading: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColors.primarySurface,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(LucideIcons.camera, color: AppColors.primary),
+                ),
+                title: const Text('拍照',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('直接拍摄食品包装',
+                    style: TextStyle(fontSize: 12)),
+                trailing: const Icon(LucideIcons.chevronRight, size: 18),
+                onTap: () => Navigator.pop(ctx, ImageSource.camera),
+              ),
+              const SizedBox(height: 8),
+              // 相册选项
+              ListTile(
+                leading: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColors.primarySurface,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(LucideIcons.image, color: AppColors.primary),
+                ),
+                title: const Text('从相册选择',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('选取已保存的包装照片',
+                    style: TextStyle(fontSize: 12)),
+                trailing: const Icon(LucideIcons.chevronRight, size: 18),
+                onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
     );
-    if (image == null || !mounted) return;
+
+    if (source == null || !mounted) return;
+
+    setState(() => _isScanning = true);
+
+    XFile? image;
+    try {
+      image = await _picker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isScanning = false);
+        _showSnackBar('打开${source == ImageSource.camera ? '相机' : '相册'}失败: $e');
+      }
+      return;
+    }
+
+    if (image == null) {
+      // 用户取消选择
+      if (mounted) setState(() => _isScanning = false);
+      return;
+    }
+
+    if (!mounted) return;
 
     setState(() => _isScanning = true);
 

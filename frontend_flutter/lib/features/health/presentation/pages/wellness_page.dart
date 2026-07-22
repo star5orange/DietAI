@@ -36,31 +36,59 @@ class _WellnessPageState extends State<WellnessPage>
   }
 
   Future<void> _loadData() async {
-    try {
-      final results = await Future.wait([
-        _wellnessService.getDailyRecommendation(),
-        _wellnessService.getSolarTerms(),
-        _wellnessService.getWellnessTips(),
-      ]);
+    // 独立加载每个接口，一个失败不影响其他
+    await _loadRecommendation();
+    await _loadSolarTerms();
+    await _loadWellnessTips();
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
 
-      if (mounted) {
-        setState(() {
-          _recommendation =
-              (results[0] as ApiResponse<Map<String, dynamic>>).data;
-          _solarTerms =
-              (results[1] as ApiResponse<List<Map<String, dynamic>>>).data ??
-                  [];
-          _wellnessTips =
-              (results[2] as ApiResponse<List<Map<String, dynamic>>>).data ??
-                  [];
-          _isLoading = false;
-        });
+  Future<void> _loadRecommendation() async {
+    try {
+      final result = await _wellnessService.getDailyRecommendation();
+      debugPrint(
+          '[Wellness] daily-recommendation: isSuccess=${result.isSuccess}, data=${result.data?.keys}');
+      if (mounted && result.isSuccess) {
+        setState(() => _recommendation = result.data);
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      debugPrint('[Wellness] daily-recommendation error: $e');
     }
+  }
+
+  Future<void> _loadSolarTerms() async {
+    try {
+      final result = await _wellnessService.getSolarTerms();
+      debugPrint(
+          '[Wellness] solar-terms: isSuccess=${result.isSuccess}, count=${result.data?.length}');
+      if (mounted && result.isSuccess) {
+        setState(() => _solarTerms = result.data ?? []);
+      }
+    } catch (e) {
+      debugPrint('[Wellness] solar-terms error: $e');
+    }
+  }
+
+  Future<void> _loadWellnessTips() async {
+    try {
+      final result = await _wellnessService.getWellnessTips();
+      debugPrint(
+          '[Wellness] tips: isSuccess=${result.isSuccess}, count=${result.data?.length}');
+      if (mounted && result.isSuccess) {
+        setState(() => _wellnessTips = result.data ?? []);
+      }
+    } catch (e) {
+      debugPrint('[Wellness] tips error: $e');
+    }
+  }
+
+  /// 安全地从 dynamic 转为 List，避免 Map→List 类型转换异常
+  List _safeList(dynamic value) {
+    if (value is List) return value;
+    if (value == null) return [];
+    return [];
   }
 
   @override
@@ -111,11 +139,10 @@ class _WellnessPageState extends State<WellnessPage>
       return const Center(child: Text('暂无推荐数据'));
     }
 
-    final tips = _recommendation!['wellness_tips'] as List? ?? [];
-    final ingredients =
-        _recommendation!['recommended_ingredients'] as List? ?? [];
-    final recipes = _recommendation!['recommended_recipes'] as List? ?? [];
-    final avoidFoods = _recommendation!['foods_to_avoid'] as List? ?? [];
+    final tips = _safeList(_recommendation!['wellness_tips']);
+    final ingredients = _safeList(_recommendation!['recommended_ingredients']);
+    final recipes = _safeList(_recommendation!['recommended_recipes']);
+    final avoidFoods = _safeList(_recommendation!['foods_to_avoid']);
     final solarTerm = _recommendation!['current_solar_term'] ?? '未知节气';
     final season = _recommendation!['current_season'] ?? '夏季';
 
@@ -361,7 +388,8 @@ class _WellnessPageState extends State<WellnessPage>
     final termByMonth = <int, List<Map<String, dynamic>>>{};
     for (final term in _solarTerms) {
       final date = term['date'] ?? '';
-      final month = int.tryParse(date.split('-')[0]) ?? 0;
+      final parts = date.split('-');
+      final month = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
       termByMonth.putIfAbsent(month, () => []).add(term);
     }
 
@@ -370,7 +398,8 @@ class _WellnessPageState extends State<WellnessPage>
     for (final term in _solarTerms) {
       if (term['is_current'] == true) {
         final date = term['date'] ?? '';
-        currentMonth = int.tryParse(date.split('-')[0]);
+        final parts = date.split('-');
+        currentMonth = parts.length > 1 ? int.tryParse(parts[1]) : null;
         break;
       }
     }
@@ -720,8 +749,7 @@ class _WellnessPageState extends State<WellnessPage>
         final color = _parseColor(section['color']?.toString() ?? '#43A047');
         final title = section['title']?.toString() ?? '';
         final items =
-            (section['items'] as List?)?.map((e) => e.toString()).toList() ??
-                [];
+            _safeList(section['items']).map((e) => e.toString()).toList();
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 16),
@@ -849,9 +877,8 @@ class _WellnessPageState extends State<WellnessPage>
                 final title = tip['title']?.toString() ?? '';
                 final content = tip['content']?.toString() ?? '';
                 final foods =
-                    (tip['recommended_foods'] as List?)?.cast<String>() ?? [];
-                final avoid =
-                    (tip['avoid_foods'] as List?)?.cast<String>() ?? [];
+                    _safeList(tip['recommended_foods']).cast<String>();
+                final avoid = _safeList(tip['avoid_foods']).cast<String>();
 
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
