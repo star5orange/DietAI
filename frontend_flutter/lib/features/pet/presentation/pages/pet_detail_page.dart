@@ -659,12 +659,12 @@ class _PetDetailPageState extends ConsumerState<PetDetailPage>
   ];
 
   Widget _buildUnlockableCard(Map<String, dynamic> item) {
-    final name = item['name'] as String;
+    final name = item['name'] as String? ?? '';
     final description = item['description'] as String? ?? '';
-    final unlockType = item['unlock_type'] as String;
+    final unlockType = item['unlock_type'] as String? ?? '';
     final requiredLevel = item['required_level'] as int?;
     final requiredStreak = item['required_streak'] as int?;
-    final isUnlocked = item['is_unlocked'] as bool;
+    final isUnlocked = item['is_unlocked'] as bool? ?? false;
 
     final petState = ref.watch(petProvider);
     final icon = _iconForType(unlockType);
@@ -857,7 +857,7 @@ class _PetDetailPageState extends ConsumerState<PetDetailPage>
     }
 
     // 尝试同步后端（失败不影响本地状态）
-    final unlockType = item['unlock_type'] as String;
+    final unlockType = item['unlock_type'] as String? ?? '';
     try {
       await _petService.petInteract(
         action: 'unlock',
@@ -902,10 +902,10 @@ class _PetDetailPageState extends ConsumerState<PetDetailPage>
             itemBuilder: (context, index) {
               final item = _interactions[index];
               return _buildInteractionButton(
-                  item['name'] as String,
+                  item['name'] as String? ?? '',
                   item['icon'] as IconData,
-                  item['effect'] as String,
-                  item['action'] as String);
+                  item['effect'] as String? ?? '',
+                  item['action'] as String? ?? '');
             },
           ),
         ],

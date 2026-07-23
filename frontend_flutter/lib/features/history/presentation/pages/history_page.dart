@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../services/food_service.dart';
 import '../../../../services/saved_meal_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
@@ -21,6 +22,7 @@ class HistoryPage extends ConsumerStatefulWidget {
 
 class _HistoryPageState extends ConsumerState<HistoryPage> {
   final FoodService _foodService = FoodService();
+  final ApiService _apiService = ApiService();
   DateTime _selectedDate = DateTime.now();
   bool _isLoading = true;
   List<FoodRecord> _records = [];
@@ -31,10 +33,68 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   double? _pendingCostAmount;
   String? _pendingCostSource;
 
+  List<String> _availableCategories = [
+    '主食',
+    '蔬菜',
+    '肉类',
+    '汤类',
+    '小食',
+    '饮品',
+    '甜品',
+    '其他'
+  ];
+  List<String> _availableTags = [
+    '健康',
+    '减脂',
+    '增肌',
+    '高蛋白',
+    '低脂',
+    '低糖',
+    '高纤维',
+    '素食',
+    '快手菜'
+  ];
+
   @override
   void initState() {
     super.initState();
     _loadRecords();
+    _fetchCategories();
+    _fetchTags();
+  }
+
+  Future<void> _fetchCategories() async {
+    try {
+      final response = await _apiService.get('/foods/categories');
+      if (response.success && response.data != null) {
+        final items = response.data['items'] as List<dynamic>?;
+        if (items != null && mounted) {
+          setState(() {
+            _availableCategories = items.cast<String>();
+          });
+        }
+      }
+    } catch (_) {
+      // Silently fallback to hardcoded data
+    }
+  }
+
+  Future<void> _fetchTags() async {
+    try {
+      // Note: these are display-only food tags, not source tags
+      // The API response format is {'items': ['tag1', 'tag2', ...]}
+      final response = await _apiService.get('/foods/categories');
+      if (response.success && response.data != null) {
+        final items = response.data['items'] as List<dynamic>?;
+        if (items != null && mounted) {
+          setState(() {
+            _availableTags = items.cast<String>();
+          });
+        }
+      }
+    } catch (_) {
+      // Silently fallback to hardcoded data
+    }
   }
 
   @override
@@ -290,7 +350,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     if (hour < 10) return '早餐';
     if (hour < 14) return '午餐';
     if (hour < 20) return '晚餐';
-    return '零食';
+    return '加餐';
   }
 
   void _showFilterSheet() {
@@ -323,7 +383,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     _buildFilterChip(1, '早餐'),
                     _buildFilterChip(2, '午餐'),
                     _buildFilterChip(3, '晚餐'),
-                    _buildFilterChip(4, '零食'),
+                    _buildFilterChip(4, '加餐'),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -485,7 +545,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         return 2;
       case '晚餐':
         return 3;
-      case '零食':
+      case '加餐':
         return 4;
       default:
         return 4;
@@ -545,7 +605,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       case 3:
         return '晚餐';
       case 4:
-        return '零食';
+        return '加餐';
       default:
         return '其他';
     }
@@ -799,7 +859,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                   ),
                 ),
                 // 消费金额
-                if (record != null && record.cost != null && record.cost! > 0) ...[
+                if (record != null &&
+                    record.cost != null &&
+                    record.cost! > 0) ...[
                   const SizedBox(height: 4),
                   Text(
                     '¥${record.cost!.toStringAsFixed(1)}',
@@ -995,9 +1057,11 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                         '记录时间', record.recordTime ?? record.createdAt),
                     _buildDetailRow('分析状态', record.analysisStatusName),
                     if (record.cost != null && record.cost! > 0) ...[
-                      _buildDetailRow('消费金额', '¥${record.cost!.toStringAsFixed(2)}'),
+                      _buildDetailRow(
+                          '消费金额', '¥${record.cost!.toStringAsFixed(2)}'),
                       if (record.sourceTag != null)
-                        _buildDetailRow('消费来源', _sourceLabelName(record.sourceTag!)),
+                        _buildDetailRow(
+                            '消费来源', _sourceLabelName(record.sourceTag!)),
                     ],
                   ]),
 
@@ -1332,30 +1396,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     );
     final TextEditingController categoryController = TextEditingController();
 
-    final List<String> availableCategories = [
-      '主食',
-      '蔬菜',
-      '肉类',
-      '汤类',
-      '小食',
-      '饮品',
-      '甜品',
-      '其他'
-    ];
-
     String? selectedCategory;
     List<String> selectedTags = [];
-    final List<String> availableTags = [
-      '健康',
-      '减脂',
-      '增肌',
-      '高蛋白',
-      '低脂',
-      '低糖',
-      '高纤维',
-      '素食',
-      '快手菜'
-    ];
 
     showDialog(
       context: context,
@@ -1399,7 +1441,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: availableCategories.map((category) {
+                    children: _availableCategories.map((category) {
                       final isSelected = selectedCategory == category;
                       return GestureDetector(
                         onTap: () {
@@ -1441,7 +1483,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: availableTags.map((tag) {
+                    children: _availableTags.map((tag) {
                       final isSelected = selectedTags.contains(tag);
                       return GestureDetector(
                         onTap: () {
@@ -1541,10 +1583,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         ),
       ),
     );
-
-    nameController.dispose();
-    descController.dispose();
-    categoryController.dispose();
+    // 注意：不要手动dispose controller，对话框关闭后会自动处理
   }
 
   Widget _buildNutritionPreview(FoodRecord record) {
@@ -1667,7 +1706,19 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       text: record.cost != null ? record.cost.toString() : '',
     );
     int selectedMealType = record.mealType;
-    String? selectedSourceTag = record.sourceTag;
+    // 确保来源标签在允许的范围内
+    const allowedSourceTags = [
+      'canteen',
+      'delivery',
+      'home',
+      'restaurant',
+      'snack',
+      'other'
+    ];
+    String? selectedSourceTag = (record.sourceTag != null &&
+            allowedSourceTags.contains(record.sourceTag))
+        ? record.sourceTag
+        : null;
 
     showDialog(
       context: context,
@@ -1736,7 +1787,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     DropdownMenuItem(value: 'delivery', child: Text('外卖')),
                     DropdownMenuItem(value: 'home', child: Text('自制')),
                     DropdownMenuItem(value: 'restaurant', child: Text('餐厅')),
-                    DropdownMenuItem(value: 'snack', child: Text('零食')),
+                    DropdownMenuItem(value: 'snack', child: Text('加餐')),
                     DropdownMenuItem(value: 'other', child: Text('其他')),
                   ],
                   onChanged: (value) {
@@ -1827,7 +1878,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       'delivery': '外卖',
       'home': '家里',
       'restaurant': '餐厅',
-      'snack': '零食',
+      'snack': '加餐',
       'other': '其他',
     };
     return labels[key] ?? key;

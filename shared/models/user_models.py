@@ -78,6 +78,9 @@ class UserProfile(Base):
     # Milestone 2: 月度饮食预算
     monthly_food_budget = Column(Numeric(10, 2), default=0)
 
+    # 用户自定义卡路里目标 (kcal/天)
+    target_calories = Column(Integer, default=2000)
+
 
 class HealthGoal(Base):
     """健康目标表"""

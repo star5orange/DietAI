@@ -5,11 +5,14 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../pet/presentation/providers/pet_provider.dart';
 import '../../../pet/data/pet_storage.dart';
+import '../../../pet/data/real_pet_api_service.dart';
 import '../../../pet/domain/pet_state_calculator.dart';
-import '../../../pet/domain/pet_skin_config.dart'; // 导入桌宠皮肤配置
+import '../../../pet/domain/pet_skin_config.dart';
 import '../../../pet/presentation/widgets/pet_bubble.dart';
 import '../../../pet/presentation/widgets/pet_animation_widget.dart';
 import '../../../pet/domain/services/pet_service.dart';
+import '../../../pet/presentation/pages/real_pet_detail_page.dart';
+import '../../../pet/presentation/pages/add_pet_page.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../services/food_service.dart';
@@ -24,6 +27,11 @@ class MyPetPage extends ConsumerStatefulWidget {
 
 class _MyPetPageState extends ConsumerState<MyPetPage>
     with TickerProviderStateMixin {
+  // Tab controller
+  late TabController _tabController;
+  static const int _virtualPetTabIndex = 0;
+  static const int _realPetTabIndex = 1;
+
   // Animation controllers
   late AnimationController _bounceController;
   late AnimationController _bubbleController;
@@ -43,6 +51,10 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
   final PetService _petService = PetService();
   final FoodService _foodService = FoodService();
   final WaterService _waterService = WaterService();
+
+  // 真实宠物列表
+  List<Map<String, dynamic>> _realPets = [];
+  bool _realPetsLoading = true;
 
   // Unlockables
   List<Map<String, dynamic>> _unlockables = [];
@@ -158,6 +170,9 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
   @override
   void initState() {
     super.initState();
+    // 初始化Tab控制器
+    _tabController = TabController(length: 2, vsync: this);
+
     _bounceController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
@@ -192,10 +207,12 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
     _startAutoBubble();
     _loadStats();
     _loadUnlockables();
+    _fetchRealPets();
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _bounceController.dispose();
     _bubbleController.dispose();
     _pulseController.dispose();
@@ -338,6 +355,21 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
     }
   }
 
+  Future<void> _fetchRealPets() async {
+    setState(() => _realPetsLoading = true);
+    final api = RealPetApiService();
+    final result = await api.getPets();
+    if (mounted) {
+      setState(() {
+        _realPetsLoading = false;
+        if (result.isSuccess && result.data != null) {
+          final pets = result.data!['pets'] as List<dynamic>? ?? [];
+          _realPets = pets.map((p) => p as Map<String, dynamic>).toList();
+        }
+      });
+    }
+  }
+
   Future<void> _loadUnlockables() async {
     try {
       final response = await _petService.getUnlockables();
@@ -420,7 +452,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
       backgroundColor: const Color(0xFFF5F7F6),
       appBar: AppBar(
         title: const Text(
-          '我的精灵',
+          '我的宠物',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
@@ -433,27 +465,313 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
           icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF222222)),
           onPressed: () => Navigator.pop(context),
         ),
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: const Color(0xFF2BAF74),
+          unselectedLabelColor: const Color(0xFF999999),
+          indicatorColor: const Color(0xFF2BAF74),
+          labelStyle:
+              const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          tabs: const [
+            Tab(text: '精灵伙伴'),
+            Tab(text: '真实宠物'),
+          ],
+        ),
       ),
-      body: SingleChildScrollView(
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          // Tab 1: 虚拟精灵伙伴（保留原有内容）
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildPetDisplaySection(petState),
+                const SizedBox(height: 20),
+                _buildVisibilityToggle(petState),
+                const SizedBox(height: 20),
+                _buildPetTypeSelector(petState),
+                const SizedBox(height: 20),
+                _buildStatsPanel(petState),
+                const SizedBox(height: 20),
+                _buildAchievementsSection(),
+                const SizedBox(height: 20),
+                _buildInteractionPanel(),
+              ],
+            ),
+          ),
+          // Tab 2: 真实宠物
+          _buildRealPetTab(),
+        ],
+      ),
+    );
+  }
+
+  // ==================== 真实宠物 Tab ====================
+
+  /// 真实宠物Tab内容
+  Widget _buildRealPetTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 添加宠物按钮
+          GestureDetector(
+            onTap: () => _showAddPetDialog(),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF2BAF74), Color(0xFF4ECDC4)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(LucideIcons.plus, color: Colors.white, size: 24),
+                  SizedBox(width: 8),
+                  Text(
+                    '添加真实宠物',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // 宠物列表标题
+          const Text(
+            '我的宠物',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF222222),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          if (_realPetsLoading)
+            const Center(
+                child: Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(),
+            ))
+          else if (_realPets.isEmpty)
+            _buildEmptyRealPetsHint()
+          else
+            ..._realPets.map((pet) => _buildRealPetCard(pet)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyRealPetsHint() {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      margin: const EdgeInsets.only(top: 16),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSecondary,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderLight),
+      ),
+      child: Column(
+        children: [
+          const Icon(LucideIcons.cat, size: 48, color: AppColors.textTertiary),
+          const SizedBox(height: 12),
+          Text('还没有添加宠物',
+              style: TextStyle(fontSize: 14, color: AppColors.textTertiary)),
+          const SizedBox(height: 4),
+          Text('点击上方按钮添加你的第一只宠物吧',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textTertiary.withValues(alpha: 0.7))),
+        ],
+      ),
+    );
+  }
+
+  /// 真实宠物卡片
+  Widget _buildRealPetCard(Map<String, dynamic> pet) {
+    final species = pet['species'] as String? ?? '';
+    final speciesIcon = species == 'cat' ? LucideIcons.cat : LucideIcons.dog;
+    final avatarUrl = pet['avatar_url'] as String?;
+    final petName = pet['name'] as String? ?? '未命名';
+    final petBreed = pet['breed'] as String? ?? '';
+    final birthDateStr = pet['birth_date'] as String?;
+
+    // 计算年龄
+    String ageText = '未知';
+    if (birthDateStr != null) {
+      try {
+        final birth = DateTime.parse(birthDateStr);
+        final now = DateTime.now();
+        final years = now.year - birth.year;
+        if (years > 0) {
+          ageText = '$years岁';
+        } else {
+          final months =
+              now.month - birth.month + (now.day >= birth.day ? 0 : -1);
+          ageText = '${months > 0 ? months : 1}个月';
+        }
+      } catch (_) {
+        ageText = '未知';
+      }
+    }
+
+    return GestureDetector(
+      onTap: () => _navigateToPetDetail(pet),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
           children: [
-            _buildPetDisplaySection(petState),
-            const SizedBox(height: 20),
-            _buildVisibilityToggle(petState),
-            const SizedBox(height: 20),
-            _buildPetTypeSelector(petState),
-            const SizedBox(height: 20),
-            _buildStatsPanel(petState),
-            const SizedBox(height: 20),
-            _buildAchievementsSection(),
-            const SizedBox(height: 20),
-            _buildInteractionPanel(),
+            // 头像
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: AppColors.primarySurface,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: avatarUrl != null && avatarUrl.isNotEmpty
+                    ? Image.network(
+                        avatarUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Icon(
+                          speciesIcon,
+                          size: 32,
+                          color: AppColors.primary,
+                        ),
+                      )
+                    : Icon(
+                        speciesIcon,
+                        size: 32,
+                        color: AppColors.primary,
+                      ),
+              ),
+            ),
+            const SizedBox(width: 14),
+
+            // 信息
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          petName,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF222222),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (petBreed.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.primarySurface,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            petBreed,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(speciesIcon,
+                          size: 14, color: AppColors.textTertiary),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$species · $ageText',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF999999),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // 箭头
+            const Icon(
+              LucideIcons.chevronRight,
+              color: Color(0xFFCCCCCC),
+              size: 20,
+            ),
           ],
         ),
       ),
     );
+  }
+
+  /// 显示添加宠物对话框
+  void _showAddPetDialog() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const AddPetPage(),
+      ),
+    );
+    // 重新加载宠物列表
+    if (result != null) {
+      _fetchRealPets();
+    }
+  }
+
+  /// 跳转到宠物详情页
+  void _navigateToPetDetail(Map<String, dynamic> pet) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RealPetDetailPage(pet: pet),
+      ),
+    );
+    // 如果详情页有修改(编辑/删除)，刷新列表
+    if (result == 'deleted' || result == true) {
+      _fetchRealPets();
+    }
   }
 
   // ==================== Pet Display (interactive) ====================
@@ -1188,7 +1506,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
     final unlockType = item['unlock_type'] as String;
     final requiredLevel = item['required_level'] as int?;
     final requiredStreak = item['required_streak'] as int?;
-    final isUnlocked = item['is_unlocked'] as bool;
+    final isUnlocked = item['is_unlocked'] as bool? ?? false;
 
     final petState = ref.watch(petProvider);
     final icon = _iconForType(unlockType);

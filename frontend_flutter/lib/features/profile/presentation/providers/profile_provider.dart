@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../shared/domain/models/api_response.dart';
@@ -30,18 +31,36 @@ class UserProfileNotifier extends StateNotifier<AsyncValue<UserProfile?>> {
     }
   }
 
+  /// 加载用户资料并返回数据（用于等待加载完成）
+  Future<UserProfile?> loadUserProfileAndGet() async {
+    // 如果已有数据，直接返回
+    if (state.hasValue && state.value != null) {
+      return state.value;
+    }
+    // 否则加载
+    await loadUserProfile();
+    return state.value;
+  }
+
   /// 更新用户资料
   Future<bool> updateUserProfile(UserProfileUpdateRequest request) async {
     try {
+      debugPrint('[UserProfileNotifier] 开始更新用户资料: ${request.toJson()}');
       final response = await _userService.updateUserProfile(request);
+      debugPrint(
+          '[UserProfileNotifier] API响应: success=${response.isSuccess}, data=${response.data?.toJson()}');
+
       if (response.isSuccess) {
         state = AsyncValue.data(response.data);
+        debugPrint(
+            '[UserProfileNotifier] 状态已更新, targetCalories=${response.data?.targetCalories}');
         return true;
       } else {
         state = AsyncValue.error(response.message, StackTrace.current);
         return false;
       }
     } catch (error, stackTrace) {
+      debugPrint('[UserProfileNotifier] 更新失败: $error');
       state = AsyncValue.error(error, stackTrace);
       return false;
     }
@@ -52,7 +71,8 @@ class UserProfileNotifier extends StateNotifier<AsyncValue<UserProfile?>> {
 }
 
 /// 用户资料提供者
-final userProfileProvider = StateNotifierProvider<UserProfileNotifier, AsyncValue<UserProfile?>>((ref) {
+final userProfileProvider =
+    StateNotifierProvider<UserProfileNotifier, AsyncValue<UserProfile?>>((ref) {
   final userService = ref.watch(userServiceProvider);
   return UserProfileNotifier(userService);
 });
@@ -67,7 +87,8 @@ class HealthGoalsNotifier extends StateNotifier<AsyncValue<List<HealthGoal>>> {
   Future<void> loadHealthGoals({int? statusFilter}) async {
     state = const AsyncValue.loading();
     try {
-      final response = await _userService.getHealthGoals(statusFilter: statusFilter);
+      final response =
+          await _userService.getHealthGoals(statusFilter: statusFilter);
       if (response.isSuccess) {
         state = AsyncValue.data(response.data ?? []);
       } else {
@@ -97,7 +118,8 @@ class HealthGoalsNotifier extends StateNotifier<AsyncValue<List<HealthGoal>>> {
   }
 
   /// 更新健康目标
-  Future<bool> updateHealthGoal(int goalId, HealthGoalCreateRequest request) async {
+  Future<bool> updateHealthGoal(
+      int goalId, HealthGoalCreateRequest request) async {
     try {
       final response = await _userService.updateHealthGoal(goalId, request);
       if (response.isSuccess) {
@@ -144,7 +166,9 @@ class HealthGoalsNotifier extends StateNotifier<AsyncValue<List<HealthGoal>>> {
 }
 
 /// 健康目标提供者
-final healthGoalsProvider = StateNotifierProvider<HealthGoalsNotifier, AsyncValue<List<HealthGoal>>>((ref) {
+final healthGoalsProvider =
+    StateNotifierProvider<HealthGoalsNotifier, AsyncValue<List<HealthGoal>>>(
+        (ref) {
   final userService = ref.watch(userServiceProvider);
   return HealthGoalsNotifier(userService);
 });
@@ -188,7 +212,8 @@ class DiseasesNotifier extends StateNotifier<AsyncValue<List<Disease>>> {
   }
 
   /// 更新疾病信息
-  Future<bool> updateDisease(int diseaseId, DiseaseCreateRequest request) async {
+  Future<bool> updateDisease(
+      int diseaseId, DiseaseCreateRequest request) async {
     try {
       final response = await _userService.updateDisease(diseaseId, request);
       if (response.isSuccess) {
@@ -233,7 +258,8 @@ class DiseasesNotifier extends StateNotifier<AsyncValue<List<Disease>>> {
 }
 
 /// 疾病信息提供者
-final diseasesProvider = StateNotifierProvider<DiseasesNotifier, AsyncValue<List<Disease>>>((ref) {
+final diseasesProvider =
+    StateNotifierProvider<DiseasesNotifier, AsyncValue<List<Disease>>>((ref) {
   final userService = ref.watch(userServiceProvider);
   return DiseasesNotifier(userService);
 });
@@ -248,7 +274,8 @@ class AllergiesNotifier extends StateNotifier<AsyncValue<List<Allergy>>> {
   Future<void> loadAllergies({int? allergenType}) async {
     state = const AsyncValue.loading();
     try {
-      final response = await _userService.getAllergies(allergenType: allergenType);
+      final response =
+          await _userService.getAllergies(allergenType: allergenType);
       if (response.isSuccess) {
         state = AsyncValue.data(response.data ?? []);
       } else {
@@ -277,7 +304,8 @@ class AllergiesNotifier extends StateNotifier<AsyncValue<List<Allergy>>> {
   }
 
   /// 更新过敏信息
-  Future<bool> updateAllergy(int allergyId, AllergyCreateRequest request) async {
+  Future<bool> updateAllergy(
+      int allergyId, AllergyCreateRequest request) async {
     try {
       final response = await _userService.updateAllergy(allergyId, request);
       if (response.isSuccess) {
@@ -312,28 +340,39 @@ class AllergiesNotifier extends StateNotifier<AsyncValue<List<Allergy>>> {
 
   /// 获取食物过敏
   List<Allergy> get foodAllergies {
-    return state.value?.where((allergy) => allergy.allergenType == 1).toList() ?? [];
+    return state.value
+            ?.where((allergy) => allergy.allergenType == 1)
+            .toList() ??
+        [];
   }
 
   /// 获取药物过敏
   List<Allergy> get medicineAllergies {
-    return state.value?.where((allergy) => allergy.allergenType == 2).toList() ?? [];
+    return state.value
+            ?.where((allergy) => allergy.allergenType == 2)
+            .toList() ??
+        [];
   }
 
   /// 获取环境过敏
   List<Allergy> get environmentAllergies {
-    return state.value?.where((allergy) => allergy.allergenType == 3).toList() ?? [];
+    return state.value
+            ?.where((allergy) => allergy.allergenType == 3)
+            .toList() ??
+        [];
   }
 }
 
 /// 过敏信息提供者
-final allergiesProvider = StateNotifierProvider<AllergiesNotifier, AsyncValue<List<Allergy>>>((ref) {
+final allergiesProvider =
+    StateNotifierProvider<AllergiesNotifier, AsyncValue<List<Allergy>>>((ref) {
   final userService = ref.watch(userServiceProvider);
   return AllergiesNotifier(userService);
 });
 
 /// 体重记录状态管理
-class WeightRecordsNotifier extends StateNotifier<AsyncValue<List<WeightRecord>>> {
+class WeightRecordsNotifier
+    extends StateNotifier<AsyncValue<List<WeightRecord>>> {
   final UserService _userService;
 
   WeightRecordsNotifier(this._userService) : super(const AsyncValue.loading());
@@ -383,11 +422,12 @@ class WeightRecordsNotifier extends StateNotifier<AsyncValue<List<WeightRecord>>
   WeightRecord? get latestRecord {
     final records = state.value;
     if (records == null || records.isEmpty) return null;
-    
+
     // 按时间排序，获取最新的记录
     final sortedRecords = List<WeightRecord>.from(records)
-      ..sort((a, b) => DateTime.parse(b.measuredAt).compareTo(DateTime.parse(a.measuredAt)));
-    
+      ..sort((a, b) =>
+          DateTime.parse(b.measuredAt).compareTo(DateTime.parse(a.measuredAt)));
+
     return sortedRecords.first;
   }
 
@@ -395,7 +435,7 @@ class WeightRecordsNotifier extends StateNotifier<AsyncValue<List<WeightRecord>>
   List<WeightRecord> get recentRecords {
     final records = state.value;
     if (records == null || records.isEmpty) return [];
-    
+
     final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
     return records.where((record) {
       final recordDate = DateTime.parse(record.measuredAt);
@@ -405,7 +445,8 @@ class WeightRecordsNotifier extends StateNotifier<AsyncValue<List<WeightRecord>>
 }
 
 /// 体重记录提供者
-final weightRecordsProvider = StateNotifierProvider<WeightRecordsNotifier, AsyncValue<List<WeightRecord>>>((ref) {
+final weightRecordsProvider = StateNotifierProvider<WeightRecordsNotifier,
+    AsyncValue<List<WeightRecord>>>((ref) {
   final userService = ref.watch(userServiceProvider);
   return WeightRecordsNotifier(userService);
 });
@@ -500,7 +541,9 @@ class OnboardingNotifier extends StateNotifier<AsyncValue<OnboardingStatus>> {
 }
 
 /// 引导状态提供者
-final onboardingProvider = StateNotifierProvider<OnboardingNotifier, AsyncValue<OnboardingStatus>>((ref) {
+final onboardingProvider =
+    StateNotifierProvider<OnboardingNotifier, AsyncValue<OnboardingStatus>>(
+        (ref) {
   final userService = ref.watch(userServiceProvider);
   return OnboardingNotifier(userService);
 });

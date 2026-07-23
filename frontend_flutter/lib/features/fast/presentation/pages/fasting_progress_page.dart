@@ -163,6 +163,24 @@ class _FastingProgressPageState extends ConsumerState<FastingProgressPage> {
   // ==================== 进度概览卡片 ====================
   Widget _buildProgressOverview(FastingProgress p) {
     final rate = p.completionRate;
+    final is16_8 = _plan?.planType == '16_8';
+
+    // 根据计划类型显示不同的进度文案
+    String progressLabel;
+    String progressValue;
+    String progressSubtitle;
+
+    if (is16_8) {
+      // 16:8 显示已进行天数
+      progressLabel = '计划进度';
+      progressValue = '${p.daysElapsed}';
+      progressSubtitle = '/ ${p.daysTotal} 天';
+    } else {
+      // 5:2 / 基础断食显示本周打卡
+      progressLabel = '本周进度';
+      progressValue = '${p.weeklyCheckins}';
+      progressSubtitle = '/ ${p.weeklyTarget} 天';
+    }
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -181,8 +199,8 @@ class _FastingProgressPageState extends ConsumerState<FastingProgressPage> {
             children: [
               const Icon(LucideIcons.timer, color: Colors.white, size: 22),
               const SizedBox(width: 10),
-              const Text('计划进度',
-                  style: TextStyle(
+              Text(progressLabel,
+                  style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: Colors.white)),
@@ -206,14 +224,14 @@ class _FastingProgressPageState extends ConsumerState<FastingProgressPage> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('${p.daysElapsed}',
+              Text(progressValue,
                   style: const TextStyle(
                       fontSize: 36,
                       fontWeight: FontWeight.w800,
                       color: Colors.white)),
               Padding(
                 padding: const EdgeInsets.only(bottom: 6, left: 4),
-                child: Text('/ ${p.daysTotal} 天',
+                child: Text(progressSubtitle,
                     style:
                         const TextStyle(fontSize: 16, color: Colors.white70)),
               ),
@@ -340,8 +358,8 @@ class _FastingProgressPageState extends ConsumerState<FastingProgressPage> {
                   // 体重曲线
                   LineChartBarData(
                     spots: points.asMap().entries.map((e) {
-                      return FlSpot(
-                          e.key.toDouble(), e.value['weight'] as double);
+                      return FlSpot(e.key.toDouble(),
+                          (e.value['weight'] as num?)?.toDouble() ?? 0);
                     }).toList(),
                     isCurved: true,
                     color: const Color(0xFF43E97B),
@@ -583,8 +601,14 @@ class _FastingProgressPageState extends ConsumerState<FastingProgressPage> {
         Row(
           children: [
             Expanded(
-                child: _buildStatCard('连续打卡', '${p.streakDays} 天',
-                    LucideIcons.flame, AppColors.caloriesColor)),
+                child: _plan?.planType == '16_8'
+                    ? _buildStatCard('连续打卡', '${p.streakDays} 天',
+                        LucideIcons.flame, AppColors.caloriesColor)
+                    : _buildStatCard(
+                        '本周打卡',
+                        '${p.weeklyCheckins}/${p.weeklyTarget} 天',
+                        LucideIcons.flame,
+                        AppColors.caloriesColor)),
             const SizedBox(width: 12),
             Expanded(
                 child: _buildStatCard(
@@ -696,7 +720,8 @@ class _FastingProgressPageState extends ConsumerState<FastingProgressPage> {
           const SizedBox(height: 12),
           Text(feelingInfo['label'] as String,
               style: AppTextStyles.numberXSmall.copyWith(
-                  color: feelingInfo['color'] as Color,
+                  color:
+                      feelingInfo['color'] as Color? ?? AppColors.textSecondary,
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
           Text('主要体感',

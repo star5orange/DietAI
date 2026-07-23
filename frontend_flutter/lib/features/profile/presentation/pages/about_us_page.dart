@@ -29,7 +29,10 @@ class AboutUsPage extends StatelessWidget {
               height: 80,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [AppColors.primary, AppColors.primary.withValues(alpha: 0.7)],
+                  colors: [
+                    AppColors.primary,
+                    AppColors.primary.withValues(alpha: 0.7)
+                  ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -62,7 +65,7 @@ class AboutUsPage extends StatelessWidget {
           const SizedBox(height: 4),
           Center(
             child: Text(
-              '智能饮食健康管理助手',
+              '智能饮食与宠物健康管理助手',
               style: AppTextStyles.bodyMedium.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -87,13 +90,15 @@ class AboutUsPage extends StatelessWidget {
           _buildInfoCard(
             icon: LucideIcons.cpu,
             title: '核心技术',
-            content: '基于先进的大语言模型和计算机视觉技术，DietAI能够智能识别食物、分析营养成分，并根据用户的健康状况和目标提供个性化的饮食建议。',
+            content:
+                '基于先进的大语言模型和计算机视觉技术，DietAI能够智能识别食物、分析营养成分，并根据用户的健康状况和目标提供个性化的饮食建议。',
           ),
           const SizedBox(height: 12),
           _buildInfoCard(
             icon: LucideIcons.layoutList,
             title: '主要功能',
-            content: '• 拍照识别食物与热量分析\n• AI智能饮食对话助手\n• 体重追踪与趋势分析\n• 健康目标设定与追踪\n• 疾病与过敏信息管理\n• 用餐与饮水提醒\n• 运动记录与热量平衡',
+            content:
+                '• 拍照识别食物与热量分析\n• AI智能饮食对话助手\n• 体重追踪与趋势分析\n• 健康目标设定与追踪\n• 疾病与过敏信息管理\n• 用餐与饮水提醒\n• 运动记录与热量平衡\n• 真实宠物健康管理\n• AI宠物形象生成\n• 宠物饮食分析与建议',
           ),
           const SizedBox(height: 12),
           _buildInfoCard(

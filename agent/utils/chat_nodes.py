@@ -12,7 +12,7 @@ from agent.utils.prompts import CHAT_SYSTEM_PROMPTS
 def initialize_chat_session(state: ChatState, config: RunnableConfig) -> ChatState:
     """初始化聊天会话"""
     configurable = Configuration.from_runnable_config(config)
-    
+
     # 根据会话类型获取系统提示词
     system_prompt = CHAT_SYSTEM_PROMPTS.get(state['session_type'], CHAT_SYSTEM_PROMPTS['default'])
 
@@ -20,22 +20,46 @@ def initialize_chat_session(state: ChatState, config: RunnableConfig) -> ChatSta
     advisor_prompt = state.get('advisor_system_prompt', '')
     if advisor_prompt:
         system_prompt = system_prompt + "\n\n" + advisor_prompt
-    
+
+    # 如果是宠物健康咨询且提供了pet_id，加载宠物信息
+    pet_context = state.get('pet_context')
+    if state['session_type'] == 6 and state.get('pet_id') and not pet_context:
+        try:
+            from shared.models.database import SessionLocal
+            from shared.services.real_pet_service import get_pet
+            db = SessionLocal()
+            pet = get_pet(db, state['pet_id'], state['user_id'])
+            if pet:
+                pet_context = {
+                    'id': pet.id,
+                    'name': pet.name,
+                    'species': pet.species,
+                    'breed': pet.breed,
+                    'gender': pet.gender,
+                    'birth_date': pet.birth_date.isoformat() if pet.birth_date else None,
+                    'is_neutered': pet.is_neutered,
+                }
+            db.close()
+        except Exception as e:
+            pass  # 如果加载失败，继续使用空上下文
+
     # 初始化对话历史（如果是新会话）
     if not state.get('conversation_history'):
         conversation_history = [SystemMessage(content=system_prompt)]
     else:
         conversation_history = state['conversation_history']
-    
+
     updated_state = ChatState(
         user_message=state['user_message'],
         session_id=state.get('session_id'),
         session_type=state['session_type'],
         user_id=state['user_id'],
+        pet_id=state.get('pet_id'),
         conversation_history=conversation_history,
         user_context=state.get('user_context', {}),
         recent_meals=state.get('recent_meals', []),
         health_goals=state.get('health_goals', {}),
+        pet_context=pet_context,
         context_analysis=None,
         response_content="",
         response_metadata={},
@@ -46,7 +70,7 @@ def initialize_chat_session(state: ChatState, config: RunnableConfig) -> ChatSta
             model_name=configurable.analysis_model
         )
     )
-    
+
     return updated_state
 
 
@@ -127,7 +151,8 @@ def analyze_conversation_context(state: ChatState) -> ChatState:
             2: "健康评估 - 专注于健康状况分析、指标评估、改善建议", 
             3: "食物识别 - 专注于食物识别、营养成分分析",
             4: "运动建议 - 专注于运动计划、健身指导、运动营养",
-            5: "养生咨询 - 专注于节气养生、体质调理、药膳茶饮、起居建议"
+            5: "养生咨询 - 专注于节气养生、体质调理、药膳茶饮、起居建议",
+            6: "宠物健康咨询 - 专注于宠物饮食管理、体重控制、疫苗接种、日常护理建议"
         }
         
         context_analysis = f"会话类型: {session_type_context.get(state['session_type'], '通用咨询')}"
@@ -139,7 +164,36 @@ def analyze_conversation_context(state: ChatState) -> ChatState:
             context_analysis += f"\n人群标签: {state['crowd_tag']}"
         if state.get('constitution_type'):
             context_analysis += f"\n体质类型: {state['constitution_type']}"
-        
+
+        # 宠物健康咨询：注入宠物档案、安全守则和免责声明
+        if state['session_type'] == 6:
+            # 注入宠物档案信息
+            if state.get('pet_context'):
+                pet = state['pet_context']
+                pet_info = [
+                    f"【宠物档案】",
+                    f"姓名: {pet.get('name', '未知')}",
+                    f"物种: {'猫' if pet.get('species') == 'cat' else '狗'}",
+                    f"品种: {pet.get('breed', '未知')}",
+                    f"性别: {'公' if pet.get('gender') == 'male' else '母' if pet.get('gender') == 'female' else '未知'}",
+                ]
+                if pet.get('birth_date'):
+                    from datetime import datetime
+                    birth = datetime.fromisoformat(pet['birth_date'])
+                    age = (datetime.now() - birth).days // 365
+                    pet_info.append(f"年龄: {age}岁")
+                if pet.get('is_neutered') is not None:
+                    pet_info.append(f"绝育状态: {'已绝育' if pet['is_neutered'] else '未绝育'}")
+                context_analysis += "\n" + "\n".join(pet_info)
+
+            # 注入安全守则
+            context_analysis += (
+                "\n\n【安全守则 - 必须严格遵守】"
+                "\n1. 遇到以下症状，必须建议立即就医：呕吐、腹泻超过24小时、不吃不喝超过24小时、精神萎靡、抽搐、呼吸困难、外伤出血、中毒"
+                "\n2. 不可给出诊断结论、药物推荐或治疗方案"
+                "\n3. 每次回答末尾必须附带免责声明：「⚠️ 我是AI助手，建议仅供参考。宠物健康问题请咨询专业兽医。」"
+            )
+
         # 注入当前节气信息（养生咨询时特别有用）
         if state.get('session_type') == 5:
             from agent.common_utils.solar_term_utils import get_current_solar_term
@@ -315,6 +369,14 @@ def generate_suggestions_by_type(session_type: int, user_message: str) -> List[s
                 "推荐养生药膳和茶饮",
                 "获取起居作息建议"
             ]
+
+    elif session_type == 6:  # 宠物健康咨询
+        return [
+            "查看宠物今日饮食分析",
+            "获取宠物体重管理建议",
+            "了解宠物疫苗接种计划",
+            "推荐适合的宠物食品",
+        ]
     
     else:
         return [

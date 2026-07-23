@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../../../../core/services/api_service.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../data/services/advisor_service.dart';
@@ -17,11 +18,141 @@ class AdvisorStylePage extends ConsumerStatefulWidget {
 
 class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
   String _selectedStyle = 'nutritionist';
-  String? _selectedFocusGoal;
-  String? _selectedFocusNutrient;
+  Set<String> _selectedFocusGoals = {}; // 改为多选
+  Set<String> _selectedFocusNutrients = {}; // 改为多选
   String _selectedResponseStyle = 'friendly';
+  bool _isLoading = false;
+  bool _isInitialized = false;
 
-  final List<Map<String, dynamic>> _advisorStyles = [
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      // 并行加载用户设置和4个选项列表
+      final service = ref.read(advisorServiceProvider);
+      final results = await Future.wait([
+        service.getSettings(),
+        _fetchAdvisorStyles(),
+        _fetchFocusGoals(),
+        _fetchFocusNutrients(),
+        _fetchResponseStyles(),
+      ]);
+      final settings = results[0] as AdvisorSettings?;
+      if (mounted && settings != null) {
+        setState(() {
+          _selectedStyle = settings.advisorStyle ?? 'nutritionist';
+          _selectedResponseStyle = settings.responseStyle ?? 'friendly';
+          // 加载关注目标（转为Set）
+          if (settings.focusGoal != null) {
+            _selectedFocusGoals = {settings.focusGoal!};
+          }
+          // 加载关注营养素（转为Set）
+          if (settings.focusNutrient != null) {
+            _selectedFocusNutrients = {settings.focusNutrient!};
+          }
+          _isInitialized = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isInitialized = true);
+    }
+  }
+
+  Future<void> _fetchAdvisorStyles() async {
+    try {
+      final response = await ApiService().get('/ai-advisor/styles');
+      if (response.success &&
+          response.data != null &&
+          response.data['items'] != null) {
+        final items = response.data['items'] as List;
+        final updated = items
+            .map((item) => {
+                  'id': (item['id'] ?? '').toString(),
+                  'name': (item['name'] ?? '').toString(),
+                  'icon': LucideIcons.apple, // 图标保持使用硬编码映射
+                  'desc':
+                      (item['description'] ?? item['desc'] ?? '').toString(),
+                })
+            .toList();
+        if (updated.isNotEmpty && mounted) {
+          setState(() => _advisorStyles = updated);
+        }
+      }
+    } catch (_) {
+      // API 失败，使用硬编码回退数据
+    }
+  }
+
+  Future<void> _fetchFocusGoals() async {
+    try {
+      final response = await ApiService().get('/ai-advisor/goals');
+      if (response.success &&
+          response.data != null &&
+          response.data['items'] != null) {
+        final items = response.data['items'] as List;
+        final updated = items
+            .map((item) => (item['name'] ?? item['goal'] ?? '').toString())
+            .where((s) => s.isNotEmpty)
+            .toList();
+        if (updated.isNotEmpty && mounted) {
+          setState(() => _focusGoals = updated);
+        }
+      }
+    } catch (_) {
+      // API 失败，使用硬编码回退数据
+    }
+  }
+
+  Future<void> _fetchFocusNutrients() async {
+    try {
+      final response = await ApiService().get('/ai-advisor/nutrients');
+      if (response.success &&
+          response.data != null &&
+          response.data['items'] != null) {
+        final items = response.data['items'] as List;
+        final updated = items
+            .map((item) => (item['name'] ?? item['nutrient'] ?? '').toString())
+            .where((s) => s.isNotEmpty)
+            .toList();
+        if (updated.isNotEmpty && mounted) {
+          setState(() => _focusNutrients = updated);
+        }
+      }
+    } catch (_) {
+      // API 失败，使用硬编码回退数据
+    }
+  }
+
+  Future<void> _fetchResponseStyles() async {
+    try {
+      final response = await ApiService().get('/ai-advisor/response-styles');
+      if (response.success &&
+          response.data != null &&
+          response.data['items'] != null) {
+        final items = response.data['items'] as List;
+        final updated = items
+            .map((item) => {
+                  'id': (item['id'] ?? '').toString(),
+                  'name': (item['name'] ?? '').toString(),
+                })
+            .toList();
+        if (updated.isNotEmpty && mounted) {
+          setState(() => _responseStyles = updated);
+        }
+      }
+    } catch (_) {
+      // API 失败，使用硬编码回退数据
+    }
+  }
+
+  List<Map<String, dynamic>> _advisorStyles = List.from(_fallbackAdvisorStyles);
+
+  // AI顾问风格——优先从后端获取，硬编码数据作为回退
+  static const _fallbackAdvisorStyles = [
     {
       'id': 'nutritionist',
       'name': '营养师',
@@ -46,15 +177,11 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
       'icon': LucideIcons.users,
       'desc': '轻松鼓励，陪伴式健康管理'
     },
-    {
-      'id': 'motivator',
-      'name': '励志伙伴',
-      'icon': LucideIcons.star,
-      'desc': '积极鼓励，陪伴式减脂'
-    },
   ];
 
-  final List<String> _focusGoals = [
+  List<String> _focusGoals = List.from(_fallbackFocusGoals);
+
+  static const _fallbackFocusGoals = [
     '减脂塑形',
     '增肌增重',
     '控糖稳糖',
@@ -62,7 +189,9 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
     '均衡健康',
   ];
 
-  final List<String> _focusNutrients = [
+  List<String> _focusNutrients = List.from(_fallbackFocusNutrients);
+
+  static const _fallbackFocusNutrients = [
     '热量',
     '蛋白质',
     '碳水化合物',
@@ -70,14 +199,15 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
     '微量元素',
   ];
 
-  final List<Map<String, String>> _responseStyles = [
+  List<Map<String, String>> _responseStyles =
+      List.from(_fallbackResponseStyles);
+
+  static const _fallbackResponseStyles = [
     {'id': 'professional', 'name': '专业严谨'},
     {'id': 'friendly', 'name': '亲切友好'},
     {'id': 'motivating', 'name': '激励鼓舞'},
     {'id': 'detailed', 'name': '详尽细致'},
   ];
-
-  bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -126,7 +256,7 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
               onChanged: (style) => setState(() => _selectedStyle = style),
             ),
             const SizedBox(height: 24),
-            Text('关注目标（可选）', style: AppTextStyles.h6),
+            Text('关注目标（可多选）', style: AppTextStyles.h6),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
@@ -134,14 +264,19 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
               children: _focusGoals
                   .map((goal) => _buildChip(
                         label: goal,
-                        isSelected: _selectedFocusGoal == goal,
-                        onTap: () => setState(() => _selectedFocusGoal =
-                            _selectedFocusGoal == goal ? null : goal),
+                        isSelected: _selectedFocusGoals.contains(goal),
+                        onTap: () => setState(() {
+                          if (_selectedFocusGoals.contains(goal)) {
+                            _selectedFocusGoals.remove(goal);
+                          } else {
+                            _selectedFocusGoals.add(goal);
+                          }
+                        }),
                       ))
                   .toList(),
             ),
             const SizedBox(height: 24),
-            Text('关注营养素（可选）', style: AppTextStyles.h6),
+            Text('关注营养素（可多选）', style: AppTextStyles.h6),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
@@ -149,11 +284,14 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
               children: _focusNutrients
                   .map((nutrient) => _buildChip(
                         label: nutrient,
-                        isSelected: _selectedFocusNutrient == nutrient,
-                        onTap: () => setState(() => _selectedFocusNutrient =
-                            _selectedFocusNutrient == nutrient
-                                ? null
-                                : nutrient),
+                        isSelected: _selectedFocusNutrients.contains(nutrient),
+                        onTap: () => setState(() {
+                          if (_selectedFocusNutrients.contains(nutrient)) {
+                            _selectedFocusNutrients.remove(nutrient);
+                          } else {
+                            _selectedFocusNutrients.add(nutrient);
+                          }
+                        }),
                       ))
                   .toList(),
             ),
@@ -247,13 +385,24 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
         '微量元素': 'micronutrient',
       };
 
+      // 多选取第一个或全部拼接
+      final focusGoal = _selectedFocusGoals.isNotEmpty
+          ? _selectedFocusGoals
+              .map((g) => goalMap[g])
+              .whereType<String>()
+              .join(',')
+          : null;
+      final focusNutrient = _selectedFocusNutrients.isNotEmpty
+          ? _selectedFocusNutrients
+              .map((n) => nutrientMap[n])
+              .whereType<String>()
+              .join(',')
+          : null;
+
       await service.updateSettings(AdvisorSettings(
         advisorStyle: _selectedStyle,
-        focusGoal:
-            _selectedFocusGoal != null ? goalMap[_selectedFocusGoal] : null,
-        focusNutrient: _selectedFocusNutrient != null
-            ? nutrientMap[_selectedFocusNutrient]
-            : null,
+        focusGoal: focusGoal,
+        focusNutrient: focusNutrient,
         responseStyle: _selectedResponseStyle,
       ));
 

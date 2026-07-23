@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../shared/presentation/widgets/app_button.dart';
@@ -11,16 +12,19 @@ class OnboardingConstitutionPage extends ConsumerStatefulWidget {
   const OnboardingConstitutionPage({super.key});
 
   @override
-  ConsumerState<OnboardingConstitutionPage> createState() => _OnboardingConstitutionPageState();
+  ConsumerState<OnboardingConstitutionPage> createState() =>
+      _OnboardingConstitutionPageState();
 }
 
-class _OnboardingConstitutionPageState extends ConsumerState<OnboardingConstitutionPage>
+class _OnboardingConstitutionPageState
+    extends ConsumerState<OnboardingConstitutionPage>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<Offset> _slideAnimation;
   String? _selectedConstitution;
 
-  static const List<Map<String, dynamic>> _constitutions = [
+  // 体质数据——优先从后端获取，硬编码数据作为回退
+  static const List<Map<String, dynamic>> _fallbackConstitutions = [
     {
       'type': '平和质',
       'icon': LucideIcons.smile,
@@ -86,6 +90,9 @@ class _OnboardingConstitutionPageState extends ConsumerState<OnboardingConstitut
     },
   ];
 
+  // 可被API更新的体质列表
+  List<Map<String, dynamic>> _constitutions = List.from(_fallbackConstitutions);
+
   @override
   void initState() {
     super.initState();
@@ -101,6 +108,48 @@ class _OnboardingConstitutionPageState extends ConsumerState<OnboardingConstitut
       curve: Curves.easeInOut,
     ));
     _animationController.forward();
+    _fetchConstitutions();
+  }
+
+  Future<void> _fetchConstitutions() async {
+    try {
+      final response = await ApiService().get('/health/constitutions');
+      if (response.success &&
+          response.data != null &&
+          response.data['items'] != null) {
+        final items = response.data['items'] as List;
+        final updated = items.map((item) {
+          final colorHex = item['color'] as String?;
+          final icons = {
+            '平和质': LucideIcons.smile,
+            '气虚质': LucideIcons.wind,
+            '阳虚质': LucideIcons.snowflake,
+            '阴虚质': LucideIcons.thermometer,
+            '痰湿质': LucideIcons.cloud,
+            '湿热质': LucideIcons.sun,
+            '血瘀质': LucideIcons.droplet,
+            '气郁质': LucideIcons.cloudRain,
+            '特禀质': LucideIcons.shieldAlert,
+          };
+          final name = (item['name'] ?? '').toString();
+          return {
+            'type': name,
+            'icon': icons[name] ?? LucideIcons.smile,
+            'color': colorHex != null
+                ? Color(int.parse(colorHex.replaceFirst('#', '0xFF')))
+                : const Color(0xFF2BAF74),
+            'description': (item['description'] ?? '').toString(),
+            'advice': (item['advice'] ?? '').toString(),
+          };
+        }).toList();
+
+        if (updated.isNotEmpty && mounted) {
+          setState(() => _constitutions = updated);
+        }
+      }
+    } catch (_) {
+      // API 失败，使用硬编码回退数据
+    }
   }
 
   @override
@@ -117,7 +166,8 @@ class _OnboardingConstitutionPageState extends ConsumerState<OnboardingConstitut
         backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(LucideIcons.chevronLeft, color: AppColors.textPrimary),
+          icon:
+              const Icon(LucideIcons.chevronLeft, color: AppColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Text(
@@ -176,13 +226,15 @@ class _OnboardingConstitutionPageState extends ConsumerState<OnboardingConstitut
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? (item['color'] as Color).withValues(alpha: 0.08)
+                                  ? (item['color'] as Color)
+                                      .withValues(alpha: 0.08)
                                   : AppColors.backgroundCard,
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
                                 color: isSelected
                                     ? (item['color'] as Color)
-                                    : AppColors.textTertiary.withValues(alpha: 0.15),
+                                    : AppColors.textTertiary
+                                        .withValues(alpha: 0.15),
                                 width: isSelected ? 2 : 1,
                               ),
                             ),
@@ -192,7 +244,8 @@ class _OnboardingConstitutionPageState extends ConsumerState<OnboardingConstitut
                                   width: 42,
                                   height: 42,
                                   decoration: BoxDecoration(
-                                    color: (item['color'] as Color).withValues(alpha: 0.12),
+                                    color: (item['color'] as Color)
+                                        .withValues(alpha: 0.12),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Icon(
@@ -204,13 +257,16 @@ class _OnboardingConstitutionPageState extends ConsumerState<OnboardingConstitut
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         item['type'] as String,
                                         style: TextStyle(
                                           fontSize: 15,
-                                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                          fontWeight: isSelected
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
                                           color: isSelected
                                               ? (item['color'] as Color)
                                               : AppColors.textPrimary,
@@ -230,7 +286,8 @@ class _OnboardingConstitutionPageState extends ConsumerState<OnboardingConstitut
                                   ),
                                 ),
                                 if (isSelected)
-                                  Icon(Icons.check_circle, color: item['color'] as Color, size: 22),
+                                  Icon(Icons.check_circle,
+                                      color: item['color'] as Color, size: 22),
                               ],
                             ),
                           ),
@@ -248,12 +305,16 @@ class _OnboardingConstitutionPageState extends ConsumerState<OnboardingConstitut
                     ),
                     child: Row(
                       children: [
-                        const Icon(LucideIcons.lightbulb, color: AppColors.info, size: 18),
+                        const Icon(LucideIcons.lightbulb,
+                            color: AppColors.info, size: 18),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            _constitutions.firstWhere((c) => c['type'] == _selectedConstitution)['advice'] as String,
-                            style: const TextStyle(fontSize: 13, color: AppColors.info),
+                            _constitutions.firstWhere((c) =>
+                                c['type'] ==
+                                _selectedConstitution)['advice'] as String,
+                            style: const TextStyle(
+                                fontSize: 13, color: AppColors.info),
                           ),
                         ),
                       ],
@@ -263,7 +324,8 @@ class _OnboardingConstitutionPageState extends ConsumerState<OnboardingConstitut
                 ],
                 AppButton(
                   text: '完成设置',
-                  onPressed: _selectedConstitution != null ? _completeSetup : null,
+                  onPressed:
+                      _selectedConstitution != null ? _completeSetup : null,
                   variant: AppButtonVariant.primary,
                 ),
               ],
@@ -283,7 +345,9 @@ class _OnboardingConstitutionPageState extends ConsumerState<OnboardingConstitut
             height: 4,
             margin: const EdgeInsets.symmetric(horizontal: 2),
             decoration: BoxDecoration(
-              color: step <= currentStep ? AppColors.primary : AppColors.textTertiary.withValues(alpha: 0.2),
+              color: step <= currentStep
+                  ? AppColors.primary
+                  : AppColors.textTertiary.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(2),
             ),
           ),

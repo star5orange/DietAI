@@ -432,8 +432,8 @@ class _ModernHomePageState extends State<ModernHomePage> {
       child: Column(
         children: nutritionProgress.entries.map((entry) {
           final name = _getNutritionName(entry.key);
-          final current = entry.value['current'] as int;
-          final target = entry.value['target'] as int;
+          final current = (entry.value['current'] as num?)?.toInt() ?? 0;
+          final target = (entry.value['target'] as num?)?.toInt() ?? 0;
           final color = entry.value['color'] as Color;
 
           return Padding(

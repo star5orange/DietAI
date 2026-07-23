@@ -11,6 +11,7 @@ from shared.models.schemas import (
     BaseResponse, HealthAnalysisRequest, HealthAnalysisResponse,
     DateRangeParams
 )
+from shared.models.schemas.constitution import CONSTITUTION_TYPES, CONSTITUTION_DIET_ADVICE
 from shared.utils.auth import get_current_user
 from shared.models.user_models import User, UserProfile, HealthGoal, WeightRecord
 from shared.models.food_models import FoodRecord, DailyNutritionSummary
@@ -22,6 +23,28 @@ logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/health", tags=["健康分析"])
+
+
+@router.get("/constitutions", response_model=BaseResponse)
+async def get_constitutions():
+    """获取九种中医体质类型及其饮食建议
+
+    返回所有体质类型的名称、描述、推荐饮食和避免食物
+    """
+    constitutions = []
+    for name, description in CONSTITUTION_TYPES.items():
+        advice = CONSTITUTION_DIET_ADVICE.get(name, {"recommended": [], "avoid": []})
+        constitutions.append({
+            "name": name,
+            "description": description,
+            "diet_advice": advice,
+        })
+
+    return BaseResponse(
+        success=True,
+        message="获取体质类型成功",
+        data={"constitutions": constitutions},
+    )
 
 
 @router.post("/analysis", response_model=BaseResponse)
@@ -1294,6 +1317,85 @@ async def get_weekly_summary(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"周度摘要生成失败: {str(e)}"
         )
+
+
+@router.get("/disease-advice", response_model=BaseResponse)
+async def get_disease_advice(
+    name: str = Query(..., description="疾病名称"),
+):
+    """获取疾病饮食建议
+
+    返回针对特定慢性病的饮食建议列表
+    """
+    advice_map = {
+        "糖尿病": [
+            "控制碳水化合物摄入，选择低升糖指数食物",
+            "定时定量进餐，避免暴饮暴食",
+            "增加膳食纤维摄入，多吃蔬菜",
+            "限制糖分和甜食",
+        ],
+        "高血压": [
+            "减少钠盐摄入，每日不超过6克",
+            "增加钾元素摄入，多吃香蕉、橙子等",
+            "控制总热量，维持健康体重",
+            "限制饱和脂肪酸摄入",
+        ],
+        "高血脂": [
+            "减少饱和脂肪和反式脂肪摄入",
+            "增加ω-3脂肪酸摄入，多吃深海鱼",
+            "多吃富含可溶性纤维的食物",
+            "控制胆固醇摄入",
+        ],
+    }
+    advice = advice_map.get(name, [
+        "请咨询医生或营养师获得专业建议",
+        "保持均衡饮食，注意营养搭配",
+        "定期复查，监测病情变化",
+    ])
+    return BaseResponse(
+        success=True,
+        message="获取疾病建议成功",
+        data={"disease_name": name, "advice": advice},
+    )
+
+
+@router.get("/allergen-types", response_model=BaseResponse)
+async def get_allergen_types():
+    """获取过敏原类型列表"""
+    types = [
+        {"value": 1, "label": "食物"},
+        {"value": 2, "label": "药物"},
+        {"value": 3, "label": "环境"},
+        {"value": 4, "label": "其他"},
+    ]
+    return BaseResponse(success=True, message="获取过敏原类型成功", data={"items": types})
+
+
+@router.get("/allergy-advice", response_model=BaseResponse)
+async def get_allergy_advice(
+    allergen: str = Query(..., description="过敏原名称"),
+):
+    """获取过敏原避免建议
+
+    返回针对特定过敏原的饮食避免建议
+    """
+    advice_map = {
+        "牛奶": ["避免所有乳制品", "仔细阅读食品标签", "选择植物奶替代"],
+        "鸡蛋": ["避免含蛋食品", "注意疫苗成分", "寻找蛋白质替代来源"],
+        "花生": ["严格避免花生及其制品", "注意交叉污染", "随身携带急救药物"],
+        "大豆": ["避免豆制品", "注意隐藏成分", "选择其他蛋白质来源"],
+    }
+    advice = advice_map.get(allergen, [
+        "严格避免该过敏原",
+        "仔细阅读食品标签和成分表",
+        "告知餐厅服务员您的过敏情况",
+        "随身携带抗过敏药物",
+    ])
+    return BaseResponse(
+        success=True,
+        message="获取过敏原建议成功",
+        data={"allergen": allergen, "advice": advice},
+    )
 
 
 def _generate_weekly_summary_text(

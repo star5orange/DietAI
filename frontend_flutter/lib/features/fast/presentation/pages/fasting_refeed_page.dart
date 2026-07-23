@@ -57,41 +57,7 @@ class _FastingRefeedPageState extends ConsumerState<FastingRefeedPage> {
     return _defaultPhases;
   }
 
-  static const _defaultPhases = [
-    {
-      'name': '第一阶段',
-      'time': '0-2小时',
-      'desc': '温和启动',
-      'tips': [
-        '饮用温水或淡盐水补充水分',
-        '可以喝少量蔬果汁',
-        '避免立即进食固体食物',
-      ],
-      'foods': ['温水', '淡盐水', '蔬菜汁', '水果汁'],
-    },
-    {
-      'name': '第二阶段',
-      'time': '2-4小时',
-      'desc': '轻食过渡',
-      'tips': [
-        '少量易消化的食物',
-        '以流质和半流质为主',
-        '细嚼慢咽，每口20次以上',
-      ],
-      'foods': ['燕麦粥', '蒸蛋', '蔬菜汤', '酸奶'],
-    },
-    {
-      'name': '第三阶段',
-      'time': '4-8小时',
-      'desc': '正常进食',
-      'tips': [
-        '逐渐恢复正常饮食',
-        '仍然避免暴饮暴食',
-        '高蛋白、低脂肪为佳',
-      ],
-      'foods': ['糙米饭', '蒸鱼', '煮蔬菜', '豆腐'],
-    },
-  ];
+  static const _defaultPhases = <Map<String, dynamic>>[];
 
   @override
   Widget build(BuildContext context) {
@@ -103,6 +69,16 @@ class _FastingRefeedPageState extends ConsumerState<FastingRefeedPage> {
       );
     }
     final phases = _phases;
+    if (phases.isEmpty) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: _buildAppBar(),
+        body: const Center(
+          child: Text('暂无非断食日，无需复食指导',
+              style: TextStyle(color: AppColors.textSecondary)),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: _buildAppBar(),

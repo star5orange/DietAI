@@ -14,6 +14,7 @@ class FastingPlan {
   final double? currentWeight;
   final String? eatingWindowStart;
   final String? eatingWindowEnd;
+  final List<int>? fastingDays; // 断食日(1-7表示周一到周日)
 
   const FastingPlan({
     required this.planId,
@@ -26,6 +27,7 @@ class FastingPlan {
     this.currentWeight,
     this.eatingWindowStart,
     this.eatingWindowEnd,
+    this.fastingDays,
   });
 
   factory FastingPlan.fromJson(Map<String, dynamic> json) {
@@ -40,7 +42,24 @@ class FastingPlan {
       currentWeight: json['current_weight']?.toDouble(),
       eatingWindowStart: json['eating_window_start'],
       eatingWindowEnd: json['eating_window_end'],
+      fastingDays: (json['fasting_days'] as List<dynamic>?)
+          ?.map((e) => e as int)
+          .toList(),
     );
+  }
+
+  /// 判断今天是否是断食日
+  bool isFastingDayToday() {
+    // 16:8 每天都是断食日
+    if (planType == '16_8') return true;
+
+    // 5:2 和 basic_fasting 需要检查 fastingDays
+    // 没有配置时默认不允许打卡（需要先配置断食日）
+    if (fastingDays == null || fastingDays!.isEmpty) return false;
+
+    // 获取今天是周几（1=周一，7=周日）
+    final today = DateTime.now().weekday;
+    return fastingDays!.contains(today);
   }
 }
 
@@ -80,6 +99,7 @@ class FastingCheckin {
 /// 断食进度模型
 class FastingProgress {
   final int planId;
+  final String? planType;
   final int daysElapsed;
   final int daysTotal;
   final double completionRate;
@@ -87,11 +107,14 @@ class FastingProgress {
   final double? weightCurrent;
   final double? weightChange;
   final String feelingAvg;
-  final int streakDays;
+  final int streakDays; // 16:8 使用
+  final int weeklyCheckins; // 5:2/基础断食使用
+  final int weeklyTarget; // 5:2/基础断食使用
   final List<Map<String, dynamic>> chart;
 
   const FastingProgress({
     required this.planId,
+    this.planType,
     required this.daysElapsed,
     required this.daysTotal,
     required this.completionRate,
@@ -100,12 +123,15 @@ class FastingProgress {
     this.weightChange,
     required this.feelingAvg,
     required this.streakDays,
+    this.weeklyCheckins = 0,
+    this.weeklyTarget = 0,
     required this.chart,
   });
 
   factory FastingProgress.fromJson(Map<String, dynamic> json) {
     return FastingProgress(
       planId: json['plan_id'] ?? 0,
+      planType: json['plan_type'],
       daysElapsed: json['days_elapsed'] ?? 0,
       daysTotal: json['days_total'] ?? 30,
       completionRate: (json['completion_rate'] ?? 0).toDouble(),
@@ -114,6 +140,8 @@ class FastingProgress {
       weightChange: json['weight_change']?.toDouble(),
       feelingAvg: json['feeling_avg'] ?? 'normal',
       streakDays: json['streak_days'] ?? 0,
+      weeklyCheckins: json['weekly_checkins'] ?? 0,
+      weeklyTarget: json['weekly_target'] ?? 0,
       chart: List<Map<String, dynamic>>.from(
         (json['chart'] as List<dynamic>?)
                 ?.map((e) => e as Map<String, dynamic>) ??
@@ -184,6 +212,7 @@ class FastingService {
     double? targetWeight,
     Map<String, dynamic>? healthAssessment,
     bool disclaimerAccepted = false,
+    List<int>? fastingDays,
   }) async {
     try {
       final response = await _apiService.dio.post(
@@ -196,6 +225,7 @@ class FastingService {
           if (targetWeight != null) 'target_weight': targetWeight,
           if (healthAssessment != null) 'health_assessment': healthAssessment,
           'disclaimer_accepted': disclaimerAccepted,
+          if (fastingDays != null) 'fasting_days': fastingDays,
         },
       );
       final data = response.data as Map<String, dynamic>;

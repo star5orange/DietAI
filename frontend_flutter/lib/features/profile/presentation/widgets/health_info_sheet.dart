@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../shared/domain/models/user_model.dart';
 import '../../../../shared/presentation/widgets/app_button.dart';
 import '../../../../shared/presentation/widgets/app_input.dart';
@@ -16,7 +17,7 @@ class HealthInfoSheet extends ConsumerStatefulWidget {
   ConsumerState<HealthInfoSheet> createState() => _HealthInfoSheetState();
 }
 
-class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet> 
+class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _isAddingDisease = false;
@@ -26,7 +27,7 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    
+
     // 加载数据
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(diseasesProvider.notifier).loadDiseases();
@@ -52,10 +53,10 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
         children: [
           // 头部
           _buildHeader(),
-          
+
           // 标签栏
           if (!_isAddingDisease && !_isAddingAllergy) _buildTabBar(),
-          
+
           // 内容
           Expanded(
             child: _buildContent(),
@@ -72,7 +73,7 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
     } else if (_isAddingAllergy) {
       title = '添加过敏信息';
     }
-    
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
@@ -91,8 +92,8 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
                 Navigator.pop(context);
               }
             },
-            icon: Icon((_isAddingDisease || _isAddingAllergy) 
-                ? LucideIcons.arrowLeft 
+            icon: Icon((_isAddingDisease || _isAddingAllergy)
+                ? LucideIcons.arrowLeft
                 : LucideIcons.x),
           ),
           Expanded(
@@ -158,28 +159,32 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
 
   Widget _buildDiseasesTab() {
     final diseasesAsync = ref.watch(diseasesProvider);
-    
+
     return diseasesAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, stack) => Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(LucideIcons.alertCircle, size: 48, color: AppColors.error),
+            const Icon(LucideIcons.alertCircle,
+                size: 48, color: AppColors.error),
             const SizedBox(height: 16),
             Text('加载失败: $error'),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () => ref.read(diseasesProvider.notifier).loadDiseases(),
+              onPressed: () =>
+                  ref.read(diseasesProvider.notifier).loadDiseases(),
               child: const Text('重试'),
             ),
           ],
         ),
       ),
       data: (diseases) {
-        final currentDiseases = ref.read(diseasesProvider.notifier).currentDiseases;
-        final historicalDiseases = ref.read(diseasesProvider.notifier).historicalDiseases;
-        
+        final currentDiseases =
+            ref.read(diseasesProvider.notifier).currentDiseases;
+        final historicalDiseases =
+            ref.read(diseasesProvider.notifier).historicalDiseases;
+
         if (diseases.isEmpty) {
           return _buildEmptyState(
             icon: LucideIcons.heart,
@@ -188,7 +193,7 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
             onAdd: () => setState(() => _isAddingDisease = true),
           );
         }
-        
+
         return SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -201,12 +206,13 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
                 ...currentDiseases.map((disease) => _buildDiseaseCard(disease)),
                 const SizedBox(height: 24),
               ],
-              
+
               // 历史疾病
               if (historicalDiseases.isNotEmpty) ...[
                 _buildSectionTitle('历史疾病'),
                 const SizedBox(height: 12),
-                ...historicalDiseases.map((disease) => _buildDiseaseCard(disease)),
+                ...historicalDiseases
+                    .map((disease) => _buildDiseaseCard(disease)),
               ],
             ],
           ),
@@ -217,29 +223,34 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
 
   Widget _buildAllergiesTab() {
     final allergiesAsync = ref.watch(allergiesProvider);
-    
+
     return allergiesAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, stack) => Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(LucideIcons.alertCircle, size: 48, color: AppColors.error),
+            const Icon(LucideIcons.alertCircle,
+                size: 48, color: AppColors.error),
             const SizedBox(height: 16),
             Text('加载失败: $error'),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () => ref.read(allergiesProvider.notifier).loadAllergies(),
+              onPressed: () =>
+                  ref.read(allergiesProvider.notifier).loadAllergies(),
               child: const Text('重试'),
             ),
           ],
         ),
       ),
       data: (allergies) {
-        final foodAllergies = ref.read(allergiesProvider.notifier).foodAllergies;
-        final medicineAllergies = ref.read(allergiesProvider.notifier).medicineAllergies;
-        final environmentAllergies = ref.read(allergiesProvider.notifier).environmentAllergies;
-        
+        final foodAllergies =
+            ref.read(allergiesProvider.notifier).foodAllergies;
+        final medicineAllergies =
+            ref.read(allergiesProvider.notifier).medicineAllergies;
+        final environmentAllergies =
+            ref.read(allergiesProvider.notifier).environmentAllergies;
+
         if (allergies.isEmpty) {
           return _buildEmptyState(
             icon: LucideIcons.shield,
@@ -248,7 +259,7 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
             onAdd: () => setState(() => _isAddingAllergy = true),
           );
         }
-        
+
         return SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -261,20 +272,22 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
                 ...foodAllergies.map((allergy) => _buildAllergyCard(allergy)),
                 const SizedBox(height: 24),
               ],
-              
+
               // 药物过敏
               if (medicineAllergies.isNotEmpty) ...[
                 _buildSectionTitle('药物过敏'),
                 const SizedBox(height: 12),
-                ...medicineAllergies.map((allergy) => _buildAllergyCard(allergy)),
+                ...medicineAllergies
+                    .map((allergy) => _buildAllergyCard(allergy)),
                 const SizedBox(height: 24),
               ],
-              
+
               // 环境过敏
               if (environmentAllergies.isNotEmpty) ...[
                 _buildSectionTitle('环境过敏'),
                 const SizedBox(height: 12),
-                ...environmentAllergies.map((allergy) => _buildAllergyCard(allergy)),
+                ...environmentAllergies
+                    .map((allergy) => _buildAllergyCard(allergy)),
               ],
             ],
           ),
@@ -342,7 +355,7 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: disease.isCurrent 
+                  color: disease.isCurrent
                       ? AppColors.error.withValues(alpha: 0.1)
                       : AppColors.textSecondary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
@@ -350,7 +363,9 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
                 child: Icon(
                   LucideIcons.heart,
                   size: 16,
-                  color: disease.isCurrent ? AppColors.error : AppColors.textSecondary,
+                  color: disease.isCurrent
+                      ? AppColors.error
+                      : AppColors.textSecondary,
                 ),
               ),
               const SizedBox(width: 12),
@@ -379,7 +394,7 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: disease.isCurrent 
+                  color: disease.isCurrent
                       ? AppColors.error.withValues(alpha: 0.1)
                       : AppColors.textSecondary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
@@ -387,7 +402,9 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
                 child: Text(
                   disease.isCurrent ? '当前' : '历史',
                   style: AppTextStyles.bodySmall.copyWith(
-                    color: disease.isCurrent ? AppColors.error : AppColors.textSecondary,
+                    color: disease.isCurrent
+                        ? AppColors.error
+                        : AppColors.textSecondary,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -563,7 +580,8 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
 
   void _showEditDiseaseDialog(Disease disease) {
     final nameController = TextEditingController(text: disease.diseaseName);
-    final codeController = TextEditingController(text: disease.diseaseCode ?? '');
+    final codeController =
+        TextEditingController(text: disease.diseaseCode ?? '');
     final notesController = TextEditingController(text: disease.notes ?? '');
     int severityLevel = disease.severityLevel ?? 1;
     bool isCurrent = disease.isCurrent;
@@ -644,19 +662,20 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
                   return;
                 }
                 Navigator.pop(context);
-                final success = await ref.read(diseasesProvider.notifier).updateDisease(
-                  disease.id,
-                  DiseaseCreateRequest(
-                    diseaseName: nameController.text.trim(),
-                    diseaseCode: codeController.text.trim().isEmpty
-                        ? null
-                        : codeController.text.trim(),
-                    severityLevel: severityLevel,
-                    notes: notesController.text.trim().isEmpty
-                        ? null
-                        : notesController.text.trim(),
-                  ),
-                );
+                final success =
+                    await ref.read(diseasesProvider.notifier).updateDisease(
+                          disease.id,
+                          DiseaseCreateRequest(
+                            diseaseName: nameController.text.trim(),
+                            diseaseCode: codeController.text.trim().isEmpty
+                                ? null
+                                : codeController.text.trim(),
+                            severityLevel: severityLevel,
+                            notes: notesController.text.trim().isEmpty
+                                ? null
+                                : notesController.text.trim(),
+                          ),
+                        );
                 if (success) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('疾病信息更新成功')),
@@ -690,7 +709,9 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () async {
               Navigator.pop(context);
-              final success = await ref.read(diseasesProvider.notifier).deleteDisease(disease.id);
+              final success = await ref
+                  .read(diseasesProvider.notifier)
+                  .deleteDisease(disease.id);
               if (success) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('疾病信息已删除')),
@@ -710,7 +731,8 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
 
   void _showEditAllergyDialog(Allergy allergy) {
     final nameController = TextEditingController(text: allergy.allergenName);
-    final reactionController = TextEditingController(text: allergy.reactionDescription ?? '');
+    final reactionController =
+        TextEditingController(text: allergy.reactionDescription ?? '');
     int allergenType = allergy.allergenType;
     int severityLevel = allergy.severityLevel ?? 1;
 
@@ -793,17 +815,19 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
                   return;
                 }
                 Navigator.pop(context);
-                final success = await ref.read(allergiesProvider.notifier).updateAllergy(
-                  allergy.id,
-                  AllergyCreateRequest(
-                    allergenType: allergenType,
-                    allergenName: nameController.text.trim(),
-                    severityLevel: severityLevel,
-                    reactionDescription: reactionController.text.trim().isEmpty
-                        ? null
-                        : reactionController.text.trim(),
-                  ),
-                );
+                final success =
+                    await ref.read(allergiesProvider.notifier).updateAllergy(
+                          allergy.id,
+                          AllergyCreateRequest(
+                            allergenType: allergenType,
+                            allergenName: nameController.text.trim(),
+                            severityLevel: severityLevel,
+                            reactionDescription:
+                                reactionController.text.trim().isEmpty
+                                    ? null
+                                    : reactionController.text.trim(),
+                          ),
+                        );
                 if (success) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('过敏信息更新成功')),
@@ -837,7 +861,9 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () async {
               Navigator.pop(context);
-              final success = await ref.read(allergiesProvider.notifier).deleteAllergy(allergy.id);
+              final success = await ref
+                  .read(allergiesProvider.notifier)
+                  .deleteAllergy(allergy.id);
               if (success) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('过敏信息已删除')),
@@ -868,7 +894,7 @@ class _AddDiseaseFormState extends ConsumerState<_AddDiseaseForm> {
   final _diseaseNameController = TextEditingController();
   final _diseaseCodeController = TextEditingController();
   final _notesController = TextEditingController();
-  
+
   int? _selectedSeverity;
   String? _selectedDiagnosedDate;
   bool _isLoading = false;
@@ -965,7 +991,9 @@ class _AddDiseaseFormState extends ConsumerState<_AddDiseaseForm> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? AppColors.primary.withValues(alpha: 0.1) : AppColors.backgroundSecondary,
+            color: isSelected
+                ? AppColors.primary.withValues(alpha: 0.1)
+                : AppColors.backgroundSecondary,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: isSelected ? AppColors.primary : AppColors.divider,
@@ -1000,19 +1028,21 @@ class _AddDiseaseFormState extends ConsumerState<_AddDiseaseForm> {
             ),
             child: Row(
               children: [
-                const Icon(LucideIcons.calendar, size: 18, color: AppColors.textSecondary),
+                const Icon(LucideIcons.calendar,
+                    size: 18, color: AppColors.textSecondary),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     _selectedDiagnosedDate?.split('T')[0] ?? '选择诊断日期（可选）',
                     style: AppTextStyles.bodyMedium.copyWith(
-                      color: _selectedDiagnosedDate != null 
-                          ? AppColors.textPrimary 
+                      color: _selectedDiagnosedDate != null
+                          ? AppColors.textPrimary
                           : AppColors.textSecondary,
                     ),
                   ),
                 ),
-                const Icon(LucideIcons.chevronRight, size: 16, color: AppColors.textTertiary),
+                const Icon(LucideIcons.chevronRight,
+                    size: 16, color: AppColors.textTertiary),
               ],
             ),
           ),
@@ -1028,7 +1058,7 @@ class _AddDiseaseFormState extends ConsumerState<_AddDiseaseForm> {
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
     );
-    
+
     if (selectedDate != null) {
       setState(() {
         _selectedDiagnosedDate = selectedDate.toIso8601String();
@@ -1046,18 +1076,19 @@ class _AddDiseaseFormState extends ConsumerState<_AddDiseaseForm> {
     try {
       final request = DiseaseCreateRequest(
         diseaseName: _diseaseNameController.text.trim(),
-        diseaseCode: _diseaseCodeController.text.trim().isEmpty 
-            ? null 
+        diseaseCode: _diseaseCodeController.text.trim().isEmpty
+            ? null
             : _diseaseCodeController.text.trim(),
         severityLevel: _selectedSeverity,
         diagnosedDate: _selectedDiagnosedDate,
-        notes: _notesController.text.trim().isEmpty 
-            ? null 
+        notes: _notesController.text.trim().isEmpty
+            ? null
             : _notesController.text.trim(),
       );
 
-      final success = await ref.read(diseasesProvider.notifier).addDisease(request);
-      
+      final success =
+          await ref.read(diseasesProvider.notifier).addDisease(request);
+
       if (success) {
         if (mounted) {
           Navigator.pop(context);
@@ -1099,17 +1130,55 @@ class _AddAllergyFormState extends ConsumerState<_AddAllergyForm> {
   final _formKey = GlobalKey<FormState>();
   final _allergenNameController = TextEditingController();
   final _reactionController = TextEditingController();
-  
+  final ApiService _apiService = ApiService();
+
   int _selectedType = 1;
   int? _selectedSeverity;
   bool _isLoading = false;
 
-  final List<Map<String, dynamic>> _allergenTypes = [
+  static const Map<int, IconData> _allergenTypeIcons = {
+    1: LucideIcons.apple,
+    2: LucideIcons.pill,
+    3: LucideIcons.leaf,
+    4: LucideIcons.moreHorizontal,
+  };
+
+  List<Map<String, dynamic>> _allergenTypes = [
     {'value': 1, 'label': '食物', 'icon': LucideIcons.apple},
     {'value': 2, 'label': '药物', 'icon': LucideIcons.pill},
     {'value': 3, 'label': '环境', 'icon': LucideIcons.leaf},
     {'value': 4, 'label': '其他', 'icon': LucideIcons.moreHorizontal},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchAllergenTypes();
+  }
+
+  Future<void> _fetchAllergenTypes() async {
+    try {
+      final response = await _apiService.get('/health/allergen-types');
+      if (response.success && response.data != null) {
+        final items = response.data['items'] as List<dynamic>?;
+        if (items != null && mounted) {
+          setState(() {
+            _allergenTypes = items.map((item) {
+              final value = (item['value'] as num).toInt();
+              final label = item['label'] as String;
+              return {
+                'value': value,
+                'label': label,
+                'icon': _allergenTypeIcons[value] ?? LucideIcons.moreHorizontal,
+              };
+            }).toList();
+          });
+        }
+      }
+    } catch (_) {
+      // Silently fallback to hardcoded data
+    }
+  }
 
   @override
   void dispose() {
@@ -1183,9 +1252,12 @@ class _AddAllergyFormState extends ConsumerState<_AddAllergyForm> {
             return GestureDetector(
               onTap: () => setState(() => _selectedType = type['value']),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: isSelected ? AppColors.primary.withValues(alpha: 0.1) : AppColors.backgroundSecondary,
+                  color: isSelected
+                      ? AppColors.primary.withValues(alpha: 0.1)
+                      : AppColors.backgroundSecondary,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: isSelected ? AppColors.primary : AppColors.divider,
@@ -1197,13 +1269,17 @@ class _AddAllergyFormState extends ConsumerState<_AddAllergyForm> {
                     Icon(
                       type['icon'],
                       size: 16,
-                      color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.textSecondary,
                     ),
                     const SizedBox(width: 8),
                     Text(
                       type['label'],
                       style: AppTextStyles.bodyMedium.copyWith(
-                        color: isSelected ? AppColors.primary : AppColors.textPrimary,
+                        color: isSelected
+                            ? AppColors.primary
+                            : AppColors.textPrimary,
                       ),
                     ),
                   ],
@@ -1243,7 +1319,9 @@ class _AddAllergyFormState extends ConsumerState<_AddAllergyForm> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? AppColors.primary.withValues(alpha: 0.1) : AppColors.backgroundSecondary,
+            color: isSelected
+                ? AppColors.primary.withValues(alpha: 0.1)
+                : AppColors.backgroundSecondary,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: isSelected ? AppColors.primary : AppColors.divider,
@@ -1273,13 +1351,14 @@ class _AddAllergyFormState extends ConsumerState<_AddAllergyForm> {
         allergenType: _selectedType,
         allergenName: _allergenNameController.text.trim(),
         severityLevel: _selectedSeverity,
-        reactionDescription: _reactionController.text.trim().isEmpty 
-            ? null 
+        reactionDescription: _reactionController.text.trim().isEmpty
+            ? null
             : _reactionController.text.trim(),
       );
 
-      final success = await ref.read(allergiesProvider.notifier).addAllergy(request);
-      
+      final success =
+          await ref.read(allergiesProvider.notifier).addAllergy(request);
+
       if (success) {
         if (mounted) {
           Navigator.pop(context);

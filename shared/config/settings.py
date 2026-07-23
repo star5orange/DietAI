@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     minio_secure: bool = Field(default=False, description="是否使用HTTPS")
     minio_bucket: str = Field(default="dietai-bucket", description="MinIO存储桶")
 
+    # DashScope AI配置 (通义万相)
+    dashscope_api_key: str = Field(default="", description="DashScope API密钥")
+    dashscope_image_model: str = Field(default="wanx-v1", description="DashScope图像生成模型")
+
     # JWT配置
     jwt_secret_key: str = Field(
         default="CHANGE-ME-generate-with-secrets-token-urlsafe-64",
@@ -64,13 +68,19 @@ class Settings(BaseSettings):
 
     @property
     def jwt_private_key(self) -> str:
-        with open(self.jwt_private_key_file, "r", encoding="utf-8") as f:
-            return f.read()
+        try:
+            with open(self.jwt_private_key_file, "r", encoding="utf-8") as f:
+                return f.read()
+        except FileNotFoundError:
+            return ""
 
     @property
     def jwt_public_key(self) -> str:
-        with open(self.jwt_public_key_file, "r", encoding="utf-8") as f:
-            return f.read()
+        try:
+            with open(self.jwt_public_key_file, "r", encoding="utf-8") as f:
+                return f.read()
+        except FileNotFoundError:
+            return ""
 
     jwt_access_token_expire_minutes: int = Field(default=30, description="访问令牌过期时间(分钟)")
     jwt_refresh_token_expire_days: int = Field(default=7, description="刷新令牌过期时间(天)")

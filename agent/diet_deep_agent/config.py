@@ -45,6 +45,13 @@ class DietDeepConfig:
     analysis_model_provider: str = "deepseek"
     analysis_model: str = "deepseek-v4-flash"
 
+    # 宠物健康配置
+    pet_min_weight_history_days: int = 14   # 体重异常检测最少需要的历史天数
+    pet_weight_anomaly_threshold: float = 0.05  # 体重异常变化阈值（5%）
+    pet_due_reminder_days: int = 7         # 疫苗/驱虫提前提醒天数
+    pet_nutrition_gap_threshold: float = 0.7  # 宠物营养缺口阈值（低于目标的70%）
+    pet_food_transition_days: int = 7      # 换粮过渡天数
+
     @property
     def agent_config(self) -> dict:
         """生成传递给 LangGraph agent 的 configurable dict"""

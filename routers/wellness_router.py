@@ -1,6 +1,9 @@
+import logging
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
+
+logger = logging.getLogger(__name__)
 
 from shared.models.database import get_db
 from shared.utils.auth import get_current_user
@@ -16,7 +19,7 @@ from shared.services.wellness_service import (
 router = APIRouter(prefix="/api/wellness", tags=["wellness"])
 
 
-@router.get("/daily-recommendation", response_model=DailyWellnessRecommendation)
+@router.get("/daily-recommendation")
 async def daily_recommendation(
     solar_term: Optional[str] = Query(None, description="节气名称"),
     season: Optional[str] = Query(None, description="季节"),
@@ -27,26 +30,33 @@ async def daily_recommendation(
 ):
     """每日养生推荐：结合节气、季节、体质生成个性化养生建议。
 
-    默认调用 AI Agent 生成个性化推荐，use_ai=false 时使用知识库查询。
+    默认调用 AI Agent 生成个性化推荐，AI 不可用时降级到知识库查询。
     """
+    data = None
     if use_ai:
-        return await generate_ai_wellness_recommendation(
-            user_id=user.id,
-            db=db,
-            solar_term=solar_term,
-            season=season,
-            constitution_type=constitution_type,
-        )
-    return get_daily_wellness_recommendation(db, solar_term, season, constitution_type)
+        try:
+            data = await generate_ai_wellness_recommendation(
+                user_id=user.id,
+                db=db,
+                solar_term=solar_term,
+                season=season,
+                constitution_type=constitution_type,
+            )
+        except Exception as e:
+            logger.warning(f"AI 养生推荐生成失败，降级到知识库查询: {e}")
+    if data is None:
+        data = get_daily_wellness_recommendation(db, solar_term, season, constitution_type)
+    return BaseResponse(success=True, message="获取每日推荐成功", data=data)
 
 
-@router.get("/solar-terms", response_model=List[SolarTermOut])
+@router.get("/solar-terms")
 async def solar_terms(
     year: int = Query(2026, description="年份"),
     db: Session = Depends(get_db),
 ):
     """获取该年所有节气日期及描述"""
-    return get_solar_terms(db, year)
+    data = get_solar_terms(db, year)
+    return BaseResponse(success=True, message=f"获取到 {len(data)} 个节气数据", data=data)
 
 
 @router.get("/tips")

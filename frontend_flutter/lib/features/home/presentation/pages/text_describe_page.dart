@@ -175,7 +175,7 @@ class _TextDescribePageState extends State<TextDescribePage> {
     }
   }
 
-  void _updateAutoEstimate() {
+  Future<void> _updateAutoEstimate() async {
     if (!_isAutoEstimate) return;
     final foodName = _foodNameController.text.trim();
     if (foodName.isEmpty) {
@@ -186,7 +186,7 @@ class _TextDescribePageState extends State<TextDescribePage> {
       return;
     }
     final portion = double.tryParse(_portionController.text) ?? 1.0;
-    final estimate = _foodService.estimateNutrition(foodName, portion);
+    final estimate = await _foodService.estimateNutrition(foodName, portion);
     _caloriesController.text = (estimate['calories'] ?? 0).toStringAsFixed(0);
     _proteinController.text = (estimate['protein'] ?? 0).toStringAsFixed(1);
     _fatController.text = (estimate['fat'] ?? 0).toStringAsFixed(1);

@@ -109,9 +109,20 @@ class _SavedMealsPageState extends State<SavedMealsPage>
       if (result.success && result.data != null) {
         setState(() {
           if (_currentPage == 1) {
-            _savedMeals = result.data!;
+            // 根据菜品名称去重
+            final uniqueMeals = <String, SavedMeal>{};
+            for (final meal in result.data!) {
+              uniqueMeals[meal.mealName] = meal;
+            }
+            _savedMeals = uniqueMeals.values.toList();
           } else {
-            _savedMeals.addAll(result.data!);
+            // 加载更多时也要去重
+            final existingNames = _savedMeals.map((m) => m.mealName).toSet();
+            for (final meal in result.data!) {
+              if (!existingNames.contains(meal.mealName)) {
+                _savedMeals.add(meal);
+              }
+            }
           }
           _hasMore = result.data!.length == _pageSize;
           _isLoading = false;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/services/api_service.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../shared/presentation/widgets/app_button.dart';
@@ -11,7 +12,8 @@ class OnboardingCrowdTagPage extends ConsumerStatefulWidget {
   const OnboardingCrowdTagPage({super.key});
 
   @override
-  ConsumerState<OnboardingCrowdTagPage> createState() => _OnboardingCrowdTagPageState();
+  ConsumerState<OnboardingCrowdTagPage> createState() =>
+      _OnboardingCrowdTagPageState();
 }
 
 class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
@@ -20,7 +22,8 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
   late Animation<Offset> _slideAnimation;
   String? _selectedTag;
 
-  static const List<Map<String, dynamic>> _crowdTags = [
+  // 人群标签数据——优先从后端获取，硬编码数据作为回退
+  static const List<Map<String, dynamic>> _fallbackCrowdTags = [
     {
       'tag': '减脂',
       'icon': LucideIcons.flame,
@@ -59,6 +62,9 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
     },
   ];
 
+  // 可被API更新的人群标签列表
+  List<Map<String, dynamic>> _crowdTags = List.from(_fallbackCrowdTags);
+
   @override
   void initState() {
     super.initState();
@@ -74,6 +80,52 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
       curve: Curves.easeInOut,
     ));
     _animationController.forward();
+    _fetchCrowdTags();
+  }
+
+  Future<void> _fetchCrowdTags() async {
+    try {
+      final response = await ApiService().get('/users/crowd-tags');
+      if (response.success &&
+          response.data != null &&
+          response.data['items'] != null) {
+        final items = response.data['items'] as List;
+        final tagIcons = {
+          '减脂': LucideIcons.flame,
+          '健身': LucideIcons.dumbbell,
+          '普通': LucideIcons.scale,
+          '养生': LucideIcons.leaf,
+          '孕期': LucideIcons.baby,
+          '慢病管理': LucideIcons.heartPulse,
+        };
+        final tagColors = {
+          '减脂': const Color(0xFFFF6B6B),
+          '健身': const Color(0xFF4ECDC4),
+          '普通': const Color(0xFF2BAF74),
+          '养生': const Color(0xFF9C88FF),
+          '孕期': const Color(0xFFFFB6C1),
+          '慢病管理': const Color(0xFF5B86E5),
+        };
+        final updated = items.map((item) {
+          final tag = (item['tag'] ?? item['name'] ?? '').toString();
+          final colorHex = item['color'] as String?;
+          return {
+            'tag': tag,
+            'icon': tagIcons[tag] ?? LucideIcons.users,
+            'color': colorHex != null
+                ? Color(int.parse(colorHex.replaceFirst('#', '0xFF')))
+                : (tagColors[tag] ?? const Color(0xFF2BAF74)),
+            'description': (item['description'] ?? '').toString(),
+          };
+        }).toList();
+
+        if (updated.isNotEmpty && mounted) {
+          setState(() => _crowdTags = updated);
+        }
+      }
+    } catch (_) {
+      // API 失败，使用硬编码回退数据
+    }
   }
 
   @override
@@ -90,7 +142,8 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
         backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(LucideIcons.chevronLeft, color: AppColors.textPrimary),
+          icon:
+              const Icon(LucideIcons.chevronLeft, color: AppColors.textPrimary),
           onPressed: () => context.pop(),
         ),
         title: Text(
@@ -132,7 +185,8 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
                 const SizedBox(height: 24),
                 Expanded(
                   child: GridView.builder(
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
@@ -158,13 +212,15 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
                             border: Border.all(
                               color: isSelected
                                   ? (tag['color'] as Color)
-                                  : AppColors.textTertiary.withValues(alpha: 0.2),
+                                  : AppColors.textTertiary
+                                      .withValues(alpha: 0.2),
                               width: isSelected ? 2.5 : 1,
                             ),
                             boxShadow: isSelected
                                 ? [
                                     BoxShadow(
-                                      color: (tag['color'] as Color).withValues(alpha: 0.15),
+                                      color: (tag['color'] as Color)
+                                          .withValues(alpha: 0.15),
                                       blurRadius: 12,
                                       offset: const Offset(0, 4),
                                     ),
@@ -178,7 +234,8 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
                                 width: 48,
                                 height: 48,
                                 decoration: BoxDecoration(
-                                  color: (tag['color'] as Color).withValues(alpha: 0.15),
+                                  color: (tag['color'] as Color)
+                                      .withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                                 child: Icon(
@@ -192,7 +249,9 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
                                 tag['tag'] as String,
                                 style: TextStyle(
                                   fontSize: 16,
-                                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
                                   color: isSelected
                                       ? (tag['color'] as Color)
                                       : AppColors.textPrimary,
@@ -239,7 +298,9 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
             height: 4,
             margin: const EdgeInsets.symmetric(horizontal: 2),
             decoration: BoxDecoration(
-              color: step <= currentStep ? AppColors.primary : AppColors.textTertiary.withValues(alpha: 0.2),
+              color: step <= currentStep
+                  ? AppColors.primary
+                  : AppColors.textTertiary.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(2),
             ),
           ),

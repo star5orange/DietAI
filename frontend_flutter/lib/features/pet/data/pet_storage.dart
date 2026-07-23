@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PetStorage {
@@ -14,6 +15,7 @@ class PetStorage {
   static const _keyPetVisible = 'pet_visible';
   static const _keyPetType = 'pet_type';
   static const _keyPetName = 'pet_name';
+  static const _keyPetNames = 'pet_names'; // 新增：存储各皮肤名称
   static const _keySkipHideConfirm = 'pet_skip_hide_confirm';
 
   final SharedPreferences _prefs;
@@ -78,6 +80,25 @@ class PetStorage {
 
   String get petName => _prefs.getString(_keyPetName) ?? '桌宠一';
   set petName(String v) => _prefs.setString(_keyPetName, v);
+
+  /// 获取各皮肤的独立命名
+  Map<String, String> get petNames {
+    final jsonStr = _prefs.getString(_keyPetNames);
+    if (jsonStr == null || jsonStr.isEmpty) {
+      return {'default': '桌宠一', 'christine': '桌宠二'};
+    }
+    try {
+      final Map<String, dynamic> decoded = jsonDecode(jsonStr);
+      return decoded.map((key, value) => MapEntry(key, value.toString()));
+    } catch (_) {
+      return {'default': '桌宠一', 'christine': '桌宠二'};
+    }
+  }
+
+  /// 设置各皮肤的独立命名
+  set petNames(Map<String, String> v) {
+    _prefs.setString(_keyPetNames, jsonEncode(v));
+  }
 
   bool get skipHideConfirm => _prefs.getBool(_keySkipHideConfirm) ?? false;
   set skipHideConfirm(bool v) => _prefs.setBool(_keySkipHideConfirm, v);

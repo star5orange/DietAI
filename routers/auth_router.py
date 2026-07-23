@@ -39,6 +39,22 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         except Exception as e:
             logger.warning(f"新用户 {user.id} 默认提醒模板创建失败 (非致命): {e}")
 
+        # Milestone 2: 自动创建虚拟宠物状态
+        try:
+            from shared.services.pet_service import create_pet_state
+            create_pet_state(db, user.id)
+            logger.info(f"新用户 {user.id} 虚拟宠物状态创建完成")
+        except Exception as e:
+            logger.warning(f"新用户 {user.id} 虚拟宠物状态创建失败 (非致命): {e}")
+
+        # Milestone 2: 自动创建 AI 顾问默认设置
+        try:
+            from shared.services.advisor_service import get_advisor_settings
+            get_advisor_settings(db, user.id)
+            logger.info(f"新用户 {user.id} AI顾问默认设置创建完成")
+        except Exception as e:
+            logger.warning(f"新用户 {user.id} AI顾问默认设置创建失败 (非致命): {e}")
+
         return BaseResponse(
             success=True,
             message="注册成功",

@@ -53,6 +53,8 @@ def get_daily_wellness_recommendation(
     constitution_type: Optional[str] = None
 ) -> dict:
     """获取每日养生推荐（优先从数据库知识库查询）"""
+    import json as _json
+
     solar_term = solar_term or _get_current_solar_term()
     season = season or _get_current_season()
 
@@ -69,14 +71,30 @@ def get_daily_wellness_recommendation(
     if not knowledge:
         knowledge = db.query(WellnessKnowledge).first()
 
+    # 安全解析 JSON 字符串字段
+    def _parse_json(val):
+        if val is None:
+            return {}
+        if isinstance(val, str):
+            try:
+                return _json.loads(val)
+            except (_json.JSONDecodeError, TypeError):
+                return {}
+        if isinstance(val, dict):
+            return val
+        return {}
+
+    foods_data = _parse_json(knowledge.recommended_foods) if knowledge else {}
+    avoid_data = _parse_json(knowledge.avoid_foods) if knowledge else {}
+
     result = {
         "current_solar_term": solar_term,
         "current_season": season,
         "constitution_type": constitution_type,
-        "recommended_ingredients": knowledge.recommended_foods.get("ingredients", []) if knowledge and knowledge.recommended_foods else [],
-        "recommended_recipes": knowledge.recommended_foods.get("recipes", []) if knowledge and knowledge.recommended_foods else [],
+        "recommended_ingredients": foods_data.get("ingredients", []),
+        "recommended_recipes": foods_data.get("recipes", []),
         "wellness_tips": [knowledge.content] if knowledge and knowledge.content else ["保持规律作息，均衡饮食，适量运动"],
-        "foods_to_avoid": knowledge.avoid_foods.get("items", []) if knowledge and knowledge.avoid_foods else [],
+        "foods_to_avoid": avoid_data.get("items", []),
         "source": "knowledge_base",
     }
 
@@ -128,7 +146,7 @@ async def generate_ai_wellness_recommendation(
 
         assistant = await client.assistants.create(
             graph_id="chat_agent",
-            config={"configurable": {"session_type": 5}}
+            config={"configurable": {}}
         )
         thread = await client.threads.create()
 
@@ -136,11 +154,17 @@ async def generate_ai_wellness_recommendation(
         async for chunk in client.runs.stream(
             assistant_id=assistant["assistant_id"],
             thread_id=thread["thread_id"],
-            input={"message": prompt},
+            input={
+                "user_message": prompt,
+                "session_type": 5,
+                "user_id": user_id,
+            },
             stream_mode="values"
         ):
-            if chunk.data and chunk.data.get("response_content"):
-                result = chunk.data
+            if hasattr(chunk, 'data') and chunk.data and isinstance(chunk.data, dict):
+                rc = chunk.data.get("response_content")
+                if rc and isinstance(rc, str) and len(rc.strip()) > 0:
+                    result = chunk.data
 
         if result:
             import json
@@ -174,7 +198,7 @@ async def generate_ai_wellness_recommendation(
             }
 
     except Exception as e:
-        logger.warning(f"AI 养生推荐生成失败，回退到知识库: {e}")
+        logger.warning(f"AI 养生推荐生成失败，回退到知识库: {type(e).__name__}: {e}")
 
     # 回退到知识库
     return get_daily_wellness_recommendation(db, solar_term, season, constitution_type)

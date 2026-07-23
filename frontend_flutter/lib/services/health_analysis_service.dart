@@ -37,10 +37,10 @@ class HealthAnalysisService {
   Future<ApiResponse<BMRResult>> getBMR() async {
     try {
       final response = await _apiService.get('/health/bmr');
-      
+
       if (response.success && response.data != null) {
         final bmr = BMRResult.fromJson(response.data);
-        
+
         return ApiResponse<BMRResult>.success(
           message: response.message.isNotEmpty ? response.message : '获取BMR成功',
           data: bmr,
@@ -61,10 +61,10 @@ class HealthAnalysisService {
   Future<ApiResponse<TDEEResult>> getTDEE() async {
     try {
       final response = await _apiService.get('/health/tdee');
-      
+
       if (response.success && response.data != null) {
         final tdee = TDEEResult.fromJson(response.data);
-        
+
         return ApiResponse<TDEEResult>.success(
           message: response.message.isNotEmpty ? response.message : '获取TDEE成功',
           data: tdee,
@@ -95,10 +95,10 @@ class HealthAnalysisService {
         '/health/nutrition-balance',
         queryParameters: queryParams,
       );
-      
+
       if (response.success && response.data != null) {
         final nutrition = NutritionBalanceResult.fromJson(response.data);
-        
+
         return ApiResponse<NutritionBalanceResult>.success(
           message: response.message.isNotEmpty ? response.message : '获取营养分析成功',
           data: nutrition,
@@ -129,10 +129,10 @@ class HealthAnalysisService {
         '/health/health-score',
         queryParameters: queryParams,
       );
-      
+
       if (response.success && response.data != null) {
         final healthScore = HealthScoreResult.fromJson(response.data);
-        
+
         return ApiResponse<HealthScoreResult>.success(
           message: response.message.isNotEmpty ? response.message : '获取健康评分成功',
           data: healthScore,
@@ -161,10 +161,10 @@ class HealthAnalysisService {
         '/health/weight-trend',
         queryParameters: queryParams,
       );
-      
+
       if (response.success && response.data != null) {
         final weightTrend = WeightTrendResult.fromJson(response.data);
-        
+
         return ApiResponse<WeightTrendResult>.success(
           message: response.message.isNotEmpty ? response.message : '获取体重趋势成功',
           data: weightTrend,
@@ -190,17 +190,18 @@ class HealthAnalysisService {
     try {
       final requestData = {
         'analysis_type': analysisType,
-        if (startDate != null || endDate != null) 'date_range': {
-          if (startDate != null) 'start_date': startDate,
-          if (endDate != null) 'end_date': endDate,
-        }
+        if (startDate != null || endDate != null)
+          'date_range': {
+            if (startDate != null) 'start_date': startDate,
+            if (endDate != null) 'end_date': endDate,
+          }
       };
 
       final response = await _apiService.post(
         '/health/analysis',
         data: requestData,
       );
-      
+
       if (response.success && response.data != null) {
         return ApiResponse<Map<String, dynamic>>.success(
           message: response.message.isNotEmpty ? response.message : '健康分析完成',
@@ -237,7 +238,7 @@ class BMRResult {
 
   factory BMRResult.fromJson(Map<String, dynamic> json) {
     return BMRResult(
-      bmr: (json['bmr'] as num).toDouble(),
+      bmr: (json['bmr'] as num?)?.toDouble() ?? 0.0,
       unit: json['unit'] ?? 'kcal/day',
       method: json['method'] ?? '',
       userData: UserData.fromJson(json['user_data'] ?? {}),
@@ -290,10 +291,10 @@ class TDEEResult {
 
   factory TDEEResult.fromJson(Map<String, dynamic> json) {
     return TDEEResult(
-      tdee: (json['tdee'] as num).toDouble(),
-      bmr: (json['bmr'] as num).toDouble(),
-      activityLevel: json['activity_level'] ?? 2,
-      activityFactor: (json['activity_factor'] as num).toDouble(),
+      tdee: (json['tdee'] as num?)?.toDouble() ?? 0.0,
+      bmr: (json['bmr'] as num?)?.toDouble() ?? 0.0,
+      activityLevel: json['activity_level'] ?? 0,
+      activityFactor: (json['activity_factor'] as num?)?.toDouble() ?? 0.0,
       activityDescription: json['activity_description'] ?? '',
       unit: json['unit'] ?? 'kcal/day',
       description: json['description'] ?? '',
@@ -407,7 +408,8 @@ class NutritionReference {
 
   factory NutritionReference.fromJson(Map<String, dynamic> json) {
     return NutritionReference(
-      recommendedCalories: (json['recommended_calories'] as num?)?.toDouble() ?? 0.0,
+      recommendedCalories:
+          (json['recommended_calories'] as num?)?.toDouble() ?? 0.0,
       calorieRatio: (json['calorie_ratio'] as num?)?.toDouble() ?? 0.0,
     );
   }
@@ -487,14 +489,14 @@ class WeightTrendResult {
     final recordsList = <WeightRecord>[];
     if (json['records'] != null) {
       recordsList.addAll(
-        (json['records'] as List).map((item) => WeightRecord.fromJson(item))
-      );
+          (json['records'] as List).map((item) => WeightRecord.fromJson(item)));
     }
 
     return WeightTrendResult(
       trend: json['trend'] ?? '',
       weightChange: (json['weight_change'] as num?)?.toDouble() ?? 0.0,
-      weightChangePercentage: (json['weight_change_percentage'] as num?)?.toDouble() ?? 0.0,
+      weightChangePercentage:
+          (json['weight_change_percentage'] as num?)?.toDouble() ?? 0.0,
       records: recordsList,
       analysis: json['analysis'] ?? '',
       period: DatePeriod.fromJson(json['period'] ?? {}),

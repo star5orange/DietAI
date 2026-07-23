@@ -21,6 +21,19 @@ from shared.services.agent_orchestrator import get_orchestrator
 router = APIRouter(prefix="/goals", tags=["目标追踪"])
 
 
+@router.get("/types", response_model=BaseResponse)
+async def get_goal_types():
+    """获取目标类型列表"""
+    types = [
+        {"id": 1, "name": "减重", "description": "减少体重，塑造完美身材"},
+        {"id": 2, "name": "增重", "description": "健康增重，改善体质"},
+        {"id": 3, "name": "维持体重", "description": "保持当前体重，维持健康状态"},
+        {"id": 4, "name": "增肌", "description": "增加肌肉量，提升身体素质"},
+        {"id": 5, "name": "减脂", "description": "减少体脂率，塑造线条"},
+    ]
+    return BaseResponse(success=True, message="获取目标类型成功", data={"items": types})
+
+
 @router.get("/daily-status", response_model=BaseResponse)
 async def get_daily_goal_status(
     current_user: User = Depends(get_current_user),

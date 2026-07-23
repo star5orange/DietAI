@@ -41,7 +41,7 @@ class CacheManager {
     final cached = _memoryCache[key];
     if (cached == null) return null;
 
-    final timestamp = cached['timestamp'] as int;
+    final timestamp = (cached['timestamp'] as num?)?.toInt() ?? 0;
     final age = DateTime.now().millisecondsSinceEpoch - timestamp;
     
     if (age > _cacheExpiration.inMilliseconds) {
@@ -89,7 +89,7 @@ class CacheManager {
       if (cachedString == null) return null;
 
       final cached = jsonDecode(cachedString);
-      final timestamp = cached['timestamp'] as int;
+      final timestamp = (cached['timestamp'] as num?)?.toInt() ?? 0;
       final age = DateTime.now().millisecondsSinceEpoch - timestamp;
       
       if (age > _cacheExpiration.inMilliseconds) {

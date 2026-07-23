@@ -751,8 +751,8 @@ class _CostStatisticsPageState extends ConsumerState<CostStatisticsPage>
   }
 
   Widget _buildCategoryPieChart(List<Map<String, dynamic>> data) {
-    final totalAmount =
-        data.fold<double>(0.0, (sum, item) => sum + (item['amount'] as double));
+    final totalAmount = data.fold<double>(
+        0.0, (sum, item) => sum + ((item['amount'] as num?)?.toDouble() ?? 0));
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -769,7 +769,7 @@ class _CostStatisticsPageState extends ConsumerState<CostStatisticsPage>
             child: PieChart(
               PieChartData(
                 sections: data.map((item) {
-                  final amount = item['amount'] as double;
+                  final amount = (item['amount'] as num?)?.toDouble() ?? 0;
                   final percentage =
                       totalAmount > 0 ? (amount / totalAmount * 100) : 0;
                   return PieChartSectionData(

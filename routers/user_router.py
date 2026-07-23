@@ -100,6 +100,7 @@ def format_profile_data(profile: UserProfile) -> dict:
         "constitution_type": profile.constitution_type,
         "crowd_tag": profile.crowd_tag,
         "daily_water_goal": profile.daily_water_goal,
+        "target_calories": profile.target_calories,
     }
 
 
@@ -1272,4 +1273,26 @@ async def reset_onboarding(
         )
     except Exception as e:
         db.rollback()
-        raise handle_database_error(e, "重置引导状态") 
+        raise handle_database_error(e, "重置引导状态")
+
+
+@router.get("/crowd-tags", response_model=BaseResponse)
+async def get_crowd_tags():
+    """获取人群标签列表
+
+    返回 6 种人群标签及其图标和颜色，用于用户引导中的标签选择
+    """
+    tags = [
+        {"id": "减脂", "name": "减脂", "icon": "fitness_center", "color": "#FF6B6B"},
+        {"id": "健身", "name": "健身", "icon": "sports_kabaddi", "color": "#4ECDC4"},
+        {"id": "普通", "name": "普通", "icon": "person", "color": "#45B7D1"},
+        {"id": "养生", "name": "养生", "icon": "spa", "color": "#96CEB4"},
+        {"id": "孕期", "name": "孕期", "icon": "pregnant_woman", "color": "#FFEAA7"},
+        {"id": "慢病管理", "name": "慢病管理", "icon": "medical_services", "color": "#DDA0DD"},
+    ]
+
+    return BaseResponse(
+        success=True,
+        message="获取人群标签成功",
+        data={"items": tags},
+    )

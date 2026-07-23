@@ -10,12 +10,14 @@ class ChatService {
     required String message,
     int? sessionId,
     int sessionType = 1,
+    int? petId,  // 宠物ID
   }) async* {
     try {
       final requestData = {
         'message': message,
         'session_type': sessionType,
         if (sessionId != null) 'session_id': sessionId,
+        if (petId != null) 'pet_id': petId,
       };
 
       // 使用ApiService的流式方法
@@ -360,6 +362,8 @@ class ChatService {
       2: '健康评估',
       3: '食物识别',
       4: '运动建议',
+      5: '养生咨询',
+      6: '宠物健康',
     };
     return sessionTypes[sessionType] ?? '通用咨询';
   }

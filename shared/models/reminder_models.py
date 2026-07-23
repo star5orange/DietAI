@@ -15,6 +15,7 @@ class Reminder(Base):
     title = Column(String(100))
     description = Column(Text)
     virtual_pet_status = Column(JSON, nullable=True)     # 预留
+    fasting_plan_id = Column(Integer, ForeignKey("fasting_plans.id", ondelete="SET NULL"), nullable=True, comment="关联断食计划")
     created_at = Column(DateTime, server_default=func.now())
 
     __table_args__ = (
