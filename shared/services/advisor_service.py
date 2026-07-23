@@ -17,7 +17,7 @@ def get_advisor_settings(db: Session, user_id: int) -> Dict[str, Any]:
         user_id: 用户ID
 
     Returns:
-        顾问设置字典
+        顾问设置字典（含人类和宠物字段）
     """
     settings = db.query(AiAdvisorSettings).filter(
         AiAdvisorSettings.user_id == user_id
@@ -28,6 +28,7 @@ def get_advisor_settings(db: Session, user_id: int) -> Dict[str, Any]:
             user_id=user_id,
             advisor_style="nutritionist",
             response_style="detailed",
+            pet_advisor_style="vet_assistant",
         )
         db.add(settings)
         db.commit()
@@ -39,6 +40,8 @@ def get_advisor_settings(db: Session, user_id: int) -> Dict[str, Any]:
         "focus_goal": settings.focus_goal,
         "focus_nutrient": settings.focus_nutrient,
         "response_style": settings.response_style,
+        "pet_advisor_style": settings.pet_advisor_style,
+        "pet_focus_goal": settings.pet_focus_goal,
     }
 
 
@@ -49,16 +52,20 @@ def update_advisor_settings(
     focus_goal: Optional[str] = None,
     focus_nutrient: Optional[str] = None,
     response_style: Optional[str] = None,
+    pet_advisor_style: Optional[str] = None,
+    pet_focus_goal: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """更新用户 AI 顾问风格设置
+    """更新用户 AI 顾问风格设置（含宠物字段）
 
     Args:
         db: 数据库会话
         user_id: 用户ID
-        advisor_style: 顾问风格
-        focus_goal: 关注目标
-        focus_nutrient: 关注营养素
+        advisor_style: 人类顾问风格
+        focus_goal: 人类关注目标
+        focus_nutrient: 人类关注营养素
         response_style: 回复风格
+        pet_advisor_style: 宠物顾问风格
+        pet_focus_goal: 宠物关注目标
 
     Returns:
         更新后的设置字典
@@ -79,6 +86,10 @@ def update_advisor_settings(
         settings.focus_nutrient = focus_nutrient
     if response_style is not None:
         settings.response_style = response_style
+    if pet_advisor_style is not None:
+        settings.pet_advisor_style = pet_advisor_style
+    if pet_focus_goal is not None:
+        settings.pet_focus_goal = pet_focus_goal
 
     db.commit()
     db.refresh(settings)
@@ -89,4 +100,6 @@ def update_advisor_settings(
         "focus_goal": settings.focus_goal,
         "focus_nutrient": settings.focus_nutrient,
         "response_style": settings.response_style,
+        "pet_advisor_style": settings.pet_advisor_style,
+        "pet_focus_goal": settings.pet_focus_goal,
     }

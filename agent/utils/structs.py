@@ -36,6 +36,7 @@ class NutritionAnalysis(BaseModel):
     macronutrients: Macronutrients = Field(description="宏量营养素: 蛋白质、脂肪、碳水化合物")
     vitamins_minerals: VitaminsMinerals = Field(description="维生素和矿物质含量评估")
     health_level: HealthLevelEnum = Field(description="健康等级：A最优，B良好，C一般，D较差，E很差")
+    short_comment: str = Field(default="", description="一句话口语化评价，如'这顿偏油腻，建议配点青菜'")
 
 
 class ActionItem(BaseModel):

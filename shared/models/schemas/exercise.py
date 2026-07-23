@@ -20,8 +20,9 @@ class StrengthDetail(BaseModel):
 class ExerciseRecordCreate(BaseModel):
     exercise_type: str = Field(..., max_length=50, description="运动类型：跑步/游泳/力量训练等")
     exercise_name: Optional[str] = Field(None, max_length=100, description="运动名称（自定义）")
-    duration_minutes: int = Field(..., gt=0, le=1440, description="运动时长（分钟），最大24小时")
+    duration_minutes: int = Field(0, ge=0, le=1440, description="运动时长（分钟），最大24小时。距离型运动可为0（填距离即可）")
     intensity: int = Field(2, ge=1, le=3, description="强度：1=低，2=中，3=高")
+    distance_km: Optional[float] = Field(None, ge=0, le=500, description="运动距离(公里)，适用于跑步/骑行/游泳/步行")
     calories_burned: Optional[float] = Field(None, ge=0, le=10000, description="消耗热量，不传则自动计算")
     record_date: date = Field(default_factory=date.today, description="运动日期")
     notes: Optional[str] = Field(None, max_length=500, description="备注")
@@ -35,6 +36,7 @@ class ExerciseRecordOut(BaseModel):
     exercise_name: Optional[str] = None
     duration_minutes: int
     intensity: int
+    distance_km: Optional[float] = None
     calories_burned: float
     record_date: date
     notes: Optional[str]

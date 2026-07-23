@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../../../../core/themes/app_colors.dart';
+import '../../../../shared/utils/species_utils.dart';
 
 /// 宠物形象展示组件
 /// P1：真实 GIF 帧动画 + 降级伪动画（呼吸/眨眼/微旋转）
@@ -11,6 +12,7 @@ class PetAvatarDisplay extends StatefulWidget {
   final double size;
   final bool enableAnimation;
   final String? customImageUrl;
+  final Map<String, String>? emotionUrls; // AI 情绪变体 URL 映射
   final String? breed;
   final String? species;
 
@@ -20,6 +22,7 @@ class PetAvatarDisplay extends StatefulWidget {
     this.size = 100,
     this.enableAnimation = true,
     this.customImageUrl,
+    this.emotionUrls,
     this.breed,
     this.species,
   });
@@ -35,6 +38,10 @@ class _PetAvatarDisplayState extends State<PetAvatarDisplay>
   Timer? _blinkTimer;
   bool _isBlinking = false;
   bool _hasGifError = false;
+
+  // 情绪切换：AnimatedCrossFade 状态
+  String? _previousImageUrl;
+  bool _showNewEmotion = true;
 
   // 情绪 → GIF 资源映射
   static const _emotionGifs = {
@@ -118,8 +125,21 @@ class _PetAvatarDisplayState extends State<PetAvatarDisplay>
   @override
   void didUpdateWidget(PetAvatarDisplay oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final oldEffectiveUrl =
+        oldWidget.emotionUrls?[oldWidget.emotion] ?? oldWidget.customImageUrl;
+    final newEffectiveUrl =
+        widget.emotionUrls?[widget.emotion] ?? widget.customImageUrl;
+    if (oldEffectiveUrl != newEffectiveUrl) {
+      // 情绪切换：记录旧图 URL，触发 AnimatedCrossFade
+      _previousImageUrl = oldEffectiveUrl;
+      _showNewEmotion = false;
+      // 下一帧切换到新图，触发淡入淡出
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _showNewEmotion = true);
+      });
+    }
     if (oldWidget.emotion != widget.emotion) {
-      _hasGifError = false; // 情绪切换重置错误状态
+      _hasGifError = false;
     }
     if (oldWidget.enableAnimation != widget.enableAnimation) {
       if (widget.enableAnimation) {
@@ -209,16 +229,30 @@ class _PetAvatarDisplayState extends State<PetAvatarDisplay>
     );
   }
 
-  /// 构建形象内容：GIF 优先 → 自定义图片 → 降级预设
+  /// 构建形象内容：emotionUrls → customImageUrl → GIF → 降级预设
   Widget _buildAvatarContent(Color breedColor, Color emotionColor) {
+    // AI 情绪变体：根据当前 emotion 选择对应图片
+    final emotionUrl = widget.emotionUrls?[widget.emotion];
+    final effectiveUrl = emotionUrl ?? widget.customImageUrl;
+
     // 自定义网络图片（AI 生成结果）
-    if (widget.customImageUrl != null) {
-      return Image.network(
-        widget.customImageUrl!,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            _buildPresetAvatar(breedColor, emotionColor),
-      );
+    if (effectiveUrl != null && effectiveUrl.isNotEmpty) {
+      final newImage =
+          _buildNetworkImage(effectiveUrl, breedColor, emotionColor);
+
+      // 情绪切换时的交叉淡入淡出
+      if (_previousImageUrl != null && _previousImageUrl != effectiveUrl) {
+        return AnimatedCrossFade(
+          duration: const Duration(milliseconds: 300),
+          crossFadeState: _showNewEmotion
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          firstChild:
+              _buildNetworkImage(_previousImageUrl!, breedColor, emotionColor),
+          secondChild: newImage,
+        );
+      }
+      return newImage;
     }
 
     // GIF 真动画（P1）
@@ -238,9 +272,18 @@ class _PetAvatarDisplayState extends State<PetAvatarDisplay>
     return _buildPresetAvatar(breedColor, emotionColor);
   }
 
+  Widget _buildNetworkImage(String url, Color breedColor, Color emotionColor) {
+    return Image.network(
+      url,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) =>
+          _buildPresetAvatar(breedColor, emotionColor),
+    );
+  }
+
   Widget _buildPresetAvatar(Color breedColor, Color emotionColor) {
     final icon = _emotionIcons[widget.emotion] ?? Icons.pets;
-    final speciesIcon = widget.species == 'dog' ? Icons.person : Icons.pets;
+    final speciesIcon = getSpeciesIcon(widget.species);
 
     return Container(
       decoration: BoxDecoration(

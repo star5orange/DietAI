@@ -7,12 +7,17 @@ class AdvisorSettings {
   final String? focusGoal;
   final String? focusNutrient;
   final String? responseStyle;
+  // 宠物专属字段
+  final String? petAdvisorStyle;
+  final String? petFocusGoal;
 
   const AdvisorSettings({
     this.advisorStyle,
     this.focusGoal,
     this.focusNutrient,
     this.responseStyle,
+    this.petAdvisorStyle,
+    this.petFocusGoal,
   });
 
   factory AdvisorSettings.fromJson(Map<String, dynamic> json) {
@@ -21,6 +26,8 @@ class AdvisorSettings {
       focusGoal: json['focus_goal'],
       focusNutrient: json['focus_nutrient'],
       responseStyle: json['response_style'],
+      petAdvisorStyle: json['pet_advisor_style'],
+      petFocusGoal: json['pet_focus_goal'],
     );
   }
 
@@ -30,6 +37,8 @@ class AdvisorSettings {
       if (focusGoal != null) 'focus_goal': focusGoal,
       if (focusNutrient != null) 'focus_nutrient': focusNutrient,
       if (responseStyle != null) 'response_style': responseStyle,
+      if (petAdvisorStyle != null) 'pet_advisor_style': petAdvisorStyle,
+      if (petFocusGoal != null) 'pet_focus_goal': petFocusGoal,
     };
   }
 }

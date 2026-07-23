@@ -70,10 +70,6 @@ def analyze_image(state: AgentState) -> AgentState:
             state["error_message"] = "未提供图片数据"
             return state
 
-        # if not state.get("image_dir"):
-        #     state["error_message"] = "未提供图片数据"
-        #     return state
-
         messages = [
             SystemMessage(content="""你是一位专业的营养师，擅长识别和分析食物图片，尤其精通中式菜肴的识别。
 
@@ -131,7 +127,6 @@ def analyze_image(state: AgentState) -> AgentState:
         ]
 
         response = state['vision_model'].invoke(messages)
-        # print(f"分析结果：{response.content}")
         state["image_analysis"] = response.content
         state["current_step"] = "image_analyzed"
         print(state["current_step"])
@@ -144,7 +139,6 @@ def analyze_image(state: AgentState) -> AgentState:
 
 def extract_nutrition_info(state: AgentState) -> AgentState:
     """第二步：提取营养信息"""
-    # 后期可以对食物营养分析也配一个rag
     try:
         if not state.get("image_analysis"):
             state["error_message"] = "缺少图片分析结果"
@@ -153,28 +147,6 @@ def extract_nutrition_info(state: AgentState) -> AgentState:
         prompt = create_nutrition_prompt(
             image_analysis=state["image_analysis"]
         )
-        # prompt = f"""
-        #         基于以下食物描述，请提供详细的营养分析：
-        #
-        #         食物描述：{state["image_analysis"]}
-        #
-        #         请按照以下JSON格式返回营养分析：
-        #         {{
-        #             "food_items": ["食物1", "食物2", ...],
-        #             "total_calories": 估计总热量(数字),
-        #             "macronutrients": {{
-        #                 "protein": 蛋白质含量(克),
-        #                 "fat": 脂肪含量(克),
-        #                 "carbohydrates": 碳水化合物含量(克)
-        #             }},
-        #             "vitamins_minerals": {{
-        #                 "vitamin_c": "维生素C含量评估",
-        #                 "calcium": "钙含量评估",
-        #                 "iron": "铁含量评估"
-        #             }},
-        #             "health_level": 健康评分等级A-E
-        #         }}
-        #         """
 
         structured_model = state['analysis_model'].with_structured_output(
             NutritionAnalysis,
@@ -307,7 +279,7 @@ def generate_dependencies(state: AgentState) -> AgentState:
                 {{
                     "nutrition_facts": ["知识要点1", "知识要点2", ...],
                     "health_guidelines": ["健康指南1", "健康指南2", ...],
-                    "food_interactions": ["相互作用1", "相互作用2", ...]（如果没有内容则填“无”）
+                    "food_interactions": ["相互作用1", "相互作用2", ...]
                 }}
                 """
 
@@ -323,7 +295,6 @@ def generate_dependencies(state: AgentState) -> AgentState:
             # 确保 food_interactions 是列表
             if isinstance(advice_dependencies.food_interactions, str):
                 advice_dependencies.food_interactions = [advice_dependencies.food_interactions]
-            # print("调用成功，结果:", advice_dependencies)
             state["advice_dependencies"] = advice_dependencies
             state["current_step"] = "generate_dependencies"
             print(state["current_step"])
@@ -336,7 +307,7 @@ def generate_dependencies(state: AgentState) -> AgentState:
 
 
 def generate_nutrition_advice(state: AgentState) -> AgentState:
-    """第四步：生成营养建议"""
+    """第四步：生成个性化营养建议"""
     try:
         if not state.get("advice_dependencies"):
             print("缺少相关营养知识")
@@ -353,72 +324,144 @@ def generate_nutrition_advice(state: AgentState) -> AgentState:
         allergies = state.get("allergies") or []
         allergy_warnings = state.get("allergy_warnings") or []
 
+        # ========== 构建用户画像上下文 ==========
+        body_metrics = user_prefs.get("body_metrics", {})
+        daily_targets = user_prefs.get("daily_targets", {})
+        today_intake = user_prefs.get("today_intake", {})
+        health_goals = user_prefs.get("health_goals", [])
+
+        # 解析活动水平
+        activity_map = {1: "久坐少动", 2: "轻度活动", 3: "中度活动", 4: "高度活动", 5: "极高强度"}
+        activity_label = activity_map.get(body_metrics.get("activity_level"), "未设置")
+
+        # 解析健康目标
+        goal_map = {1: "减重", 2: "增重", 3: "维持体重", 4: "增肌", 5: "减脂"}
+        active_goals = [
+            goal_map.get(g["goal_type"], "未知目标")
+            for g in health_goals
+            if isinstance(g, dict) and g.get("current_status") == 1
+        ]
+
+        # 构建用户画像摘要
+        profile_lines = []
+        if body_metrics:
+            parts = []
+            if body_metrics.get("gender"):
+                parts.append(body_metrics["gender"])
+            if body_metrics.get("age"):
+                parts.append(f"{body_metrics['age']}岁")
+            if body_metrics.get("height_cm"):
+                parts.append(f"{body_metrics['height_cm']}cm")
+            if body_metrics.get("weight_kg"):
+                parts.append(f"{body_metrics['weight_kg']}kg")
+            if parts:
+                profile_lines.append(f"- 基本信息：{'，'.join(parts)}")
+            if body_metrics.get("bmi"):
+                profile_lines.append(f"- BMI：{body_metrics['bmi']:.1f}")
+            if body_metrics.get("crowd_tag"):
+                profile_lines.append(f"- 人群标签：{body_metrics['crowd_tag']}")
+            if body_metrics.get("constitution_type"):
+                profile_lines.append(f"- 中医体质：{body_metrics['constitution_type']}")
+            profile_lines.append(f"- 活动水平：{activity_label}")
+        if active_goals:
+            profile_lines.append(f"- 当前目标：{'、'.join(active_goals)}")
+
+        # 构建今日摄入对比
+        intake_lines = []
+        target_cal = daily_targets.get("calories", 2000)
+        today_cal = today_intake.get("calories", 0)
+        meal_cal = analysis.total_calories
+        after_meal_cal = today_cal + meal_cal
+        remaining_cal = target_cal - after_meal_cal
+        budget_pct = (after_meal_cal / target_cal * 100) if target_cal > 0 else 0
+
+        intake_lines.append(f"- 每日热量目标：{target_cal} kcal")
+        intake_lines.append(f"- 今日已摄入（含本餐）：{after_meal_cal:.0f} kcal（占目标 {budget_pct:.0f}%）")
+        if remaining_cal > 0:
+            intake_lines.append(f"- 今日剩余可摄入：{remaining_cal:.0f} kcal")
+        else:
+            intake_lines.append(f"- WARNING 已超出每日目标 {abs(remaining_cal):.0f} kcal")
+        if today_intake.get("protein_g"):
+            intake_lines.append(f"- 今日已摄入蛋白质：{today_intake['protein_g']:.0f}g")
+
+        # 目标感知的指导原则
+        goal_guidance = ""
+        if active_goals:
+            first_goal = active_goals[0]
+            if "减重" in first_goal or "减脂" in first_goal:
+                goal_guidance = """
+## 目标感知指导（减重/减脂）
+- 优先推荐低热量、高饱腹感的替代食物（如蔬菜、瘦肉、豆制品）
+- 建议控制碳水比例，增加蛋白质和膳食纤维
+- action_items 中必须包含"控制本餐份量"相关行动
+- 如已超出今日热量预算，需给出补救措施（如增加运动、下一餐减量）"""
+            elif "增肌" in first_goal:
+                goal_guidance = """
+## 目标感知指导（增肌）
+- 优先关注蛋白质摄入是否充足（建议每餐20-30g蛋白质）
+- 推荐高蛋白替代食物（鸡胸肉、鱼虾、蛋清、蛋白粉等）
+- 如蛋白质不足，建议补充蛋白类食物"""
+            elif "增重" in first_goal:
+                goal_guidance = """
+## 目标感知指导（增重）
+- 推荐营养密度高的食物，增加健康热量摄入
+- 建议增加餐次或份量，搭配坚果、牛油果等高营养食物"""
+            elif "维持" in first_goal:
+                goal_guidance = """
+## 目标感知指导（维持体重）
+- 关注营养均衡，三大宏量营养素比例合理
+- 保持热量摄入与目标持平，避免大幅波动"""
+
         # 构建过敏信息提示
         allergy_prompt = ""
         if allergies:
             allergy_prompt = f"""
-             ⚠️ 用户过敏原：{allergies}
-             过敏检查结果：{allergy_warnings if allergy_warnings else '未检测到过敏原风险'}
-             请在建议中明确提醒用户注意过敏原，替代食物推荐中必须排除含过敏原的食物。
-             """
+## WARNING 过敏安全
+- 用户过敏原：{allergies}
+- 过敏检查结果：{allergy_warnings if allergy_warnings else '未检测到过敏原风险'}
+- 替代食物推荐中**必须排除**含过敏原的食物，并在 warnings 中明确提醒。
+"""
 
-        # prompt = f"""
-        # 基于以下营养分析结果，请提供专业的营养建议：
-        #
-        # 营养分析：
-        # - 食物项目：{analysis.food_items}
-        # - 总热量：{analysis.total_calories}大卡
-        # - 宏量营养素：{analysis.macronutrients}
-        # - 维生素和矿物质：{analysis.vitamins_minerals}
-        # - 健康等级：{analysis.health_level}
-        #
-        # 营养知识参考：使用retrieve_nutrition_knowledge工具获得相关知识参考
-        # 用户偏好：{user_prefs}
-        #
-        # 请按照以下 JSON 格式返回建议和依据：
-        # {{
-        #     "nutrition_advice": {{
-        #         "recommendations": ["具体建议1", "具体建议2", ...],
-        #         "dietary_tips": ["饮食技巧1", "饮食技巧2", ...],
-        #         "warnings": ["注意事项1", "注意事项2", ...],
-        #         "alternative_foods": ["替代食物1", "替代食物2", ...]
-        #     }},
-        #     "advice_dependencies": {{
-        #         "nutrition_facts": ["知识要点1", "知识要点2", ...],
-        #         "health_guidelines": ["健康指南1", "健康指南2", ...],
-        #         "food_interactions": ["相互作用1", "相互作用2", ...]（如果没有内容则填“无”）
-        #     }}
-        # }}
-        # """
+        prompt = f"""你是一位专业的注册营养师，请基于以下完整的用户数据和食物分析结果，给出**高度个性化**的营养建议。
 
-        prompt = f"""
-             基于以下营养分析结果和专业知识，请提供专业的营养建议：
+## 食物分析结果
+- 食物项目：{analysis.food_items}
+- 总热量：{meal_cal:.0f} kcal
+- 蛋白质：{analysis.macronutrients.protein:.0f}g | 脂肪：{analysis.macronutrients.fat:.0f}g | 碳水：{analysis.macronutrients.carbohydrates:.0f}g
+- 健康等级：{analysis.health_level} (1=E很差~5=A最优)
 
-             营养分析：
-             - 食物项目：{analysis.food_items}
-             - 总热量：{analysis.total_calories}大卡
-             - 蛋白质：{analysis.macronutrients.protein}g，脂肪：{analysis.macronutrients.fat}g，碳水：{analysis.macronutrients.carbohydrates}g
-             - 健康等级：{analysis.health_level}
+## 用户画像
+{chr(10).join(profile_lines) if profile_lines else '- （暂无身体数据）'}
 
-             营养知识参考：
-             - 营养要点：{advice_dependencies.nutrition_facts}
-             - 健康指南：{advice_dependencies.health_guidelines}
-             - 食物相互作用：{advice_dependencies.food_interactions}
+## 热量预算分析
+{chr(10).join(intake_lines)}
 
-             用户偏好：{user_prefs}
-             {allergy_prompt}
-             请基于以上信息，结合科学营养学原理，给出具体、可执行的营养建议。
-             请按照以下JSON格式返回建议：
-             {{
-                 "recommendations": ["具体建议1", "具体建议2"],
-                 "dietary_tips": ["饮食技巧1", "饮食技巧2"],
-                 "warnings": ["注意事项1", "注意事项2"],
-                 "alternative_foods": ["替代食物1", "替代食物2"],
-                 "action_items": [
-                     {{"action": "具体行动描述", "priority": "high"}}
-                 ]
-             }}
-             """
+{goal_guidance}
+
+{allergy_prompt}
+
+## 营养知识参考
+- 营养要点：{advice_dependencies.nutrition_facts}
+- 健康指南：{advice_dependencies.health_guidelines}
+- 食物相互作用：{advice_dependencies.food_interactions}
+
+## 建议生成要求
+1. 建议必须与用户的目标（{', '.join(active_goals) if active_goals else '未设置'}）和热量预算直接相关
+2. 用日常口语，不要用"建议您控制总能量摄入"这类书面语
+3. 替代食物必须是真实存在、可实际操作的食物
+4. action_items 按 priority 分级：high=必须做, medium=建议做, low=可选的
+5. 如果已超出热量预算，warnings 中需包含具体补救建议
+
+请按照以下JSON格式返回：
+{{
+    "recommendations": ["与用户目标直接相关的具体建议"],
+    "dietary_tips": ["实用的饮食技巧"],
+    "warnings": ["需要注意的风险或问题"],
+    "alternative_foods": ["具体的替代食物名称"],
+    "action_items": [
+        {{"action": "可执行的具体行动", "priority": "high/medium/low"}}
+    ]
+}}"""
 
         model = state['analysis_model']
 
@@ -477,7 +520,7 @@ def check_allergy_cross_contamination(state: AgentState) -> AgentState:
             # 直接匹配
             for food in food_items:
                 if allergen_lower in food or food in allergen_lower:
-                    warnings.append(f"⚠️ 警告：食物「{food}」含有您的过敏原「{allergen}」，请勿食用！")
+                    warnings.append(f"WARNING 警告：食物「{food}」含有您的过敏原「{allergen}」，请勿食用！")
                     break
 
             # 交叉反应匹配
@@ -488,7 +531,7 @@ def check_allergy_cross_contamination(state: AgentState) -> AgentState:
                     if term_lower in food or food in term_lower:
                         already_warned = any(allergen in w for w in warnings)
                         if not already_warned:
-                            warnings.append(f"⚠️ 注意：食物「{food}」可能含有与「{allergen}」相关的成分（{term}），请谨慎食用。")
+                            warnings.append(f"WARNING 注意：食物「{food}」可能含有与「{allergen}」相关的成分（{term}），请谨慎食用。")
                         break
 
         state["allergy_warnings"] = warnings
@@ -508,7 +551,6 @@ def format_final_response(state: AgentState) -> AgentState:
         if state.get("error_message"):
             return state
 
-        # 这里可以添加响应格式化逻辑
         state["current_step"] = "completed"
         print(state["current_step"])
 

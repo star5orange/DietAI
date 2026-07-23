@@ -102,6 +102,9 @@ class PetAnimationWidget extends ConsumerStatefulWidget {
   final int? exp;
   final int? maxExp;
   final PetSkin? skin; // 可选的皮肤参数
+  final String? customAvatarUrl; // AI 自定义头像 URL（base/fallback）
+  final Map<String, String>?
+      emotionUrls; // AI 情绪变体 URL (happy/normal/hungry/weak → url)
 
   const PetAnimationWidget({
     super.key,
@@ -114,6 +117,8 @@ class PetAnimationWidget extends ConsumerStatefulWidget {
     this.exp,
     this.maxExp,
     this.skin,
+    this.customAvatarUrl,
+    this.emotionUrls,
   });
 
   @override
@@ -184,6 +189,22 @@ class _PetAnimationWidgetState extends ConsumerState<PetAnimationWidget>
     return PetSkin.defaultPet;
   }
 
+  /// 将 PetMood 映射到情绪变体 key（与后端一致：happy/normal/hungry/weak）
+  String _moodToEmotionKey(PetMood mood) {
+    switch (mood) {
+      case PetMood.happy:
+        return 'happy';
+      case PetMood.normal:
+        return 'normal';
+      case PetMood.hungry:
+        return 'hungry';
+      case PetMood.anxious:
+        return 'normal'; // 焦虑时用 normal 兜底
+      case PetMood.weak:
+        return 'weak';
+    }
+  }
+
   void _handleInteraction() {
     setState(() {
       _interactionCount++;
@@ -210,6 +231,11 @@ class _PetAnimationWidgetState extends ConsumerState<PetAnimationWidget>
     final config = _getMoodConfig(mood);
     final currentSkin = _getCurrentSkin();
 
+    // 根据当前情绪选择对应的 AI 自定义图片 URL
+    final emotionKey = _moodToEmotionKey(mood);
+    final emotionUrl = widget.emotionUrls?[emotionKey];
+    final avatarUrl = emotionUrl ?? widget.customAvatarUrl;
+
     return GestureDetector(
       onTap: widget.enableInteraction ? _handleInteraction : null,
       child: Stack(
@@ -231,25 +257,49 @@ class _PetAnimationWidgetState extends ConsumerState<PetAnimationWidget>
                 width: widget.size,
                 height: widget.size,
                 child: ClipOval(
-                  child: Image.asset(
-                    config.gifAssetFor(currentSkin), // 使用皮肤相关的GIF路径
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          colors: [
-                            config.bgColor,
-                            config.bgColor.withValues(alpha: 0.5),
-                          ],
+                  child: avatarUrl != null && avatarUrl.isNotEmpty
+                      ? Image.network(
+                          avatarUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Image.asset(
+                            config.gifAssetFor(currentSkin),
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, ___, ____) => Container(
+                              decoration: BoxDecoration(
+                                gradient: RadialGradient(
+                                  colors: [
+                                    config.bgColor,
+                                    config.bgColor.withValues(alpha: 0.5),
+                                  ],
+                                ),
+                              ),
+                              child: Icon(
+                                config.icon,
+                                size: widget.size * 0.5,
+                                color: config.color,
+                              ),
+                            ),
+                          ),
+                        )
+                      : Image.asset(
+                          config.gifAssetFor(currentSkin),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            decoration: BoxDecoration(
+                              gradient: RadialGradient(
+                                colors: [
+                                  config.bgColor,
+                                  config.bgColor.withValues(alpha: 0.5),
+                                ],
+                              ),
+                            ),
+                            child: Icon(
+                              config.icon,
+                              size: widget.size * 0.5,
+                              color: config.color,
+                            ),
+                          ),
                         ),
-                      ),
-                      child: Icon(
-                        config.icon,
-                        size: widget.size * 0.5,
-                        color: config.color,
-                      ),
-                    ),
-                  ),
                 ),
               ),
             ),

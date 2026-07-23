@@ -28,6 +28,9 @@ class FoodRecord(Base):
     cost = Column(Numeric(10, 2), nullable=True)
     source_tag = Column(String(20), nullable=True, comment="canteen/delivery/home/restaurant/snack/other")
 
+    # AI分析结果（JSON存储：short_comment, food_items, image_description, recommendations）
+    analysis_result = Column(JSON, nullable=True)
+
     # 关系
     user = relationship("User", back_populates="food_records")
     nutrition_detail = relationship("NutritionDetail", back_populates="food_record", uselist=False)

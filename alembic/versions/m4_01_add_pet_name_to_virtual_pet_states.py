@@ -1,7 +1,7 @@
 """add pet_name to virtual_pet_states
 
 Revision ID: m4_01_pet_name
-Revises: m3_03_add_monthly_food_budget
+Revises: m3_03
 Create Date: 2026-07-14 12:00:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'm4_01_pet_name'
-down_revision = 'm3_03_add_monthly_food_budget'
+down_revision = 'm3_03'
 branch_labels = None
 depends_on = None
 

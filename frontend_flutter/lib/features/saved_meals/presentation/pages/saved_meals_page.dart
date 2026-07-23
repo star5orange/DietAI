@@ -28,7 +28,7 @@ class _SavedMealsPageState extends State<SavedMealsPage>
   List<SavedMeal> _savedMeals = [];
   String _searchQuery = '';
   String? _selectedCategory;
-  bool? _filterIsPublic;
+  String? _filterSource;
 
   // 分页
   int _currentPage = 1;
@@ -44,7 +44,7 @@ class _SavedMealsPageState extends State<SavedMealsPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_onTabChanged);
     _scrollController.addListener(_onScroll);
     _loadSavedMeals();
@@ -64,13 +64,10 @@ class _SavedMealsPageState extends State<SavedMealsPage>
     setState(() {
       switch (_tabController.index) {
         case 0: // 我的菜品
-          _filterIsPublic = false;
+          _filterSource = 'manual';
           break;
         case 1: // 收藏菜品
-          _filterIsPublic = true;
-          break;
-        case 2: // 全部菜品
-          _filterIsPublic = null;
+          _filterSource = 'record';
           break;
       }
       _currentPage = 1;
@@ -100,7 +97,7 @@ class _SavedMealsPageState extends State<SavedMealsPage>
     try {
       final result = await _savedMealService.getSavedMeals(
         category: _selectedCategory,
-        isPublic: _filterIsPublic,
+        source: _filterSource,
         search: _searchQuery.isNotEmpty ? _searchQuery : null,
         page: _currentPage,
         pageSize: _pageSize,
@@ -205,40 +202,6 @@ class _SavedMealsPageState extends State<SavedMealsPage>
     );
   }
 
-  Future<void> _onMealAction(SavedMeal meal, String action) async {
-    switch (action) {
-      case 'favorite':
-        await _toggleFavorite(meal);
-        break;
-      case 'use':
-        await _useMeal(meal);
-        break;
-      case 'edit':
-        // TODO: 实现编辑功能
-        break;
-      case 'delete':
-        await _deleteMeal(meal);
-        break;
-    }
-  }
-
-  Future<void> _toggleFavorite(SavedMeal meal) async {
-    try {
-      final result = await _savedMealService.toggleFavoriteMeal(meal.id);
-      if (result.success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result.message)),
-        );
-        // 刷新列表
-        _loadSavedMeals(refresh: true);
-      } else {
-        NetworkErrorHandler.showError(context, result.message);
-      }
-    } catch (e) {
-      NetworkErrorHandler.handleApiError(context, e);
-    }
-  }
-
   Future<void> _useMeal(SavedMeal meal) async {
     // 先返回结果到根 Navigator（与 push 端保持一致）
     if (mounted) {
@@ -316,7 +279,6 @@ class _SavedMealsPageState extends State<SavedMealsPage>
           tabs: const [
             Tab(text: '我的菜品'),
             Tab(text: '收藏菜品'),
-            Tab(text: '全部菜品'),
           ],
           labelColor: AppColors.primary,
           unselectedLabelColor: AppColors.textSecondary,
@@ -389,7 +351,6 @@ class _SavedMealsPageState extends State<SavedMealsPage>
               children: [
                 _buildMealsList(), // 我的菜品
                 _buildMealsList(), // 收藏菜品
-                _buildMealsList(), // 全部菜品
               ],
             ),
           ),
@@ -404,30 +365,33 @@ class _SavedMealsPageState extends State<SavedMealsPage>
     }
 
     if (_savedMeals.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              LucideIcons.chefHat,
-              size: 64,
-              color: AppColors.textTertiary,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '暂无保存的菜品',
-              style: AppTextStyles.h5.copyWith(
+      return SingleChildScrollView(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 60),
+              Icon(
+                LucideIcons.chefHat,
+                size: 64,
                 color: AppColors.textTertiary,
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '点击右上角的+号创建您的第一个菜品',
-              style: AppTextStyles.bodyMedium.copyWith(
-                color: AppColors.textSecondary,
+              const SizedBox(height: 16),
+              Text(
+                '暂无保存的菜品',
+                style: AppTextStyles.h5.copyWith(
+                  color: AppColors.textTertiary,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                '点击右上角的+号创建您的第一个菜品',
+                style: AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -456,7 +420,8 @@ class _SavedMealsPageState extends State<SavedMealsPage>
             onTap: () {
               // TODO: 跳转到菜品详情页
             },
-            onAction: (action) => _onMealAction(meal, action),
+            onUse: () => _useMeal(meal),
+            onDelete: () => _deleteMeal(meal),
           );
         },
       ),

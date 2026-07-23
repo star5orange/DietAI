@@ -87,68 +87,72 @@ class _PetFoodLibraryPageState extends State<PetFoodLibraryPage> {
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.borderLight,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                '选择识别方式',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                '拍摄或选择宠物食品包装照片，AI将自动识别营养成分',
-                style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              // 拍照选项
-              ListTile(
-                leading: Container(
-                  width: 44,
-                  height: 44,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
                   decoration: BoxDecoration(
-                    color: AppColors.primarySurface,
-                    borderRadius: BorderRadius.circular(12),
+                    color: AppColors.borderLight,
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  child: const Icon(LucideIcons.camera, color: AppColors.primary),
                 ),
-                title: const Text('拍照',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('直接拍摄食品包装',
-                    style: TextStyle(fontSize: 12)),
-                trailing: const Icon(LucideIcons.chevronRight, size: 18),
-                onTap: () => Navigator.pop(ctx, ImageSource.camera),
-              ),
-              const SizedBox(height: 8),
-              // 相册选项
-              ListTile(
-                leading: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppColors.primarySurface,
-                    borderRadius: BorderRadius.circular(12),
+                const SizedBox(height: 20),
+                const Text(
+                  '选择识别方式',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '拍摄或选择宠物食品包装照片，AI将自动识别营养成分',
+                  style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                // 拍照选项
+                ListTile(
+                  leading: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.primarySurface,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(LucideIcons.camera,
+                        color: AppColors.primary),
                   ),
-                  child: const Icon(LucideIcons.image, color: AppColors.primary),
+                  title: const Text('拍照',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle:
+                      const Text('直接拍摄食品包装', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(LucideIcons.chevronRight, size: 18),
+                  onTap: () => Navigator.pop(ctx, ImageSource.camera),
                 ),
-                title: const Text('从相册选择',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('选取已保存的包装照片',
-                    style: TextStyle(fontSize: 12)),
-                trailing: const Icon(LucideIcons.chevronRight, size: 18),
-                onTap: () => Navigator.pop(ctx, ImageSource.gallery),
-              ),
-              const SizedBox(height: 12),
-            ],
+                const SizedBox(height: 8),
+                // 相册选项
+                ListTile(
+                  leading: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.primarySurface,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child:
+                        const Icon(LucideIcons.image, color: AppColors.primary),
+                  ),
+                  title: const Text('从相册选择',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle:
+                      const Text('选取已保存的包装照片', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(LucideIcons.chevronRight, size: 18),
+                  onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
           ),
         ),
       ),
@@ -219,60 +223,101 @@ class _PetFoodLibraryPageState extends State<PetFoodLibraryPage> {
     final carbs = data['carbs_per_100g'];
     final rawText = data['raw_text'] as String?;
 
+    bool _saving = false;
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(LucideIcons.camera, color: AppColors.primary, size: 20),
-            const SizedBox(width: 8),
-            const Text('识别结果',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Row(
             children: [
-              if (brand.isNotEmpty) _buildOcrRow('品牌', brand),
-              _buildOcrRow('产品名', foodName),
-              _buildOcrRow(
-                  '热量', calories != null ? '${calories} kcal/100g' : '未识别'),
-              _buildOcrRow('蛋白质', protein != null ? '${protein}g/100g' : '未识别'),
-              _buildOcrRow('脂肪', fat != null ? '${fat}g/100g' : '未识别'),
-              _buildOcrRow('碳水', carbs != null ? '${carbs}g/100g' : '未识别'),
-              if (rawText != null && rawText.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                const Text('原始文本',
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textTertiary)),
-                const SizedBox(height: 4),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    rawText,
-                    style: const TextStyle(
-                        fontSize: 11, color: AppColors.textSecondary),
-                  ),
-                ),
-              ],
+              const Icon(LucideIcons.camera,
+                  color: AppColors.primary, size: 20),
+              const SizedBox(width: 8),
+              const Text('识别结果',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('关闭'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (brand.isNotEmpty) _buildOcrRow('品牌', brand),
+                _buildOcrRow('产品名', foodName),
+                _buildOcrRow(
+                    '热量', calories != null ? '${calories} kcal/100g' : '未识别'),
+                _buildOcrRow(
+                    '蛋白质', protein != null ? '${protein}g/100g' : '未识别'),
+                _buildOcrRow('脂肪', fat != null ? '${fat}g/100g' : '未识别'),
+                _buildOcrRow('碳水', carbs != null ? '${carbs}g/100g' : '未识别'),
+                if (rawText != null && rawText.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text('原始文本',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textTertiary)),
+                  const SizedBox(height: 4),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      rawText,
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.textSecondary),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('关闭'),
+            ),
+            FilledButton.icon(
+              onPressed: _saving
+                  ? null
+                  : () async {
+                      setDialogState(() => _saving = true);
+                      final api = RealPetApiService();
+                      final saveRes = await api.saveFood(
+                        foodName: foodName,
+                        brand: brand.isNotEmpty ? brand : null,
+                        caloriesPer100g: calories?.toDouble(),
+                        proteinPer100g: protein?.toDouble(),
+                        fatPer100g: fat?.toDouble(),
+                        carbsPer100g: carbs?.toDouble(),
+                      );
+                      setDialogState(() => _saving = false);
+                      if (mounted) {
+                        Navigator.pop(ctx);
+                        if (saveRes.isSuccess) {
+                          _showSnackBar('已保存到食品库');
+                          _loadFoods();
+                        } else {
+                          _showSnackBar('保存失败，请重试');
+                        }
+                      }
+                    },
+              icon: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(LucideIcons.save, size: 16),
+              label: Text(_saving ? '保存中...' : '保存到食品库'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -348,14 +393,46 @@ class _PetFoodLibraryPageState extends State<PetFoodLibraryPage> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _categories.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Text(
-                      '无法加载食品数据，请检查网络连接',
-                      style: const TextStyle(
-                          fontSize: 14, color: AppColors.textSecondary),
-                      textAlign: TextAlign.center,
+              ? SingleChildScrollView(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(48),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Icon(
+                              LucideIcons.camera,
+                              size: 36,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          const Text(
+                            '还没有添加食品',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            '点击右上角相机图标，\n拍照识别宠物食品包装营养成分表',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 )
@@ -378,7 +455,7 @@ class _PetFoodLibraryPageState extends State<PetFoodLibraryPage> {
                             SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                '营养数据来源：品牌官方数据。数值均为每100g含量。',
+                                '通过拍照识别添加的食品。数据为用户自行上传，仅供参考。',
                                 style: TextStyle(
                                     fontSize: 12,
                                     color: AppColors.textSecondary),

@@ -26,13 +26,34 @@ MET_VALUES = {
 
 
 def calculate_calories(db: Session, user_id: int, exercise_type: str,
-                       duration_minutes: int, intensity: int) -> float:
-    """根据运动类型、时长、强度和用户体重估算热量消耗"""
+                       duration_minutes: int, intensity: int,
+                       distance_km: Optional[float] = None) -> float:
+    """根据运动类型、时长、强度和用户体重估算热量消耗。
+    
+    当提供距离时，跑步/步行/骑行优先使用距离公式，
+    游泳和其他运动仍使用 MET 公式。
+    """
     profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
     if not profile or not profile.weight:
         return 0.0
-    met = MET_VALUES.get(exercise_type, 5.0)
+    
     intensity_factor = {1: 0.8, 2: 1.0, 3: 1.2}.get(intensity, 1.0)
+    
+    # 距离型运动：跑步/步行/骑行/游泳，有距离时用距离公式
+    if distance_km and distance_km > 0:
+        distance_cal_per_kg_km = {
+            "跑步": 1.0,
+            "步行": 0.7,
+            "骑行": 0.35,
+            "游泳": 3.0,
+        }
+        coef = distance_cal_per_kg_km.get(exercise_type)
+        if coef:
+            calories = coef * float(profile.weight) * distance_km * intensity_factor
+            return round(calories, 2)
+    
+    # 默认 MET 公式（基于时长）
+    met = MET_VALUES.get(exercise_type, 5.0)
     calories = met * float(profile.weight) * (duration_minutes / 60) * intensity_factor
     return round(calories, 2)
 
@@ -42,7 +63,8 @@ def create_exercise_record(db: Session, user_id: int,
     """创建运动记录，自动计算热量（如果未提供），并同步到每日营养汇总"""
     if record.calories_burned is None:
         record.calories_burned = calculate_calories(
-            db, user_id, record.exercise_type, record.duration_minutes, record.intensity
+            db, user_id, record.exercise_type, record.duration_minutes,
+            record.intensity, record.distance_km
         )
     db_record = ExerciseRecord(user_id=user_id, **record.model_dump())
     db.add(db_record)

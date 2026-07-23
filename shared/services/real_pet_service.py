@@ -1,7 +1,9 @@
 """M3 真实宠物健康管理业务逻辑"""
+import io
 import logging
 import os
 import random
+import time as _time
 from datetime import date, datetime, timedelta
 from typing import Optional, Dict, Any, List
 
@@ -16,6 +18,7 @@ from shared.models.pet_models import (
     PetFoodDatabase,
 )
 from shared.config.settings import get_settings
+from shared.config.minio_config import minio_client
 
 # 加载 .env 文件，使 os.getenv 可读取 DASHSCOPE_API_KEY 等变量
 load_dotenv(".env", override=True, encoding="utf-8")
@@ -450,10 +453,10 @@ def delete_water_record(db: Session, record_id: int, pet_id: int, user_id: int):
 # 宠物食品库
 # ============================================================
 
-def search_food_database(db: Session, species: Optional[str] = None,
+def search_food_database(db: Session, user_id: int, species: Optional[str] = None,
                          category: Optional[str] = None,
                          keyword: Optional[str] = None) -> List[Dict]:
-    query = db.query(PetFoodDatabase)
+    query = db.query(PetFoodDatabase).filter(PetFoodDatabase.user_id == user_id)
     if species:
         query = query.filter(PetFoodDatabase.suitable_species == species)
     if category:
@@ -462,8 +465,27 @@ def search_food_database(db: Session, species: Optional[str] = None,
         query = query.filter(
             PetFoodDatabase.food_name.ilike(f"%{keyword}%")
         )
-    foods = query.order_by(PetFoodDatabase.food_name).limit(50).all()
+    foods = query.order_by(PetFoodDatabase.created_at.desc()).limit(50).all()
     return [_food_to_dict(f) for f in foods]
+
+
+def save_food_to_database(db: Session, user_id: int, data: dict) -> PetFoodDatabase:
+    """将OCR识别的食品保存到用户的食品库"""
+    food = PetFoodDatabase(
+        user_id=user_id,
+        food_name=data.get("food_name", ""),
+        brand=data.get("brand", ""),
+        category=data.get("category", ""),
+        suitable_species=data.get("suitable_species", ""),
+        calories_per_100g=data.get("calories_per_100g"),
+        protein_per_100g=data.get("protein_per_100g"),
+        fat_per_100g=data.get("fat_per_100g"),
+        carbs_per_100g=data.get("carbs_per_100g"),
+    )
+    db.add(food)
+    db.commit()
+    db.refresh(food)
+    return food
 
 
 # ============================================================
@@ -793,11 +815,20 @@ def calculate_health_score(db: Session, pet_id: int, user_id: int) -> dict:
 # AI 形象生成（DashScope 通义万相 API + 预设兜底）
 # ============================================================
 
-# 风格 prompt 后缀
-_STYLE_PROMPTS = {
-    "cartoon": "卡通风格，Q版，可爱，柔和色调",
-    "anime": "动漫风格，日系，精美",
-    "realistic": "写实风格，细节丰富",
+# 风格 prompt 模板（基于需求文档 5.3.1 节，自然插画风，不过度夸张）
+_STYLE_TRAITS = {
+    "cartoon": (
+        "可爱的Q版卡通形象，扁平化矢量插画风格，柔和圆润的线条，"
+        "温暖的配色，简洁干净，像手绘宠物肖像，自然比例不夸张变形"
+    ),
+    "anime": (
+        "清新的日系动漫形象，赛璐璐上色风格，柔和的渐变光影，"
+        "细腻流畅的线条，通透的画面质感，自然的表情姿态"
+    ),
+    "realistic": (
+        "柔和的写实插画形象，自然的毛发质感和光影层次，"
+        "温暖的色调，柔和的景深效果，手绘插画质感而非照片，避免过度锐化"
+    ),
 }
 
 # 情绪表情 prompt
@@ -809,27 +840,103 @@ _EMOTION_PROMPTS = {
 }
 
 
+# 负面提示词（需求文档 5.3.1 节 + 风格专属抑制）
+_COMMON_NEGATIVE = (
+    "写实照片风格，恐怖，畸形，多只动物，"
+    "低质量，模糊，变形，多余肢体，拼接痕迹，"
+    "水印，文字，签名，粗糙"
+)
+
+_STYLE_NEGATIVE = {
+    "cartoon": "真实照片，写实，3D渲染，暗黑风格，过于复杂夸张",
+    "anime": "真实照片，3D渲染，欧美卡通，粗线条，色调灰暗",
+    "realistic": "Q版，卡通，动漫，3D渲染，过度锐化，HDR，照片质感",
+}
+
+
 def _build_avatar_prompt(description: str, style: str = "cartoon",
                          emotion: str = "normal") -> str:
-    """构建通义万相图片生成 prompt"""
-    style_suffix = _STYLE_PROMPTS.get(style, _STYLE_PROMPTS["cartoon"])
-    emotion_suffix = _EMOTION_PROMPTS.get(emotion, _EMOTION_PROMPTS["normal"])
-    return f"一只{description}的宠物，{style_suffix}，{emotion_suffix}，透明背景，全身照，面向镜头"
+    """构建通义万相图片生成 prompt（描述优先，风格为辅助）"""
+    traits = _STYLE_TRAITS.get(style, _STYLE_TRAITS["cartoon"])
+    emotion_text = _EMOTION_PROMPTS.get(emotion, _EMOTION_PROMPTS["normal"])
+    return (
+        f"一只{description}，{traits}，"
+        f"纯白色背景，正面全身，居中构图，"
+        f"{emotion_text}，画面干净"
+    )
 
 
-def _call_wanx_api(prompt: str, style: str = "cartoon") -> Optional[str]:
-    """调用通义万相 API (wanx-v1，异步任务，带重试)"""
+def _get_negative_prompt(style: str = "cartoon") -> str:
+    """根据风格获取负面提示词（遵循需求文档 5.3.1 节）"""
+    style_neg = _STYLE_NEGATIVE.get(style, "")
+    return f"{_COMMON_NEGATIVE}，{style_neg}" if style_neg else _COMMON_NEGATIVE
+
+
+# MinIO 宠物形象存储前缀
+_AVATAR_PREFIX = "pet_avatars"
+
+
+def _download_image(url: str) -> Optional[bytes]:
+    """从 URL 下载图片，返回 bytes"""
+    try:
+        import requests as _requests
+        import urllib3 as _urllib3
+        _urllib3.disable_warnings()
+        resp = _requests.get(url, timeout=30, verify=False)
+        if resp.status_code == 200:
+            return resp.content
+        logger.warning(f"Download image failed: HTTP {resp.status_code}, url={url[:60]}")
+        return None
+    except Exception as e:
+        logger.warning(f"Download image error: {e}")
+        return None
+
+
+def _remove_background(img_bytes: bytes) -> bytes:
+    """rembg 抠图：输入 PNG bytes，返回透明背景 PNG bytes"""
+    try:
+        from rembg import remove
+        return remove(img_bytes)
+    except ImportError:
+        logger.warning("rembg not installed, skipping background removal")
+        return img_bytes
+    except Exception as e:
+        logger.warning(f"rembg failed: {e}, using original image")
+        return img_bytes
+
+
+def _upload_to_minio(pet_id: int, suffix: str, img_bytes: bytes) -> Optional[str]:
+    """上传图片到 MinIO，返回文件 URL"""
+    try:
+        object_name = f"{_AVATAR_PREFIX}/pet_{pet_id}_{suffix}_{int(_time.time())}.png"
+        ok = minio_client.upload_file(object_name, img_bytes, "image/png")
+        if ok:
+            url = minio_client.get_file_url(object_name)
+            logger.info(f"[Avatar] Uploaded to MinIO: {object_name}")
+            return url
+        logger.error(f"[Avatar] MinIO upload failed: {object_name}")
+        return None
+    except Exception as e:
+        logger.error(f"[Avatar] MinIO upload error: {e}")
+        return None
+
+
+def _call_wanx_api(prompt: str, style: str = "cartoon",
+                  reference_image: Optional[str] = None) -> Optional[str]:
+    """调用通义万相 API (wanx-v1，异步任务，带重试)
+
+    reference_image: 可选，base64 编码的参考图片（图生图模式）
+    """
     if not DASHSCOPE_API_KEY:
         logger.warning("DASHSCOPE_API_KEY 未配置，无法调用通义万相")
         return None
 
-    import time as _time
     model = _settings.dashscope_image_model or "wanx-v1"
 
     # 整体重试 3 次，应对间歇性 SSL 错误（requests 库在此环境比 httpx 更稳定）
     for retry in range(3):
         try:
-            logger.info(f"[Wanx API] Submit attempt {retry+1}/3: model={model}, prompt={prompt[:50]}...")
+            logger.info(f"[Wanx API] Submit attempt {retry+1}/3: model={model}, prompt={prompt}")
             import requests as _requests
             from requests.adapters import HTTPAdapter as _HTTPAdapter
             from urllib3.util.retry import Retry as _Retry
@@ -850,8 +957,15 @@ def _call_wanx_api(prompt: str, style: str = "cartoon") -> Optional[str]:
                 },
                 json={
                     "model": model,
-                    "input": {"prompt": prompt},
-                    "parameters": {"size": "1024*1024", "n": 1},
+                    "input": {
+                        "prompt": prompt,
+                        "negative_prompt": _get_negative_prompt(style),
+                        **({"ref_img": reference_image} if reference_image else {}),
+                    },
+                    "parameters": {
+                        "size": "1024*1024",
+                        "n": 1,
+                    },
                 },
                 timeout=30,
             )
@@ -958,7 +1072,8 @@ def _get_preset_url(pet: PetProfile) -> str:
 
 def generate_avatar(db: Session, pet_id: int, user_id: int,
                     mode: str, photo: Optional[str] = None,
-                    description: Optional[str] = None) -> str:
+                    description: Optional[str] = None,
+                    style: str = "cartoon") -> str:
     """AI 生成宠物形象（异步后台执行，立即返回 task_id）
 
     后台线程调用通义万相 API，API 不可用时降级为预设占位图。
@@ -970,6 +1085,9 @@ def generate_avatar(db: Session, pet_id: int, user_id: int,
     pet = get_pet(db, pet_id, user_id)
     if not pet:
         raise ValueError("宠物不存在")
+
+    # 校验 style 参数
+    style = style if style in ("cartoon", "anime", "realistic") else "cartoon"
 
     local_task_id = f"gen_{pet_id}_{int(datetime.utcnow().timestamp())}"
 
@@ -988,57 +1106,131 @@ def generate_avatar(db: Session, pet_id: int, user_id: int,
     if not desc:
         desc = f"{pet.breed or '宠物'}"
 
-    # 提前捕获宠物数据（原 db session 在线程中不可用）
+    # 提前捕获数据（原 db session 在线程中不可用）
     _pet_breed = pet.breed
     _pet_species = pet.species
     _pet_id = pet.id
+    _photo = photo  # 拍照模式下的参考图 (base64)
+    _desc = desc
 
-    prompt = _build_avatar_prompt(desc, "cartoon", "normal")
+    # 构建 4 种情绪的 prompt
+    _emotion_prompts = {
+        "normal": _build_avatar_prompt(desc, style, "normal"),
+        "happy": _build_avatar_prompt(desc, style, "happy"),
+        "hungry": _build_avatar_prompt(desc, style, "hungry"),
+        "weak": _build_avatar_prompt(desc, style, "weak"),
+    }
+
+    # 参考图（仅拍照模式且为 base64 时使用）
+    _ref_img = None
+    if _photo and (str(_photo).startswith("data:") or len(str(_photo)) > 500):
+        _ref_img = _photo
+
+    def _process_image(img_url: str, suffix: str) -> str:
+        """下载 → rembg 抠图 → 上传 MinIO，失败则返回原始 URL"""
+        raw = _download_image(img_url)
+        if raw:
+            nobg = _remove_background(raw)
+            minio_url = _upload_to_minio(_pet_id, suffix, nobg)
+            if minio_url:
+                return minio_url
+        return img_url
+
+    def _fallback_to_preset():
+        """AI 失败时降级为预设占位图"""
+        from shared.models.pet_models import PetProfile
+        species_map = PRESET_AVATARS.get(_pet_species, PRESET_AVATARS.get("cat", {}))
+        preset = species_map.get(_pet_breed, species_map.get("default",
+            "https://placehold.co/400x400/FFE0B2/555555?text=Pet"))
+        return preset
 
     def _run_generation():
-        """后台线程执行 AI 生成"""
+        """后台线程执行 AI 生成 + 情绪变体"""
+        from concurrent.futures import ThreadPoolExecutor
+
         bg_db = SessionLocal()
         try:
             logger.info(f"[Avatar] Background generation started for pet_id={_pet_id}")
-            img_url = _call_wanx_api(prompt, "cartoon")
+
+            # Step 1: 生成基础形象（normal 情绪）
+            base_img_url = _call_wanx_api(_emotion_prompts["normal"], style, _ref_img)
 
             bg_avatar = bg_db.query(PetAvatar).filter(PetAvatar.pet_id == _pet_id).first()
             if not bg_avatar:
                 logger.error(f"[Avatar] Avatar record not found for pet_id={_pet_id}")
                 return
 
-            if img_url:
-                bg_avatar.status = "done"
-                bg_avatar.base_image_url = img_url
-                bg_avatar.emotion_normal_url = img_url
-                bg_avatar.emotion_happy_url = img_url
-                bg_avatar.emotion_hungry_url = img_url
-                bg_avatar.emotion_weak_url = img_url
-                bg_avatar.generation_seed = _pet_id * 10000
-                bg_avatar.ai_model = _settings.dashscope_image_model or "wanx-v1"
-                bg_avatar.prompt_used = desc
-                bg_avatar.error_message = None
-                logger.info(f"[Avatar] AI generated successfully for pet_id={_pet_id}")
-            else:
+            if not base_img_url:
                 # 降级为预设占位图
-                from shared.models.pet_models import PetProfile
-                species_map = PRESET_AVATARS.get(_pet_species, PRESET_AVATARS.get("cat", {}))
-                preset = species_map.get(_pet_breed, species_map.get("default",
-                    "https://placehold.co/400x400/FFE0B2/555555?text=Pet"))
-
+                preset = _fallback_to_preset()
                 bg_avatar.status = "done"
                 bg_avatar.base_image_url = preset
-                bg_avatar.emotion_happy_url = preset
                 bg_avatar.emotion_normal_url = preset
+                bg_avatar.emotion_happy_url = preset
                 bg_avatar.emotion_hungry_url = preset
                 bg_avatar.emotion_weak_url = preset
                 bg_avatar.generation_seed = _pet_id * 10000
-                bg_avatar.prompt_used = desc
                 bg_avatar.ai_model = "preset_fallback"
-                bg_avatar.error_message = None
+                bg_avatar.prompt_used = _desc
+                bg_db.commit()
                 logger.warning(f"[Avatar] Fallback to preset for pet_id={_pet_id}")
+                return
 
+            # 基础图下载 + 抠图 + 上传
+            final_base = _process_image(base_img_url, "normal")
+            emotion_urls = {"normal": final_base}
+
+            # Step 2: 并行生成 3 种情绪变体（最多等 60 秒）
+            logger.info(f"[Avatar] Generating emotion variants for pet_id={_pet_id}")
+            import concurrent.futures as _cf
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                futures = {
+                    executor.submit(
+                        _call_wanx_api,
+                        _emotion_prompts[emo], style, _ref_img
+                    ): emo
+                    for emo in ["happy", "hungry", "weak"]
+                }
+                done, not_done = _cf.wait(
+                    futures.keys(),
+                    timeout=60,
+                    return_when=_cf.ALL_COMPLETED,
+                )
+                for future in done:
+                    emo = futures[future]
+                    try:
+                        emo_url = future.result()
+                        if emo_url:
+                            final_url = _process_image(emo_url, emo)
+                            emotion_urls[emo] = final_url
+                            logger.info(f"[Avatar] Emotion '{emo}' generated for pet_id={_pet_id}")
+                        else:
+                            emotion_urls[emo] = final_base
+                            logger.warning(f"[Avatar] Emotion '{emo}' failed, using base image")
+                    except Exception as e:
+                        emotion_urls[emo] = final_base
+                        logger.error(f"[Avatar] Emotion '{emo}' error: {e}")
+                # 超时未完成的，直接用基础图
+                for future in not_done:
+                    emo = futures[future]
+                    future.cancel()
+                    emotion_urls[emo] = final_base
+                    logger.warning(f"[Avatar] Emotion '{emo}' timed out, using base image")
+
+            # Step 3: 写入数据库
+            bg_avatar.status = "done"
+            bg_avatar.base_image_url = final_base
+            bg_avatar.emotion_normal_url = emotion_urls["normal"]
+            bg_avatar.emotion_happy_url = emotion_urls.get("happy", final_base)
+            bg_avatar.emotion_hungry_url = emotion_urls.get("hungry", final_base)
+            bg_avatar.emotion_weak_url = emotion_urls.get("weak", final_base)
+            bg_avatar.generation_seed = _pet_id * 10000
+            bg_avatar.ai_model = _settings.dashscope_image_model or "wanx-v1"
+            bg_avatar.prompt_used = _desc
+            bg_avatar.error_message = None
             bg_db.commit()
+            logger.info(f"[Avatar] All 4 emotions generated for pet_id={_pet_id}")
+
         except Exception as e:
             logger.error(f"[Avatar] Generation failed for pet_id={_pet_id}: {e}")
             try:
@@ -1060,7 +1252,11 @@ def generate_avatar(db: Session, pet_id: int, user_id: int,
 
 
 def get_generation_task(db: Session, task_id: str) -> dict:
-    """查询生成任务状态（自动轮询 DashScope 任务）"""
+    """查询生成任务状态
+
+    生成由后台线程异步执行，此函数仅读取数据库状态。
+    status: processing | done | failed | not_found
+    """
     try:
         pet_id = int(task_id.split("_")[1])
     except (IndexError, ValueError):
@@ -1070,57 +1266,11 @@ def get_generation_task(db: Session, task_id: str) -> dict:
     if not avatar:
         return {"task_id": task_id, "status": "not_found"}
 
-    # 如果是 processing 状态且有 dashscope task_ids，尝试轮询
-    if avatar.status == "processing":
-        import json
-        try:
-            extra = json.loads(avatar.prompt_used or "{}")
-            dashscope_tasks = extra.get("dashscope_tasks", {})
-        except (json.JSONDecodeError, TypeError):
-            dashscope_tasks = {}
-
-        if dashscope_tasks:
-            completed_count = 0
-            for emotion, ds_task_id in dashscope_tasks.items():
-                img_url = _poll_wanx_task(ds_task_id)
-                if img_url:
-                    emotion_map = {
-                        "happy": "emotion_happy_url",
-                        "normal": "emotion_normal_url",
-                        "hungry": "emotion_hungry_url",
-                        "weak": "emotion_weak_url",
-                    }
-                    attr = emotion_map.get(emotion)
-                    if attr:
-                        setattr(avatar, attr, img_url)
-                        completed_count += 1
-
-            if completed_count > 0:
-                # 用 normal 情绪作为基础图
-                base = avatar.emotion_normal_url or avatar.emotion_happy_url or \
-                       avatar.emotion_hungry_url or avatar.emotion_weak_url
-                if base:
-                    avatar.base_image_url = base
-
-                if completed_count >= len(dashscope_tasks):
-                    avatar.status = "done"
-
-                db.commit()
-
-    # 检查 avatar 状态后，如果 prompts_used 是 JSON 格式，提取原始描述
-    description = ""
-    try:
-        import json
-        extra = json.loads(avatar.prompt_used or "{}")
-        if isinstance(extra, dict):
-            description = extra.get("description", "")
-    except (json.JSONDecodeError, TypeError):
-        description = avatar.prompt_used or ""
-
     result = {
         "task_id": task_id,
         "status": avatar.status,
         "base_image_url": avatar.base_image_url,
+        "ai_model": avatar.ai_model,
         "emotions": {
             "happy": avatar.emotion_happy_url,
             "normal": avatar.emotion_normal_url,
@@ -1130,8 +1280,8 @@ def get_generation_task(db: Session, task_id: str) -> dict:
         "seed": avatar.generation_seed,
         "has_gif": avatar.has_gif,
     }
-    if description:
-        result["description"] = description
+    if avatar.status == "failed" and avatar.error_message:
+        result["error"] = avatar.error_message
     return result
 
 

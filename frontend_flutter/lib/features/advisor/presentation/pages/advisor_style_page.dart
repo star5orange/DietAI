@@ -9,8 +9,11 @@ import '../../data/services/advisor_service.dart';
 import '../widgets/advisor_style_selector.dart';
 
 /// AI顾问风格设置页面
+/// 根据 sessionType 区分人类（默认）和宠物（6）顾问风格
 class AdvisorStylePage extends ConsumerStatefulWidget {
-  const AdvisorStylePage({super.key});
+  final int sessionType; // 0=通用/人类, 6=宠物
+
+  const AdvisorStylePage({super.key, this.sessionType = 0});
 
   @override
   ConsumerState<AdvisorStylePage> createState() => _AdvisorStylePageState();
@@ -31,34 +34,55 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
   }
 
   Future<void> _loadSettings() async {
+    final isPet = widget.sessionType == 6;
     try {
-      // 并行加载用户设置和4个选项列表
       final service = ref.read(advisorServiceProvider);
-      final results = await Future.wait([
-        service.getSettings(),
-        _fetchAdvisorStyles(),
-        _fetchFocusGoals(),
-        _fetchFocusNutrients(),
-        _fetchResponseStyles(),
-      ]);
-      final settings = results[0] as AdvisorSettings?;
+      final settings = await service.getSettings();
       if (mounted && settings != null) {
         setState(() {
-          _selectedStyle = settings.advisorStyle ?? 'nutritionist';
+          if (isPet) {
+            // 宠物模式：加载宠物专属字段
+            _selectedStyle = settings.petAdvisorStyle ?? 'vet_assistant';
+            _advisorStyles = List.from(_fallbackPetAdvisorStyles);
+            _focusGoals = List.from(_fallbackPetFocusGoals);
+            _focusNutrients = []; // 宠物不需要营养素
+            if (settings.petFocusGoal != null &&
+                settings.petFocusGoal!.isNotEmpty) {
+              _selectedFocusGoals = {settings.petFocusGoal!};
+            }
+          } else {
+            // 人类模式
+            _selectedStyle = settings.advisorStyle ?? 'nutritionist';
+            _advisorStyles = List.from(_fallbackAdvisorStyles);
+            _focusGoals = List.from(_fallbackFocusGoals);
+            _focusNutrients = List.from(_fallbackFocusNutrients);
+            if (settings.focusGoal != null) {
+              _selectedFocusGoals = {settings.focusGoal!};
+            }
+            if (settings.focusNutrient != null) {
+              _selectedFocusNutrients = {settings.focusNutrient!};
+            }
+          }
           _selectedResponseStyle = settings.responseStyle ?? 'friendly';
-          // 加载关注目标（转为Set）
-          if (settings.focusGoal != null) {
-            _selectedFocusGoals = {settings.focusGoal!};
-          }
-          // 加载关注营养素（转为Set）
-          if (settings.focusNutrient != null) {
-            _selectedFocusNutrients = {settings.focusNutrient!};
-          }
           _isInitialized = true;
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _isInitialized = true);
+      if (mounted) {
+        setState(() {
+          if (isPet) {
+            _advisorStyles = List.from(_fallbackPetAdvisorStyles);
+            _focusGoals = List.from(_fallbackPetFocusGoals);
+            _focusNutrients = [];
+            _selectedStyle = 'vet_assistant';
+          } else {
+            _advisorStyles = List.from(_fallbackAdvisorStyles);
+            _focusGoals = List.from(_fallbackFocusGoals);
+            _focusNutrients = List.from(_fallbackFocusNutrients);
+          }
+          _isInitialized = true;
+        });
+      }
     }
   }
 
@@ -179,6 +203,28 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
     },
   ];
 
+  // 宠物专属顾问风格
+  static const _fallbackPetAdvisorStyles = [
+    {
+      'id': 'vet_assistant',
+      'name': '兽医助理',
+      'icon': LucideIcons.stethoscope,
+      'desc': '专业严谨，强调安全边界和就医指征'
+    },
+    {
+      'id': 'pet_nutritionist',
+      'name': '宠物营养师',
+      'icon': LucideIcons.fish,
+      'desc': '关注饮食管理、营养配比和换粮方案'
+    },
+    {
+      'id': 'pet_caregiver',
+      'name': '贴心宠管',
+      'icon': LucideIcons.heartHandshake,
+      'desc': '温暖陪伴，用宠物视角关心日常健康'
+    },
+  ];
+
   List<String> _focusGoals = List.from(_fallbackFocusGoals);
 
   static const _fallbackFocusGoals = [
@@ -187,6 +233,15 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
     '控糖稳糖',
     '养生调理',
     '均衡健康',
+  ];
+
+  // 宠物专属关注目标
+  static const _fallbackPetFocusGoals = [
+    '体重管理',
+    '营养均衡',
+    '日常护理',
+    '疫苗与驱虫',
+    '换粮过渡',
   ];
 
   List<String> _focusNutrients = List.from(_fallbackFocusNutrients);
@@ -211,6 +266,7 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
 
   @override
   Widget build(BuildContext context) {
+    final isPet = widget.sessionType == 6;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -222,7 +278,7 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'AI顾问风格',
+          isPet ? '宠物AI顾问风格' : 'AI顾问风格',
           style: AppTextStyles.h5.copyWith(
             color: AppColors.textPrimary,
             fontWeight: FontWeight.w700,
@@ -275,26 +331,29 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
                       ))
                   .toList(),
             ),
-            const SizedBox(height: 24),
-            Text('关注营养素（可多选）', style: AppTextStyles.h6),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _focusNutrients
-                  .map((nutrient) => _buildChip(
-                        label: nutrient,
-                        isSelected: _selectedFocusNutrients.contains(nutrient),
-                        onTap: () => setState(() {
-                          if (_selectedFocusNutrients.contains(nutrient)) {
-                            _selectedFocusNutrients.remove(nutrient);
-                          } else {
-                            _selectedFocusNutrients.add(nutrient);
-                          }
-                        }),
-                      ))
-                  .toList(),
-            ),
+            if (!isPet) ...[
+              const SizedBox(height: 24),
+              Text('关注营养素（可多选）', style: AppTextStyles.h6),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _focusNutrients
+                    .map((nutrient) => _buildChip(
+                          label: nutrient,
+                          isSelected:
+                              _selectedFocusNutrients.contains(nutrient),
+                          onTap: () => setState(() {
+                            if (_selectedFocusNutrients.contains(nutrient)) {
+                              _selectedFocusNutrients.remove(nutrient);
+                            } else {
+                              _selectedFocusNutrients.add(nutrient);
+                            }
+                          }),
+                        ))
+                    .toList(),
+              ),
+            ],
             const SizedBox(height: 24),
             Text('回复风格', style: AppTextStyles.h6),
             const SizedBox(height: 12),
@@ -368,43 +427,55 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
 
     try {
       final service = ref.read(advisorServiceProvider);
+      final isPet = widget.sessionType == 6;
 
-      // 将中文标签映射为后端ID
-      final goalMap = {
-        '减脂塑形': 'fat_loss',
-        '增肌增重': 'muscle_gain',
-        '控糖稳糖': 'sugar_control',
-        '养生调理': 'wellness',
-        '均衡健康': 'balanced',
-      };
-      final nutrientMap = {
-        '热量': 'calories',
-        '蛋白质': 'protein',
-        '碳水化合物': 'carb',
-        '脂肪': 'fat',
-        '微量元素': 'micronutrient',
-      };
+      if (isPet) {
+        // 宠物模式：保存 petAdvisorStyle 和 petFocusGoal
+        final petFocusGoal =
+            _selectedFocusGoals.isNotEmpty ? _selectedFocusGoals.first : null;
 
-      // 多选取第一个或全部拼接
-      final focusGoal = _selectedFocusGoals.isNotEmpty
-          ? _selectedFocusGoals
-              .map((g) => goalMap[g])
-              .whereType<String>()
-              .join(',')
-          : null;
-      final focusNutrient = _selectedFocusNutrients.isNotEmpty
-          ? _selectedFocusNutrients
-              .map((n) => nutrientMap[n])
-              .whereType<String>()
-              .join(',')
-          : null;
+        await service.updateSettings(AdvisorSettings(
+          petAdvisorStyle: _selectedStyle,
+          petFocusGoal: petFocusGoal,
+          responseStyle: _selectedResponseStyle,
+        ));
+      } else {
+        // 人类模式
+        final goalMap = {
+          '减脂塑形': 'fat_loss',
+          '增肌增重': 'muscle_gain',
+          '控糖稳糖': 'sugar_control',
+          '养生调理': 'wellness',
+          '均衡健康': 'balanced',
+        };
+        final nutrientMap = {
+          '热量': 'calories',
+          '蛋白质': 'protein',
+          '碳水化合物': 'carb',
+          '脂肪': 'fat',
+          '微量元素': 'micronutrient',
+        };
 
-      await service.updateSettings(AdvisorSettings(
-        advisorStyle: _selectedStyle,
-        focusGoal: focusGoal,
-        focusNutrient: focusNutrient,
-        responseStyle: _selectedResponseStyle,
-      ));
+        final focusGoal = _selectedFocusGoals.isNotEmpty
+            ? _selectedFocusGoals
+                .map((g) => goalMap[g])
+                .whereType<String>()
+                .join(',')
+            : null;
+        final focusNutrient = _selectedFocusNutrients.isNotEmpty
+            ? _selectedFocusNutrients
+                .map((n) => nutrientMap[n])
+                .whereType<String>()
+                .join(',')
+            : null;
+
+        await service.updateSettings(AdvisorSettings(
+          advisorStyle: _selectedStyle,
+          focusGoal: focusGoal,
+          focusNutrient: focusNutrient,
+          responseStyle: _selectedResponseStyle,
+        ));
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

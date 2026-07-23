@@ -10,6 +10,7 @@ import 'core/constants/app_constants.dart';
 import 'core/constants/api_config.dart';
 import 'core/services/api_service.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/firebase_service.dart';
 import 'services/notification_response_service.dart';
 
 void main() async {
@@ -21,6 +22,13 @@ void main() async {
   ApiService().initialize();
 
   await NotificationService().initialize();
+
+  // 初始化 Firebase FCM 推送（需要 Firebase 项目配置）
+  try {
+    await FirebaseService().initialize();
+  } catch (e) {
+    debugPrint('Firebase 初始化失败（如未配置 Firebase 项目可忽略）: $e');
+  }
 
   // 设置通知点击回调：记录提醒响应
   NotificationService.onNotificationTapped = _handleNotificationTap;

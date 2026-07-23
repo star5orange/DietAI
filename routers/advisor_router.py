@@ -15,16 +15,22 @@ router = APIRouter(prefix="/ai-advisor", tags=["AI顾问设置"])
 
 class AdvisorSettingsUpdate(BaseModel):
     advisor_style: Optional[str] = Field(
-        None, description="顾问风格: nutritionist / fitness_coach / tcm_healer / encouraging_friend"
+        None, description="人类顾问风格: nutritionist / fitness_coach / tcm_healer / encouraging_friend"
     )
     focus_goal: Optional[str] = Field(
-        None, description="关注目标: fat_loss / muscle_gain / sugar_control / wellness / balanced"
+        None, description="人类关注目标: fat_loss / muscle_gain / sugar_control / wellness / balanced"
     )
     focus_nutrient: Optional[str] = Field(
-        None, description="关注营养素: calories / protein / carb / fat / micronutrient"
+        None, description="人类关注营养素: calories / protein / carb / fat / micronutrient"
     )
     response_style: Optional[str] = Field(
         None, description="回复风格: concise / detailed / example_rich"
+    )
+    pet_advisor_style: Optional[str] = Field(
+        None, description="宠物顾问风格: vet_assistant / pet_nutritionist / pet_caregiver"
+    )
+    pet_focus_goal: Optional[str] = Field(
+        None, description="宠物关注目标: weight_management / nutrition_balance / daily_care / vaccine_deworming / food_transition"
     )
 
 
@@ -59,14 +65,23 @@ async def update_settings(
 ):
     """更新用户 AI 顾问风格设置
 
-    只需传入要修改的字段，未传入的保持不变
+    只需传入要修改的字段，未传入的保持不变。
+    人类和宠物的风格设置独立存储，互不干扰。
     """
-    # 校验 advisor_style 值
+    # 校验人类 advisor_style 值
     valid_styles = {"nutritionist", "fitness_coach", "tcm_healer", "encouraging_friend"}
     if request.advisor_style is not None and request.advisor_style not in valid_styles:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"无效的顾问风格，可选值: {', '.join(valid_styles)}",
+        )
+
+    # 校验宠物 advisor_style 值
+    valid_pet_styles = {"vet_assistant", "pet_nutritionist", "pet_caregiver"}
+    if request.pet_advisor_style is not None and request.pet_advisor_style not in valid_pet_styles:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"无效的宠物顾问风格，可选值: {', '.join(valid_pet_styles)}",
         )
 
     try:
@@ -77,6 +92,8 @@ async def update_settings(
             focus_goal=request.focus_goal,
             focus_nutrient=request.focus_nutrient,
             response_style=request.response_style,
+            pet_advisor_style=request.pet_advisor_style,
+            pet_focus_goal=request.pet_focus_goal,
         )
         return BaseResponse(
             success=True,

@@ -105,6 +105,8 @@ class _PetHomePageState extends ConsumerState<PetHomePage> {
             showMoodIndicator: true,
             enableInteraction: true,
             skin: petState.currentSkin, // 使用用户选择的皮肤
+            customAvatarUrl: petState.customAvatarUrl, // AI 自定义头像
+            emotionUrls: petState.emotionUrls, // AI 情绪变体
           ),
           const SizedBox(height: 16),
 

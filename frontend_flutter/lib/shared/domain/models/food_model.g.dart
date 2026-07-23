@@ -118,6 +118,7 @@ AgentAnalysisData _$AgentAnalysisDataFromJson(Map<String, dynamic> json) =>
           json['nutrition_facts'] as Map<String, dynamic>),
       recommendations: Recommendations.fromJson(
           json['recommendations'] as Map<String, dynamic>),
+      shortComment: json['short_comment'] as String?,
     );
 
 Map<String, dynamic> _$AgentAnalysisDataToJson(AgentAnalysisData instance) =>
@@ -125,6 +126,7 @@ Map<String, dynamic> _$AgentAnalysisDataToJson(AgentAnalysisData instance) =>
       'image_description': instance.imageDescription,
       'nutrition_facts': instance.nutritionFacts,
       'recommendations': instance.recommendations,
+      'short_comment': instance.shortComment,
     };
 
 NutritionDetail _$NutritionDetailFromJson(Map<String, dynamic> json) =>

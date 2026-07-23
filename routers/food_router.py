@@ -222,6 +222,14 @@ async def generate_sse_stream(
                             db
                         )
 
+                        # 持久化AI分析结果
+                        food_record.analysis_result = {
+                            "short_comment": analysis_complete_data.get("short_comment", ""),
+                            "image_description": analysis_complete_data.get("image_description", ""),
+                            "food_items": nf_data.get("food_items", []),
+                            "recommendations": analysis_complete_data.get("recommendations"),
+                        }
+
                         # 更新分析状态为完成
                         food_record.analysis_status = 3  # 已完成
                         db.commit()
@@ -513,6 +521,14 @@ async def _run_background_analysis(image_url: str, user_id: int, food_record_id:
                     db
                 )
 
+                # 持久化AI分析结果（short_comment, food_items, image_description, recommendations）
+                food_record.analysis_result = {
+                    "short_comment": analysis_complete_data.get("short_comment", ""),
+                    "image_description": analysis_complete_data.get("image_description", ""),
+                    "food_items": analysis_complete_data.get("nutrition_facts", {}).get("food_items", []),
+                    "recommendations": analysis_complete_data.get("recommendations"),
+                }
+
                 # 更新分析状态为完成
                 food_record.analysis_status = 3  # 已完成
                 db.commit()
@@ -564,7 +580,7 @@ async def confirm_food_record(
             "meal_type": record.meal_type,
             "food_name": record.food_name,
             "description": record.description,
-            "image_url": record.image_url,
+            "image_url": minio_client.get_file_url(record.image_url) if record.image_url and not record.image_url.startswith("http") else record.image_url,
             "recording_method": record.recording_method,
             "analysis_status": record.analysis_status,
             "cost": float(record.cost) if record.cost else None,
@@ -635,11 +651,20 @@ async def analyze_food_image_with_agent(image_url: str, user_id: int, db: Sessio
             if chunk.data is not None:
                 if chunk.data.get("current_step") == "completed":
                     print("Agent分析完成")
+                    # 提取 short_comment（nutrition_analysis 可能是 Pydantic 模型或 dict）
+                    na = chunk.data.get("nutrition_analysis")
+                    short_comment = ""
+                    if na is not None:
+                        if isinstance(na, dict):
+                            short_comment = na.get("short_comment", "") or ""
+                        elif hasattr(na, "short_comment"):
+                            short_comment = na.short_comment or ""
                     yield {
                         "type": "analysis_complete",
                         "data": {
                             "image_description": chunk.data.get("image_analysis"),
-                            "nutrition_facts": chunk.data.get("nutrition_analysis"),
+                            "nutrition_facts": na,
+                            "short_comment": short_comment,
                             "recommendations": chunk.data.get("nutrition_advice")
                         }
                     }
@@ -665,15 +690,68 @@ async def analyze_food_image_with_agent(image_url: str, user_id: int, db: Sessio
 
 
 async def get_user_preferences(db: Session, user_id: int):
+    """获取用户完整偏好数据，用于个性化营养建议"""
     try:
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             return {
                 "dietary_restrictions": [],
                 "health_goals": [],
-                "language": "zh-CN"
+                "language": "zh-CN",
+                "body_metrics": {},
+                "daily_targets": {},
+                "today_intake": {},
             }
-        # 饮食限制
+
+        # ========== 身体指标 ==========
+        profile = user.profile
+        body_metrics = {}
+        if profile:
+            body_metrics = {
+                "gender": "男" if profile.gender == 1 else ("女" if profile.gender == 2 else "未设置"),
+                "height_cm": float(profile.height) if profile.height else None,
+                "weight_kg": float(profile.weight) if profile.weight else None,
+                "bmi": float(profile.bmi) if profile.bmi else None,
+                "activity_level": profile.activity_level,  # 1:久坐 2:轻度 3:中度 4:重度 5:超重度
+                "crowd_tag": profile.crowd_tag or "",
+                "constitution_type": profile.constitution_type or "",
+            }
+            # 计算年龄
+            if profile.birth_date:
+                today = date.today()
+                age = today.year - profile.birth_date.year - ((today.month, today.day) < (profile.birth_date.month, profile.birth_date.day))
+                body_metrics["age"] = age
+
+        # ========== 每日目标 ==========
+        daily_targets = {
+            "calories": profile.target_calories if profile and profile.target_calories else 2000,
+            "water_ml": profile.daily_water_goal if profile and profile.daily_water_goal else 2000,
+        }
+
+        # ========== 今日摄入 ==========
+        today = date.today()
+        today_summary = db.query(DailyNutritionSummary).filter(
+            DailyNutritionSummary.user_id == user_id,
+            DailyNutritionSummary.summary_date == today
+        ).first()
+
+        today_intake = {}
+        if today_summary:
+            today_intake = {
+                "calories": float(today_summary.total_calories),
+                "protein_g": float(today_summary.total_protein),
+                "fat_g": float(today_summary.total_fat),
+                "carbs_g": float(today_summary.total_carbohydrates),
+                "fiber_g": float(today_summary.total_fiber),
+                "meal_count": today_summary.meal_count,
+            }
+        else:
+            today_intake = {
+                "calories": 0, "protein_g": 0, "fat_g": 0,
+                "carbs_g": 0, "fiber_g": 0, "meal_count": 0,
+            }
+
+        # ========== 饮食限制 ==========
         dietary_restrictions = []
         if user.allergies:
             dietary_restrictions.extend([
@@ -686,7 +764,6 @@ async def get_user_preferences(db: Session, user_id: int):
                 }
                 for allergy in user.allergies
             ])
-        # 处理疾病信息
         if user.diseases:
             dietary_restrictions.extend([
                 {
@@ -700,7 +777,8 @@ async def get_user_preferences(db: Session, user_id: int):
                 }
                 for disease in user.diseases
             ])
-        # 健康目标
+
+        # ========== 健康目标 ==========
         health_goals = []
         if user.health_goals:
             health_goals.extend([
@@ -713,25 +791,29 @@ async def get_user_preferences(db: Session, user_id: int):
                     "updated_at": goal.updated_at.isoformat() if goal.updated_at else None,
                 }
                 for goal in user.health_goals])
-            health_goals.extend([{"goal_type_mean:": "1:减重 2:增重 3:维持 4:增肌 5:减脂",
+            health_goals.extend([{"goal_type_mean": "1:减重 2:增重 3:维持 4:增肌 5:减脂",
                                   "current_status_mean": "1:进行中 2:已完成 3:已暂停 4:已取消"}])
-
-        language = "zh-CN"
 
         return {
             "dietary_restrictions": dietary_restrictions,
             "health_goals": health_goals,
-            "language": language
+            "body_metrics": body_metrics,
+            "daily_targets": daily_targets,
+            "today_intake": today_intake,
+            "language": "zh-CN",
         }
 
     except Exception as e:
         print(f"获取用户偏好失败: {e}")
-
-        # 返回一个默认偏好，防止后续逻辑出错
+        import traceback
+        traceback.print_exc()
         return {
             "dietary_restrictions": [],
             "health_goals": [],
-            "language": "zh-CN"
+            "body_metrics": {},
+            "daily_targets": {},
+            "today_intake": {},
+            "language": "zh-CN",
         }
 
 
@@ -880,9 +962,10 @@ async def get_food_records(
                 "meal_type": record.meal_type,
                 "food_name": record.food_name,
                 "description": record.description,
-                "image_url": record.image_url,
+                "image_url": minio_client.get_file_url(record.image_url) if record.image_url and not record.image_url.startswith("http") else record.image_url,
                 "recording_method": record.recording_method,
                 "analysis_status": record.analysis_status,
+                "analysis_result": record.analysis_result,
                 "cost": float(record.cost) if record.cost else None,
                 "source_tag": record.source_tag,
                 "created_at": record.created_at.isoformat(),
@@ -970,7 +1053,7 @@ async def get_food_record(
             "meal_type": record.meal_type,
             "food_name": record.food_name,
             "description": record.description,
-            "image_url": record.image_url,
+            "image_url": minio_client.get_file_url(record.image_url) if record.image_url and not record.image_url.startswith("http") else record.image_url,
             "recording_method": record.recording_method,
             "analysis_status": record.analysis_status,
             "cost": float(record.cost) if record.cost else None,
@@ -1312,6 +1395,74 @@ async def upload_food_image(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"图片上传失败: {str(e)}"
+        )
+
+
+@router.get("/images/data/{record_id}", response_model=BaseResponse)
+async def get_food_image_data(
+    record_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """获取食物记录的图片数据（base64）+ 营养分析数据"""
+    try:
+        food_record = db.query(FoodRecord).filter(
+            FoodRecord.id == record_id,
+            FoodRecord.user_id == current_user.id
+        ).first()
+
+        if not food_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="食物记录不存在"
+            )
+
+        # 获取图片base64
+        image_base64 = None
+        if food_record.image_url:
+            try:
+                image_base64 = await get_image_base64_from_url(food_record.image_url)
+            except Exception as e:
+                print(f"获取图片数据失败: {e}")
+
+        # 获取营养详情
+        nutrition_detail = db.query(NutritionDetail).filter(
+            NutritionDetail.food_record_id == record_id
+        ).first()
+
+        # 组装响应
+        result = {
+            "record_id": food_record.id,
+            "food_name": food_record.food_name or "",
+            "image_base64": image_base64,
+            "meal_type": food_record.meal_type,
+            "record_date": food_record.record_date.isoformat() if food_record.record_date else "",
+            "analysis_status": food_record.analysis_status,
+        }
+
+        if nutrition_detail:
+            result["nutrition_facts"] = {
+                "calories": float(nutrition_detail.calories) if nutrition_detail.calories else 0,
+                "protein": float(nutrition_detail.protein) if nutrition_detail.protein else 0,
+                "fat": float(nutrition_detail.fat) if nutrition_detail.fat else 0,
+                "carbohydrates": float(nutrition_detail.carbohydrates) if nutrition_detail.carbohydrates else 0,
+                "dietary_fiber": float(nutrition_detail.dietary_fiber) if nutrition_detail.dietary_fiber else 0,
+                "sugar": float(nutrition_detail.sugar) if nutrition_detail.sugar else 0,
+                "sodium": float(nutrition_detail.sodium) if nutrition_detail.sodium else 0,
+                "cholesterol": float(nutrition_detail.cholesterol) if nutrition_detail.cholesterol else 0,
+            }
+
+        return BaseResponse(success=True, data=result, message="获取成功")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"获取食物图片数据异常: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取图片数据失败: {str(e)}"
         )
 
 

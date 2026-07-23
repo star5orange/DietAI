@@ -16,6 +16,8 @@ class PetStorage {
   static const _keyPetType = 'pet_type';
   static const _keyPetName = 'pet_name';
   static const _keyPetNames = 'pet_names'; // 新增：存储各皮肤名称
+  static const _keyCustomAvatarUrl = 'pet_custom_avatar_url';
+  static const _keyEmotionUrls = 'pet_emotion_urls';
   static const _keySkipHideConfirm = 'pet_skip_hide_confirm';
 
   final SharedPreferences _prefs;
@@ -98,6 +100,32 @@ class PetStorage {
   /// 设置各皮肤的独立命名
   set petNames(Map<String, String> v) {
     _prefs.setString(_keyPetNames, jsonEncode(v));
+  }
+
+  /// AI 生成的自定义头像 URL（用于真实宠物形象同步到桌宠）
+  String? get customAvatarUrl => _prefs.getString(_keyCustomAvatarUrl);
+  set customAvatarUrl(String? v) {
+    if (v != null) {
+      _prefs.setString(_keyCustomAvatarUrl, v);
+    } else {
+      _prefs.remove(_keyCustomAvatarUrl);
+    }
+  }
+
+  /// AI 生成的情绪变体 URL 映射 (happy/normal/hungry/weak → url)
+  Map<String, String> get emotionUrls {
+    final jsonStr = _prefs.getString(_keyEmotionUrls);
+    if (jsonStr == null || jsonStr.isEmpty) return {};
+    try {
+      final Map<String, dynamic> decoded = jsonDecode(jsonStr);
+      return decoded.map((key, value) => MapEntry(key, value.toString()));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  set emotionUrls(Map<String, String> v) {
+    _prefs.setString(_keyEmotionUrls, jsonEncode(v));
   }
 
   bool get skipHideConfirm => _prefs.getBool(_keySkipHideConfirm) ?? false;

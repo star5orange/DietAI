@@ -30,7 +30,7 @@ async def _resolve_deep_chat_params(
     request: Request,
     message: str,
     session_id: Optional[str],
-) -> tuple[str, Optional[str]]:
+) -> tuple[str, Optional[str], Optional[str]]:
     body: dict[str, Any] = {}
     content_type = request.headers.get("content-type", "") if request else ""
 
@@ -45,7 +45,8 @@ async def _resolve_deep_chat_params(
     except Exception:
         body = {}
 
-    return str(body.get("message", message) or ""), body.get("session_id", session_id)
+    session_type = str(body.get("session_type", "")) if body.get("session_type") is not None else None
+    return str(body.get("message", message) or ""), body.get("session_id", session_id), session_type
 
 
 def _get_agent():
@@ -77,24 +78,58 @@ async def deep_chat(
 
     支持文字消息，Agent 自动规划任务并调用工具。
     返回 SSE 流式响应。
-    """
-    message, session_id = await _resolve_deep_chat_params(request, message, session_id)
 
-    # Milestone 2: 加载 AI 顾问风格
+    session_type 区分：
+    - None / "1"~"5"：人类营养师模式，注入人类顾问风格 Prompt
+    - "6"：宠物健康顾问模式，注入独立宠物 System Prompt + 宠物顾问风格 Prompt
+    """
+    message, session_id, session_type = await _resolve_deep_chat_params(request, message, session_id)
+    is_pet_session = (session_type == "6")
+
+    # 根据 session_type 加载不同的 System Prompt
     advisor_prompt = ""
-    try:
-        from shared.services.advisor_service import get_advisor_settings
-        from agent.diet_deep_agent.tools.advisor_style_prompt_manager import build_style_prompt
-        settings = get_advisor_settings(next(get_db()), current_user.id)
-        if settings:
-            advisor_prompt = build_style_prompt(
-                advisor_style=settings.get("advisor_style", "nutritionist"),
-                focus_goal=settings.get("focus_goal"),
-                focus_nutrient=settings.get("focus_nutrient"),
-                response_style=settings.get("response_style", "detailed")
-            )
-    except Exception:
-        pass
+
+    if is_pet_session:
+        # --- 宠物健康顾问模式 ---
+        # 使用完全独立的宠物 System Prompt + 宠物专属顾问风格
+        from agent.diet_deep_agent.prompts.pet_health_prompts import PET_ONLY_SYSTEM_PROMPT
+        advisor_prompt = PET_ONLY_SYSTEM_PROMPT
+
+        # 叠加宠物专属顾问风格
+        try:
+            from shared.services.advisor_service import get_advisor_settings
+            from agent.diet_deep_agent.tools.advisor_style_prompt_manager import build_pet_style_prompt
+            settings = get_advisor_settings(next(get_db()), current_user.id)
+            if settings:
+                pet_style_prompt = build_pet_style_prompt(
+                    pet_advisor_style=settings.get("pet_advisor_style", "vet_assistant"),
+                    focus_goal=settings.get("pet_focus_goal"),
+                    response_style=settings.get("response_style", "detailed")
+                )
+                advisor_prompt += "\n\n" + pet_style_prompt
+        except Exception:
+            pass
+    else:
+        # --- 人类营养师模式 ---
+        # 注入完整的 DIET_DEEP_SYSTEM_PROMPT（已从 Agent 烘焙中移除，改为此处动态注入）
+        from agent.diet_deep_agent.prompts import DIET_DEEP_SYSTEM_PROMPT
+        advisor_prompt = DIET_DEEP_SYSTEM_PROMPT
+
+        # 叠加人类顾问风格
+        try:
+            from shared.services.advisor_service import get_advisor_settings
+            from agent.diet_deep_agent.tools.advisor_style_prompt_manager import build_style_prompt
+            settings = get_advisor_settings(next(get_db()), current_user.id)
+            if settings:
+                style_prompt = build_style_prompt(
+                    advisor_style=settings.get("advisor_style", "nutritionist"),
+                    focus_goal=settings.get("focus_goal"),
+                    focus_nutrient=settings.get("focus_nutrient"),
+                    response_style=settings.get("response_style", "detailed")
+                )
+                advisor_prompt += "\n\n" + style_prompt
+        except Exception:
+            pass
 
     async def generate_response() -> AsyncGenerator[str, None]:
         try:
@@ -111,6 +146,7 @@ async def deep_chat(
                 "configurable": {
                     "thread_id": thread_id,
                     "user_id": str(current_user.id),
+                    "is_pet_session": is_pet_session,
                 }
             }
 
@@ -152,6 +188,7 @@ async def deep_chat(
 
 @router.post("/analyze")
 async def deep_analyze(
+    request: Request,
     image: UploadFile = File(...),
     message: str = Form("帮我分析这张食物图片"),
     current_user: user_models.User = Depends(get_current_user),
@@ -168,21 +205,51 @@ async def deep_analyze(
     image_bytes = await image.read()
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-    # Milestone 2: 加载 AI 顾问风格
+    # 解析 session_type（与 /chat 一致）
+    _, _, session_type = await _resolve_deep_chat_params(request, message, None)
+    is_pet_session = (session_type == "6")
+
+    # 根据 session_type 加载不同的 System Prompt
     advisor_prompt = ""
-    try:
-        from shared.services.advisor_service import get_advisor_settings
-        from agent.diet_deep_agent.tools.advisor_style_prompt_manager import build_style_prompt
-        settings = get_advisor_settings(next(get_db()), current_user.id)
-        if settings:
-            advisor_prompt = build_style_prompt(
-                advisor_style=settings.get("advisor_style", "nutritionist"),
-                focus_goal=settings.get("focus_goal"),
-                focus_nutrient=settings.get("focus_nutrient"),
-                response_style=settings.get("response_style", "detailed")
-            )
-    except Exception:
-        pass
+
+    if is_pet_session:
+        # --- 宠物健康顾问模式 ---
+        from agent.diet_deep_agent.prompts.pet_health_prompts import PET_ONLY_SYSTEM_PROMPT
+        advisor_prompt = PET_ONLY_SYSTEM_PROMPT
+        try:
+            from shared.services.advisor_service import get_advisor_settings
+            from agent.diet_deep_agent.tools.advisor_style_prompt_manager import build_pet_style_prompt
+            settings = get_advisor_settings(next(get_db()), current_user.id)
+            if settings:
+                pet_style_prompt = build_pet_style_prompt(
+                    pet_advisor_style=settings.get("pet_advisor_style", "vet_assistant"),
+                    focus_goal=settings.get("pet_focus_goal"),
+                    response_style=settings.get("response_style", "detailed")
+                )
+                advisor_prompt += "\n\n" + pet_style_prompt
+        except Exception:
+            pass
+    else:
+        # --- 人类营养师模式 ---
+        # 注入完整的 DIET_DEEP_SYSTEM_PROMPT（已从 Agent 烘焙中移除，改为此处动态注入）
+        from agent.diet_deep_agent.prompts import DIET_DEEP_SYSTEM_PROMPT
+        advisor_prompt = DIET_DEEP_SYSTEM_PROMPT
+
+        # 叠加人类顾问风格
+        try:
+            from shared.services.advisor_service import get_advisor_settings
+            from agent.diet_deep_agent.tools.advisor_style_prompt_manager import build_style_prompt
+            settings = get_advisor_settings(next(get_db()), current_user.id)
+            if settings:
+                style_prompt = build_style_prompt(
+                    advisor_style=settings.get("advisor_style", "nutritionist"),
+                    focus_goal=settings.get("focus_goal"),
+                    focus_nutrient=settings.get("focus_nutrient"),
+                    response_style=settings.get("response_style", "detailed")
+                )
+                advisor_prompt += "\n\n" + style_prompt
+        except Exception:
+            pass
 
     async def generate_response() -> AsyncGenerator[str, None]:
         try:
@@ -205,6 +272,7 @@ async def deep_analyze(
                 "configurable": {
                     "thread_id": thread_id,
                     "user_id": str(current_user.id),
+                    "is_pet_session": is_pet_session,
                 }
             }
 

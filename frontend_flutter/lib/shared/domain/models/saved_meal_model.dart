@@ -87,13 +87,12 @@ class SavedMeal {
   final String? imageUrl;
   final String? category;
   final List<String>? tags;
-  final bool isPublic;
+  final String source;
   final int usageCount;
   final int favoriteCount;
   final String createdAt;
   final String updatedAt;
   final SavedMealNutrition? nutrition;
-  final bool? isFavorited;
 
   const SavedMeal({
     required this.id,
@@ -102,13 +101,12 @@ class SavedMeal {
     this.imageUrl,
     this.category,
     this.tags,
-    required this.isPublic,
+    this.source = 'manual',
     required this.usageCount,
     required this.favoriteCount,
     required this.createdAt,
     required this.updatedAt,
     this.nutrition,
-    this.isFavorited,
   });
 
   factory SavedMeal.fromJson(Map<String, dynamic> json) {
@@ -119,15 +117,14 @@ class SavedMeal {
       imageUrl: json['image_url'],
       category: json['category'],
       tags: json['tags'] != null ? List<String>.from(json['tags']) : null,
-      isPublic: json['is_public'] ?? false,
+      source: json['source'] ?? 'manual',
       usageCount: json['usage_count'] ?? 0,
       favoriteCount: json['favorite_count'] ?? 0,
       createdAt: json['created_at'] ?? '',
       updatedAt: json['updated_at'] ?? '',
-      nutrition: json['nutrition'] != null 
+      nutrition: json['nutrition'] != null
           ? SavedMealNutrition.fromJson(json['nutrition'])
           : null,
-      isFavorited: json['is_favorited'],
     );
   }
 
@@ -139,13 +136,12 @@ class SavedMeal {
       'image_url': imageUrl,
       'category': category,
       'tags': tags,
-      'is_public': isPublic,
+      'source': source,
       'usage_count': usageCount,
       'favorite_count': favoriteCount,
       'created_at': createdAt,
       'updated_at': updatedAt,
       'nutrition': nutrition?.toJson(),
-      'is_favorited': isFavorited,
     };
   }
 
@@ -174,11 +170,11 @@ class SavedMeal {
   /// 获取营养信息摘要
   String get nutritionSummary {
     if (nutrition == null) return '无营养信息';
-    
+
     return '${nutrition!.calories.round()}kcal | '
-           '蛋白质${nutrition!.protein.round()}g | '
-           '脂肪${nutrition!.fat.round()}g | '
-           '碳水${nutrition!.carbohydrates.round()}g';
+        '蛋白质${nutrition!.protein.round()}g | '
+        '脂肪${nutrition!.fat.round()}g | '
+        '碳水${nutrition!.carbohydrates.round()}g';
   }
 }
 
@@ -189,7 +185,6 @@ class SavedMealCreate {
   final String? imageUrl;
   final String? category;
   final List<String>? tags;
-  final bool isPublic;
   final SavedMealNutrition nutrition;
 
   const SavedMealCreate({
@@ -198,7 +193,6 @@ class SavedMealCreate {
     this.imageUrl,
     this.category,
     this.tags,
-    required this.isPublic,
     required this.nutrition,
   });
 
@@ -209,7 +203,6 @@ class SavedMealCreate {
       imageUrl: json['image_url'],
       category: json['category'],
       tags: json['tags'] != null ? List<String>.from(json['tags']) : null,
-      isPublic: json['is_public'] ?? false,
       nutrition: SavedMealNutrition.fromJson(json['nutrition']),
     );
   }
@@ -221,7 +214,6 @@ class SavedMealCreate {
       'image_url': imageUrl,
       'category': category,
       'tags': tags,
-      'is_public': isPublic,
       'nutrition': nutrition.toJson(),
     };
   }
@@ -234,7 +226,6 @@ class SavedMealUpdate {
   final String? imageUrl;
   final String? category;
   final List<String>? tags;
-  final bool? isPublic;
   final SavedMealNutrition? nutrition;
 
   const SavedMealUpdate({
@@ -243,7 +234,6 @@ class SavedMealUpdate {
     this.imageUrl,
     this.category,
     this.tags,
-    this.isPublic,
     this.nutrition,
   });
 
@@ -254,8 +244,7 @@ class SavedMealUpdate {
       imageUrl: json['image_url'],
       category: json['category'],
       tags: json['tags'] != null ? List<String>.from(json['tags']) : null,
-      isPublic: json['is_public'],
-      nutrition: json['nutrition'] != null 
+      nutrition: json['nutrition'] != null
           ? SavedMealNutrition.fromJson(json['nutrition'])
           : null,
     );
@@ -268,7 +257,6 @@ class SavedMealUpdate {
       'image_url': imageUrl,
       'category': category,
       'tags': tags,
-      'is_public': isPublic,
       'nutrition': nutrition?.toJson(),
     };
   }
@@ -285,7 +273,7 @@ enum MealCategory {
   dessert('dessert', '甜品');
 
   const MealCategory(this.value, this.displayName);
-  
+
   final String value;
   final String displayName;
 
@@ -296,6 +284,8 @@ enum MealCategory {
     return null;
   }
 
-  static List<String> get allValues => MealCategory.values.map((e) => e.value).toList();
-  static List<String> get allDisplayNames => MealCategory.values.map((e) => e.displayName).toList();
+  static List<String> get allValues =>
+      MealCategory.values.map((e) => e.value).toList();
+  static List<String> get allDisplayNames =>
+      MealCategory.values.map((e) => e.displayName).toList();
 }

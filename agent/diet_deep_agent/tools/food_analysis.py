@@ -22,6 +22,67 @@ async def _get_langgraph_client():
     return get_client(url=settings.ai_service_url)
 
 
+async def _load_user_preferences(user_id: int) -> dict:
+    """从数据库加载用户的过敏原、疾病和健康目标等偏好数据"""
+    try:
+        from shared.models.database import SessionLocal
+        from shared.models.user_models import User, UserProfile, Disease, Allergy, HealthGoal
+
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return {}
+
+            dietary_restrictions = []
+
+            # 加载过敏原
+            allergies = db.query(Allergy).filter(Allergy.user_id == user_id).all()
+            for a in allergies:
+                dietary_restrictions.append({
+                    "type": "allergy",
+                    "allergen": a.allergen_name,
+                    "severity": a.severity_level or 1,
+                    "reaction": a.reaction_description or "",
+                })
+
+            # 加载疾病
+            diseases = db.query(Disease).filter(Disease.user_id == user_id).all()
+            for d in diseases:
+                dietary_restrictions.append({
+                    "type": "disease",
+                    "disease": d.disease_name,
+                    "severity": d.severity_level or 1,
+                    "is_current": d.is_current or False,
+                })
+
+            # 加载健康目标
+            goals = db.query(HealthGoal).filter(
+                HealthGoal.user_id == user_id,
+                HealthGoal.status == 1,
+            ).first()
+
+            health_goals = {}
+            if goals:
+                if goals.goal_type:
+                    health_goals["goal_type"] = goals.goal_type
+                if goals.target_weight:
+                    health_goals["target_weight"] = float(goals.target_weight)
+                if goals.daily_calorie_target:
+                    health_goals["daily_calorie_target"] = int(goals.daily_calorie_target)
+
+            return {
+                "dietary_restrictions": dietary_restrictions,
+                "health_goals": health_goals,
+                "language": "zh-CN",
+            }
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"加载用户偏好失败: {e}")
+        return {"language": "zh-CN"}
+
+
 @tool
 async def analyze_food_image(image_data: str, user_id: int) -> dict[str, Any]:
     """分析食物图片，返回完整营养数据和用户特定警告。
@@ -39,6 +100,9 @@ async def analyze_food_image(image_data: str, user_id: int) -> dict[str, Any]:
     try:
         client = await _get_langgraph_client()
 
+        # 加载用户偏好（过敏原、疾病、健康目标等）
+        user_preferences = await _load_user_preferences(user_id)
+
         # 使用 nutrition_agent 分析
         assistant = await client.assistants.create(
             graph_id="nutrition_agent",
@@ -51,7 +115,7 @@ async def analyze_food_image(image_data: str, user_id: int) -> dict[str, Any]:
         async for chunk in client.runs.stream(
             assistant_id=assistant["assistant_id"],
             thread_id=thread["thread_id"],
-            input={"image_data": image_data, "user_preferences": {}},
+            input={"image_data": image_data, "user_preferences": user_preferences},
             stream_mode="values",
         ):
             if chunk.data and chunk.data.get("current_step") == "completed":

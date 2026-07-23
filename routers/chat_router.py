@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, date, timedelta
 from typing import Optional, Dict, Any, List, AsyncGenerator
 import json
+import logging
 
 from shared.models.database import get_db
 from shared.models import schemas, user_models, conversation_models
@@ -17,6 +18,8 @@ from shared.config.redis_config import cache_service
 from langgraph_sdk import get_client
 from agent.chat_agent import chat_graph
 from agent.common_utils.configuration import get_agent_model_config
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["AI对话"])
 
@@ -68,10 +71,12 @@ async def _run_chat_agent(
     current_user: user_models.User,
     db: Session,
 ) -> tuple[str, dict[str, Any], list[str]]:
-    user_context, _ = await get_user_context(current_user.id, db)
+    user_context, _ = await get_user_context(current_user.id, db, session_type)
     recent_meals = await get_recent_meals(current_user.id, db)
     health_goals = await get_health_goals(current_user.id, db)
     weekly_trends = await get_weekly_trends(current_user.id, db)
+    diseases = await get_user_diseases(current_user.id, db)
+    allergies = await get_user_allergies(current_user.id, db)
     conversation_history = await get_conversation_history(session_id, db)
     if (
         conversation_history
@@ -90,6 +95,8 @@ async def _run_chat_agent(
             "recent_meals": recent_meals,
             "health_goals": health_goals,
             "weekly_trends": weekly_trends,
+            "diseases": diseases,
+            "allergies": allergies,
             "conversation_history": conversation_history,
         },
         config={"configurable": get_agent_model_config(include_vision=False)},
@@ -121,6 +128,7 @@ async def send_chat_message_stream(
     session_id, message, session_type = await _resolve_chat_params(
         request, session_id, message, session_type
     )
+    logger.info(f"[CHAT-ROUTER] send-message-stream session_type={session_type}, pet_id={pet_id}, msg_len={len(message)}")
     
     async def generate_response() -> AsyncGenerator[str, None]:
         try:
@@ -163,10 +171,12 @@ async def send_chat_message_stream(
             db.refresh(user_message)
 
             # 3. 获取用户上下文数据
-            user_context, advisor_system_prompt = await get_user_context(current_user.id, db)
+            user_context, advisor_system_prompt = await get_user_context(current_user.id, db, session_type)
             recent_meals = await get_recent_meals(current_user.id, db)
             health_goals = await get_health_goals(current_user.id, db)
             weekly_trends = await get_weekly_trends(current_user.id, db)
+            diseases = await get_user_diseases(current_user.id, db)
+            allergies = await get_user_allergies(current_user.id, db)
             conversation_history = await get_conversation_history(session.id, db)
 
             # 提取人群标签和体质类型
@@ -216,6 +226,8 @@ async def send_chat_message_stream(
                     "weekly_trends": weekly_trends,
                     "crowd_tag": crowd_tag,
                     "constitution_type": constitution_type,
+                    "diseases": diseases,
+                    "allergies": allergies,
                     "conversation_history": conversation_history,
                     "advisor_system_prompt": advisor_system_prompt
                 },
@@ -241,10 +253,14 @@ async def send_chat_message_stream(
                     last_response_len = len(response_content)
                     yield f"data: {json.dumps({'type': 'content', 'content': new_content})}\n\n"
 
-            # 6. 合规检查：扫描是否有情感诱导关键词
+            # 6. 合规检查：根据 session_type 使用对应的合规检查
             try:
-                from agent.diet_deep_agent.tools.advisor_style_prompt_manager import check_compliance
-                compliance_result = check_compliance(full_response)
+                if session_type == 6:
+                    from agent.diet_deep_agent.tools.advisor_style_prompt_manager import check_pet_compliance
+                    compliance_result = check_pet_compliance(full_response)
+                else:
+                    from agent.diet_deep_agent.tools.advisor_style_prompt_manager import check_compliance
+                    compliance_result = check_compliance(full_response)
                 if not compliance_result.get("compliant", True):
                     logger.warning(f"Compliance violation in chat response: {compliance_result.get('violated_keyword')}")
             except Exception:
@@ -346,10 +362,12 @@ async def send_chat_message(
         db.refresh(user_message)
 
         # 3. 获取用户上下文数据
-        user_context, advisor_system_prompt = await get_user_context(current_user.id, db)
+        user_context, advisor_system_prompt = await get_user_context(current_user.id, db, session_type)
         recent_meals = await get_recent_meals(current_user.id, db)
         health_goals = await get_health_goals(current_user.id, db)
         weekly_trends = await get_weekly_trends(current_user.id, db)
+        diseases = await get_user_diseases(current_user.id, db)
+        allergies = await get_user_allergies(current_user.id, db)
         conversation_history = await get_conversation_history(session.id, db)
 
         # 提取人群标签和体质类型
@@ -395,6 +413,8 @@ async def send_chat_message(
                 "weekly_trends": weekly_trends,
                 "crowd_tag": crowd_tag,
                 "constitution_type": constitution_type,
+                "diseases": diseases,
+                "allergies": allergies,
                 "conversation_history": conversation_history,
                 "advisor_system_prompt": advisor_system_prompt
             },
@@ -531,7 +551,7 @@ async def get_session_context(
     
     try:
         # 获取上下文数据
-        user_context, _ = await get_user_context(current_user.id, db)
+        user_context, _ = await get_user_context(current_user.id, db, session.session_type)
         recent_meals = await get_recent_meals(current_user.id, db)
         health_goals = await get_health_goals(current_user.id, db)
         
@@ -558,8 +578,8 @@ async def get_session_context(
 
 
 # 辅助函数
-async def get_user_context(user_id: int, db: Session):
-    """获取用户上下文信息"""
+async def get_user_context(user_id: int, db: Session, session_type: int = 0):
+    """获取用户上下文信息，根据 session_type 构建对应的 AI 顾问风格 Prompt"""
     user = db.query(user_models.User).filter(user_models.User.id == user_id).first()
     if not user:
         return {}, ""
@@ -580,25 +600,49 @@ async def get_user_context(user_id: int, db: Session):
         "constitution_type": user_profile.constitution_type if user_profile else None,
     }
     
-    # Milestone 2: 获取 AI 顾问风格设置
+    is_pet_session = (session_type == 6)
+
+    # 根据 session_type 构建不同的 AI 顾问风格 Prompt
     advisor_system_prompt = ""
     try:
         from shared.services.advisor_service import get_advisor_settings
-        from agent.diet_deep_agent.tools.advisor_style_prompt_manager import build_style_prompt
         advisor_settings = get_advisor_settings(db, user_id)
         if advisor_settings:
-            context["advisor_style"] = advisor_settings.get("advisor_style")
-            context["advisor_focus_goal"] = advisor_settings.get("focus_goal")
-            context["advisor_focus_nutrient"] = advisor_settings.get("focus_nutrient")
-            context["advisor_response_style"] = advisor_settings.get("response_style")
-            # 构建风格化 System Prompt（注入到 Agent 中）
-            advisor_system_prompt = build_style_prompt(
-                advisor_style=advisor_settings.get("advisor_style", "nutritionist"),
-                focus_goal=advisor_settings.get("focus_goal"),
-                focus_nutrient=advisor_settings.get("focus_nutrient"),
-                response_style=advisor_settings.get("response_style", "detailed")
-            )
+            if is_pet_session:
+                # --- 宠物健康顾问模式：使用宠物专属风格 ---
+                from agent.diet_deep_agent.tools.advisor_style_prompt_manager import build_pet_style_prompt
+                context["pet_advisor_style"] = advisor_settings.get("pet_advisor_style")
+                context["pet_focus_goal"] = advisor_settings.get("pet_focus_goal")
+                context["advisor_response_style"] = advisor_settings.get("response_style")
+                advisor_system_prompt = build_pet_style_prompt(
+                    pet_advisor_style=advisor_settings.get("pet_advisor_style", "vet_assistant"),
+                    focus_goal=advisor_settings.get("pet_focus_goal"),
+                    response_style=advisor_settings.get("response_style", "detailed")
+                )
+                logger.info(f"[PET-CHAT] session_type={session_type}, is_pet={True}, "
+                            f"pet_style={advisor_settings.get('pet_advisor_style', 'vet_assistant')}, "
+                            f"prompt_len={len(advisor_system_prompt)}")
+            else:
+                # --- 人类营养师模式：使用人类顾问风格 ---
+                from agent.diet_deep_agent.tools.advisor_style_prompt_manager import build_style_prompt
+                context["advisor_style"] = advisor_settings.get("advisor_style")
+                context["advisor_focus_goal"] = advisor_settings.get("focus_goal")
+                context["advisor_focus_nutrient"] = advisor_settings.get("focus_nutrient")
+                context["advisor_response_style"] = advisor_settings.get("response_style")
+                advisor_system_prompt = build_style_prompt(
+                    advisor_style=advisor_settings.get("advisor_style", "nutritionist"),
+                    focus_goal=advisor_settings.get("focus_goal"),
+                    focus_nutrient=advisor_settings.get("focus_nutrient"),
+                    response_style=advisor_settings.get("response_style", "detailed")
+                )
+                logger.info(f"[HUMAN-CHAT] session_type={session_type}, is_pet={False}, "
+                            f"style={advisor_settings.get('advisor_style', 'nutritionist')}, "
+                            f"prompt_len={len(advisor_system_prompt)}")
+        else:
+            logger.info(f"[CHAT] session_type={session_type}, is_pet={is_pet_session}, "
+                        f"no_advisor_settings")
     except Exception:
+        logger.warning(f"[CHAT] Failed to build advisor prompt for session_type={session_type}", exc_info=True)
         pass  # 非阻塞，获取失败不影响主流程
     
     return {k: v for k, v in context.items() if v is not None}, advisor_system_prompt
@@ -783,6 +827,50 @@ async def get_conversation_history(session_id: int, db: Session, limit: int = 10
         })
     
     return history
+
+
+async def get_user_diseases(user_id: int, db: Session) -> List[Dict[str, Any]]:
+    """获取用户疾病信息"""
+    try:
+        diseases = db.query(user_models.Disease).filter(
+            user_models.Disease.user_id == user_id
+        ).all()
+
+        return [
+            {
+                "disease_name": d.disease_name,
+                "severity_level": d.severity_level,
+                "is_current": d.is_current,
+            }
+            for d in diseases
+        ]
+    except Exception as e:
+        logger.warning(f"获取用户疾病信息失败: {e}")
+        return []
+
+
+async def get_user_allergies(user_id: int, db: Session) -> List[Dict[str, Any]]:
+    """获取用户过敏信息"""
+    try:
+        allergies = db.query(user_models.Allergy).filter(
+            user_models.Allergy.user_id == user_id
+        ).all()
+
+        allergen_type_map = {1: "食物", 2: "药物", 3: "环境", 4: "其他"}
+
+        return [
+            {
+                "allergen_name": a.allergen_name,
+                "allergen_type": a.allergen_type,
+                "allergen_type_name": allergen_type_map.get(a.allergen_type, "未知"),
+                "severity_level": a.severity_level,
+                "reaction_description": a.reaction_description,
+            }
+            for a in allergies
+        ]
+    except Exception as e:
+        logger.warning(f"获取用户过敏信息失败: {e}")
+        return []
 
 
 @router.get("/sessions", response_model=schemas.BaseResponse)

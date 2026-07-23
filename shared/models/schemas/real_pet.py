@@ -8,7 +8,7 @@ from datetime import datetime, date
 
 class PetProfileCreate(BaseModel):
     name: str = Field(..., max_length=50)
-    species: str = Field(..., description="cat/dog/other")
+    species: str = Field(..., description="cat / dog / rabbit / hamster / bird / fish / turtle / other")
     breed: Optional[str] = Field(None, max_length=100)
     gender: Optional[str] = Field(None, description="male/female")
     birth_date: Optional[date] = None
@@ -117,12 +117,25 @@ class PetFoodOCRResult(BaseModel):
     raw_text: Optional[str] = None
 
 
+class PetFoodSaveRequest(BaseModel):
+    """OCR 结果保存到食品库的请求"""
+    food_name: str = Field(..., description="食品名称")
+    brand: Optional[str] = None
+    category: Optional[str] = None
+    suitable_species: Optional[str] = None
+    calories_per_100g: Optional[float] = None
+    protein_per_100g: Optional[float] = None
+    fat_per_100g: Optional[float] = None
+    carbs_per_100g: Optional[float] = None
+
+
 # ========== AI 形象生成 ==========
 
 class GenerateAvatarRequest(BaseModel):
     mode: str = Field(..., description="photo/description")
     photo: Optional[str] = Field(None, description="Base64 编码的宠物照片")
     description: Optional[str] = Field(None, description="文字描述")
+    style: str = Field("cartoon", description="风格：cartoon/anime/realistic")
 
 
 class RegenerateEmotionRequest(BaseModel):

@@ -1,31 +1,67 @@
 """M3 宠物健康定时任务：疫苗/驱虫到期提醒 + 体重异常检测"""
 import logging
-from datetime import date, datetime, timedelta
-from sqlalchemy.orm import Session
+from datetime import date, timedelta
+
 from shared.models.database import SessionLocal
 from shared.models.pet_models import PetProfile, PetVaccineRecord, PetDewormingRecord, PetWeightRecord
 
 logger = logging.getLogger(__name__)
 
 
+def _send_push_sync(user_id: int, title: str, body: str):
+    """从同步任务中发送 FCM 推送（在独立线程的事件循环中运行异步函数）"""
+    import asyncio
+    import concurrent.futures
+
+    def _run():
+        new_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(new_loop)
+        db = SessionLocal()
+        try:
+            from shared.services.push_service import send_push_to_user
+            count = new_loop.run_until_complete(
+                send_push_to_user(
+                    db=db,
+                    user_id=user_id,
+                    title=title,
+                    body=body,
+                    data={
+                        "reminder_type": "pet_health",
+                        "click_action": "FLUTTER_NOTIFICATION_CLICK",
+                    },
+                    reminder_type="pet_health",
+                )
+            )
+            if count > 0:
+                logger.info(f"[FCM推送成功] user={user_id}, type=pet_health, title={title}")
+        except Exception as e:
+            logger.error(f"[FCM推送失败] user={user_id}, error={e}")
+        finally:
+            new_loop.close()
+            db.close()
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_run)
+            future.result(timeout=30)
+    except Exception as e:
+        logger.error(f"FCM 推送线程异常: {e}")
+
+
 def check_pet_vaccine_reminders():
-    """每天检查疫苗/驱虫到期日期，到期前7天及已过期时创建提醒通知"""
+    """每天检查疫苗/驱虫到期日期，到期前7天及已过期时直接发送 FCM 推送"""
     db = SessionLocal()
     try:
         today = date.today()
-        # 检查未来7天内到期 + 已过期的
-        alert_start = today
         alert_end = today + timedelta(days=7)
 
-        # 疫苗到期检查：next_vaccination_date between [today, today+7] 或已过期
+        # 疫苗到期检查
         vaccines = db.query(PetVaccineRecord).filter(
             PetVaccineRecord.next_vaccination_date.isnot(None),
-            db.query(PetVaccineRecord).filter(
-                PetVaccineRecord.next_vaccination_date <= alert_end
-            ).exists()
+            PetVaccineRecord.next_vaccination_date <= alert_end
         ).all()
 
-        # 过滤掉今天之前且 >7天前已提醒过的（避免重复提醒已过期很久的）
+        push_count = 0
         for v in vaccines:
             if v.next_vaccination_date is None:
                 continue
@@ -40,7 +76,8 @@ def check_pet_vaccine_reminders():
                     msg = f"{pet.name} 的疫苗「{v.vaccine_name}」今日到期，请安排接种。"
                 else:
                     msg = f"{pet.name} 的疫苗「{v.vaccine_name}」将于{days_left}天后到期，请及时安排接种。"
-                _create_reminder(db, pet.user_id, pet.id, msg)
+                _send_push_sync(pet.user_id, "宠物疫苗提醒", msg)
+                push_count += 1
 
         # 驱虫到期检查
         dewormings = db.query(PetDewormingRecord).filter(
@@ -62,21 +99,22 @@ def check_pet_vaccine_reminders():
                     msg = f"{pet.name} 的{type_name}今日到期，请处理。"
                 else:
                     msg = f"{pet.name} 的{type_name}将于{days_left}天后到期，请及时处理。"
-                _create_reminder(db, pet.user_id, pet.id, msg)
+                _send_push_sync(pet.user_id, "宠物驱虫提醒", msg)
+                push_count += 1
 
-        total = (len([v for v in vaccines if v.next_vaccination_date and (v.next_vaccination_date - today).days >= -60]) +
-                 len([d for d in dewormings if d.next_treatment_date and (d.next_treatment_date - today).days >= -60]))
-        if total > 0:
-            logger.info(f"Pet vaccine/deworming reminders created: {total} total")
+        if push_count > 0:
+            logger.info(f"Pet vaccine/deworming push notifications sent: {push_count} total")
+        else:
+            logger.info("No pet vaccine/deworming reminders to send today")
 
     except Exception as e:
-        logger.error(f"check_pet_vaccine_reminders error: {e}")
+        logger.error(f"check_pet_vaccine_reminders error: {e}", exc_info=True)
     finally:
         db.close()
 
 
 def check_pet_weight_anomaly():
-    """每天检查宠物体重变化，连续2周异常（增长/下降>5%）时生成预警"""
+    """每天检查宠物体重变化，连续2周异常（增长/下降>5%）时发送 FCM 推送"""
     db = SessionLocal()
     try:
         pets = db.query(PetProfile).filter(PetProfile.is_active.is_(True)).all()
@@ -100,36 +138,10 @@ def check_pet_weight_anomaly():
             change_pct = (recent - oldest) / oldest * 100
             if abs(change_pct) > 5:
                 direction = "增长" if change_pct > 0 else "下降"
-                _create_reminder(db, pet.user_id, pet.id,
-                    f"⚠️ {pet.name} 近两周体重{direction}了 {abs(change_pct):.1f}%，建议关注宠物健康状况，必要时咨询兽医。")
+                msg = f"⚠ {pet.name} 近两周体重{direction}了 {abs(change_pct):.1f}%，建议关注宠物健康状况，必要时咨询兽医。"
+                _send_push_sync(pet.user_id, "宠物体重预警", msg)
 
     except Exception as e:
-        logger.error(f"check_pet_weight_anomaly error: {e}")
+        logger.error(f"check_pet_weight_anomaly error: {e}", exc_info=True)
     finally:
         db.close()
-
-
-def _create_reminder(db: Session, user_id: int, pet_id: int, message: str):
-    """通过 reminders 表创建宠物健康提醒
-
-    利用现有 Reminder 模型（reminders 表）：
-    - reminder_type='meal'（复用饮食类提醒通道）
-    - title 存简短标题，description 存完整消息
-    - remind_time 设为当前时间（即时提醒）
-    """
-    try:
-        from shared.models.reminder_models import Reminder
-        reminder = Reminder(
-            user_id=user_id,
-            reminder_type="meal",               # 复用「饮食」提醒通道
-            remind_time=datetime.now().time(),   # 即时提醒
-            repeat_days=0,                       # 不重复
-            is_enabled=True,
-            title="宠物健康提醒",
-            description=message,                 # 完整消息体
-        )
-        db.add(reminder)
-        db.commit()
-    except Exception as e:
-        logger.warning(f"Failed to create pet reminder: {e}")
-        db.rollback()

@@ -23,12 +23,12 @@ class CreateSavedMealModal extends StatefulWidget {
 class _CreateSavedMealModalState extends State<CreateSavedMealModal> {
   final SavedMealService _savedMealService = SavedMealService();
   final _formKey = GlobalKey<FormState>();
-  
+
   // 基本信息控制器
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _imageUrlController = TextEditingController();
-  
+
   // 营养信息控制器
   final _caloriesController = TextEditingController();
   final _proteinController = TextEditingController();
@@ -38,13 +38,12 @@ class _CreateSavedMealModalState extends State<CreateSavedMealModal> {
   final _sugarController = TextEditingController();
   final _sodiumController = TextEditingController();
   final _cholesterolController = TextEditingController();
-  
+
   // 状态变量
   String? _selectedCategory;
   List<String> _selectedTags = [];
-  bool _isPublic = false;
   bool _isLoading = false;
-  
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -98,12 +97,11 @@ class _CreateSavedMealModalState extends State<CreateSavedMealModal> {
             : null,
         category: _selectedCategory,
         tags: _selectedTags.isNotEmpty ? _selectedTags : null,
-        isPublic: _isPublic,
         nutrition: nutrition,
       );
 
       final result = await _savedMealService.createSavedMeal(mealData);
-      
+
       if (result.success && result.data != null) {
         widget.onMealCreated(result.data!);
         Navigator.pop(context);
@@ -124,7 +122,7 @@ class _CreateSavedMealModalState extends State<CreateSavedMealModal> {
 
   void _showTagSelector() {
     final recommendedTags = _savedMealService.getRecommendedTags();
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -266,7 +264,7 @@ class _CreateSavedMealModalState extends State<CreateSavedMealModal> {
                     // 基本信息
                     _buildSectionHeader('基本信息'),
                     const SizedBox(height: 16),
-                    
+
                     _buildTextField(
                       controller: _nameController,
                       label: '菜品名称',
@@ -278,18 +276,18 @@ class _CreateSavedMealModalState extends State<CreateSavedMealModal> {
                         return null;
                       },
                     ),
-                    
+
                     const SizedBox(height: 16),
-                    
+
                     _buildTextField(
                       controller: _descriptionController,
                       label: '菜品描述',
                       hintText: '请输入菜品描述（可选）',
                       maxLines: 3,
                     ),
-                    
+
                     const SizedBox(height: 16),
-                    
+
                     _buildTextField(
                       controller: _imageUrlController,
                       label: '图片链接',
@@ -415,18 +413,6 @@ class _CreateSavedMealModalState extends State<CreateSavedMealModal> {
 
                     const SizedBox(height: 24),
 
-                    // 公开设置
-                    _buildSwitchTile(
-                      title: '设为公开菜品',
-                      subtitle: '其他用户可以查看和收藏此菜品',
-                      value: _isPublic,
-                      onChanged: (value) {
-                        setState(() {
-                          _isPublic = value;
-                        });
-                      },
-                    ),
-
                     const SizedBox(height: 32),
                   ],
                 ),
@@ -454,7 +440,8 @@ class _CreateSavedMealModalState extends State<CreateSavedMealModal> {
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       )
                     : const Text(
@@ -652,50 +639,6 @@ class _CreateSavedMealModalState extends State<CreateSavedMealModal> {
             ),
           ),
       ],
-    );
-  }
-
-  Widget _buildSwitchTile({
-    required String title,
-    required String subtitle,
-    required bool value,
-    required Function(bool) onChanged,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSecondary,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: AppTextStyles.bodyLarge.copyWith(
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: AppTextStyles.bodySmall.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeColor: AppColors.primary,
-          ),
-        ],
-      ),
     );
   }
 }

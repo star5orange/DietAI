@@ -8,6 +8,7 @@ import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/presentation/widgets/error_handler.dart';
 import '../../../chat/presentation/pages/chat_page.dart';
 import '../../../home/presentation/widgets/cost_input_widget.dart'; // 导入消费输入组件
+import '../../../../services/saved_meal_service.dart';
 
 class FoodAnalysisPage extends StatefulWidget {
   final FoodRecord? foodRecord;
@@ -30,6 +31,10 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
   int _servingCount = 1;
   final FoodService _foodService = FoodService();
   final GoalTrackingService _goalService = GoalTrackingService();
+  final SavedMealService _savedMealService = SavedMealService();
+  bool _isSaving = false;
+  bool _hasSaved = false;
+  int? _savedMealId;
   String? _imageUrl;
   bool _isLoading = true;
   bool _hasError = false;
@@ -58,6 +63,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
   Map<String, dynamic> _nutritionFacts = {};
   Map<String, dynamic> _recommendations = {};
   String _imageDescription = '';
+  String _shortComment = '';
   String _foodName = '分析中...';
   double _totalCalories = 0.0;
   Map<String, double> _macronutrients = {
@@ -275,6 +281,11 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
       _imageDescription = data['image_description'];
     }
 
+    if (data['short_comment'] != null &&
+        data['short_comment'].toString().isNotEmpty) {
+      _shortComment = data['short_comment'].toString();
+    }
+
     if (data['nutrition_facts'] != null) {
       final nutritionFacts = data['nutrition_facts'] as Map<String, dynamic>;
       _totalCalories =
@@ -460,6 +471,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
     if (record.analysisResult != null) {
       final analysisResult = record.analysisResult!;
       _imageDescription = analysisResult.imageDescription;
+      _shortComment = analysisResult.shortComment ?? '';
 
       // 解析营养成分
       _totalCalories = analysisResult.nutritionFacts.totalCalories;
@@ -644,6 +656,11 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
             // 食物图片和基本信息
             _buildFoodImageHeader(),
 
+            if (_shortComment.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _buildShortCommentCard(),
+            ],
+
             const SizedBox(height: 12),
 
             // 卡路里和份量
@@ -679,6 +696,60 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
             ),
 
             const SizedBox(height: 100), // 底部按钮预留空间
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShortCommentCard() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF2BAF74), Color(0xFF1E8C5E)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF2BAF74).withValues(alpha: 0.25),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                LucideIcons.sparkles,
+                color: Colors.white,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                _shortComment,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  height: 1.4,
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -1017,6 +1088,91 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
     }
   }
 
+  Future<void> _saveToFavorites() async {
+    if (_isSaving || _currentRecord == null) return;
+    setState(() => _isSaving = true);
+
+    if (_hasSaved) {
+      // 取消收藏
+      try {
+        final result = await _savedMealService.deleteSavedMeal(_savedMealId!);
+        if (result.success) {
+          setState(() {
+            _hasSaved = false;
+            _savedMealId = null;
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text('已取消收藏'), duration: Duration(seconds: 2)),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(result.message.isEmpty ? '操作失败' : result.message),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text('取消收藏失败: $e'),
+                duration: const Duration(seconds: 2)),
+          );
+        }
+      }
+    } else {
+      // 保存收藏
+      try {
+        final result = await _savedMealService.createSavedMealFromRecord(
+          foodRecordId: _currentRecord!.id,
+          mealName: _foodName != '分析中...' ? _foodName : 'AI分析菜品',
+          description: _imageDescription.isNotEmpty
+              ? (_imageDescription.length > 200
+                  ? _imageDescription.substring(0, 200)
+                  : _imageDescription)
+              : null,
+        );
+        if (result.success && result.data != null) {
+          setState(() {
+            _hasSaved = true;
+            _savedMealId = result.data!.id;
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text('已保存到收藏'), duration: Duration(seconds: 2)),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(result.message.isEmpty ? '保存失败' : result.message),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text('保存失败: $e'),
+                duration: const Duration(seconds: 2)),
+          );
+        }
+      }
+    }
+
+    if (mounted) setState(() => _isSaving = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1068,17 +1224,28 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
             IconButton(
               icon: Container(
                 padding: const EdgeInsets.all(8),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF2BAF74),
+                decoration: BoxDecoration(
+                  color: _hasSaved
+                      ? const Color(0xFFF59E0B)
+                      : const Color(0xFF2BAF74),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  LucideIcons.bookmark,
-                  size: 16,
-                  color: Colors.white,
-                ),
+                child: _isSaving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(
+                        LucideIcons.bookmark,
+                        size: 16,
+                        color: Colors.white,
+                      ),
               ),
-              onPressed: () {},
+              onPressed: _isLoading ? null : _saveToFavorites,
             ),
           ],
         ],

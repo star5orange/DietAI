@@ -17,6 +17,7 @@ import '../../../../shared/presentation/widgets/error_handler.dart';
 import '../../../../shared/presentation/widgets/water_intake_widget.dart';
 import '../../../../shared/presentation/widgets/exercise_quick_add.dart';
 import '../../../../shared/presentation/widgets/solar_term_today_widget.dart';
+import '../../../../shared/utils/species_utils.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../widgets/food_record_modal.dart';
@@ -25,6 +26,7 @@ import '../../../chat/presentation/pages/chat_page.dart';
 import '../../../health/presentation/pages/exercise_record_page.dart';
 import '../../../pet/presentation/providers/pet_provider.dart';
 import '../../../pet/presentation/widgets/pet_health_score_card.dart';
+import '../../../pet/presentation/widgets/pet_avatar_display.dart';
 import '../../../pet/presentation/widgets/add_feeding_record_modal.dart';
 import '../../../pet/data/real_pet_api_service.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
@@ -85,6 +87,13 @@ class _HomePageState extends ConsumerState<HomePage> {
   List<SavedMeal> _favoriteMeals = [];
   CostStats? _weekCostStats;
   CostStats? _monthCostStats; // 月度统计（用于预算显示）
+
+  /// 从 pet 数据中解析 avatar_emotions
+  Map<String, String>? _parseEmotionUrls(Map<String, dynamic> pet) {
+    final emotions = pet['avatar_emotions'] as Map<String, dynamic>?;
+    if (emotions == null || emotions.isEmpty) return null;
+    return emotions.map((k, v) => MapEntry(k, v?.toString() ?? ''));
+  }
 
   @override
   void initState() {
@@ -413,12 +422,17 @@ class _HomePageState extends ConsumerState<HomePage> {
 
       if (!mounted) return;
 
-      // 饮食记录
+      // 饮食记录（仅保留今日记录）
       List<Map<String, dynamic>> records = [];
       if (feedingResult.isSuccess && feedingResult.data != null) {
         final raw = feedingResult.data!['records'] as List?;
         if (raw != null) {
-          records = raw.map((r) {
+          records = raw.where((r) {
+            // 过滤：只保留今日记录
+            final rt = (r as Map<String, dynamic>)['record_time'] as String?;
+            if (rt == null) return false;
+            return rt.startsWith(todayStr);
+          }).map((r) {
             final m = Map<String, dynamic>.from(r as Map);
             // 映射字段名以兼容现有 UI
             m['food'] = m['food_name'] ?? '';
@@ -482,7 +496,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       if (weightResult.isSuccess && weightResult.data != null) {
         final weightList = weightResult.data!['records'] as List?;
         if (weightList != null && weightList.isNotEmpty) {
-          final latest = Map<String, dynamic>.from(weightList.last as Map);
+          final latest = Map<String, dynamic>.from(weightList.first as Map);
           latestWeight = (latest['weight'] as num?)?.toDouble();
         }
       }
@@ -596,11 +610,15 @@ class _HomePageState extends ConsumerState<HomePage> {
                 color: AppColors.primarySurface,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Center(
-                child: Icon(
-                  species == 'cat' ? Icons.pets : Icons.pets,
-                  color: AppColors.primary,
-                  size: 24,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: PetAvatarDisplay(
+                  emotion: 'normal',
+                  size: 44,
+                  breed: breed,
+                  species: species,
+                  customImageUrl: pet['avatar_url'] as String?,
+                  emotionUrls: _parseEmotionUrls(pet),
                 ),
               ),
             ),
@@ -1064,23 +1082,42 @@ class _HomePageState extends ConsumerState<HomePage> {
   double _estimateCalorieTarget(Map<String, dynamic> pet) {
     final weight = _petLatestWeight;
     final species = pet['species'] as String? ?? '';
-    if (weight == null) return species == 'cat' ? 250.0 : 350.0;
-    // 粗略估算：猫每天约 50 kcal/kg，狗约 40 kcal/kg
-    return species == 'cat' ? weight * 50 : weight * 40;
+    if (weight == null) {
+      return _defaultValue(species, 250.0, 350.0, 300.0);
+    }
+    return weight * _speciesFactor(species, 50, 40, 45);
   }
 
   double _estimateProteinTarget(Map<String, dynamic> pet) {
     final weight = _petLatestWeight;
     final species = pet['species'] as String? ?? '';
-    if (weight == null) return species == 'cat' ? 20.0 : 25.0;
-    return species == 'cat' ? weight * 4.5 : weight * 3.2;
+    if (weight == null) {
+      return _defaultValue(species, 20.0, 25.0, 22.0);
+    }
+    return weight * _speciesFactor(species, 4.5, 3.2, 3.8);
   }
 
   double _estimateFatTarget(Map<String, dynamic> pet) {
     final weight = _petLatestWeight;
     final species = pet['species'] as String? ?? '';
-    if (weight == null) return species == 'cat' ? 10.0 : 14.0;
-    return species == 'cat' ? weight * 1.8 : weight * 1.4;
+    if (weight == null) {
+      return _defaultValue(species, 10.0, 14.0, 12.0);
+    }
+    return weight * _speciesFactor(species, 1.8, 1.4, 1.6);
+  }
+
+  double _speciesFactor(
+      String species, double catVal, double dogVal, double otherVal) {
+    if (species == 'cat') return catVal;
+    if (species == 'dog') return dogVal;
+    return otherVal;
+  }
+
+  double _defaultValue(
+      String species, double catVal, double dogVal, double otherVal) {
+    if (species == 'cat') return catVal;
+    if (species == 'dog') return dogVal;
+    return otherVal;
   }
 
   void _showAddPetFeedingModal() async {
@@ -2200,6 +2237,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           // 食物名称和营养信息
           Expanded(
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(

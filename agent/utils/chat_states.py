@@ -21,6 +21,8 @@ class ChatState(TypedDict):
     weekly_trends: Optional[Dict]  # 一周饮食趋势数据
     crowd_tag: Optional[str]  # 人群标签（如"减脂,健身"）
     constitution_type: Optional[str]  # 体质类型（如"气虚","痰湿"）
+    diseases: Optional[List[Dict]]  # 疾病信息 [{disease_name, severity_level, is_current}, ...]
+    allergies: Optional[List[Dict]]  # 过敏信息 [{allergen_name, severity_level, allergen_type}, ...]
     advisor_system_prompt: Optional[str]  # AI顾问风格 System Prompt（M2）
     pet_context: Optional[Dict]  # 宠物档案信息（品种、年龄、体重等）
 
@@ -51,5 +53,7 @@ class ChatInputState(TypedDict):
     weekly_trends: Optional[Dict]
     crowd_tag: Optional[str]
     constitution_type: Optional[str]
+    diseases: Optional[List[Dict]]
+    allergies: Optional[List[Dict]]
     advisor_system_prompt: Optional[str]  # AI顾问风格 System Prompt（M2）
     pet_context: Optional[Dict]  # 宠物档案信息

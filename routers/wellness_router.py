@@ -63,10 +63,11 @@ async def solar_terms(
 async def wellness_tips_endpoint(
     constitution_type: Optional[str] = Query(None, description="用户体质类型"),
     limit: int = Query(5, ge=1, le=20, description="返回条数"),
+    randomize_seasons: bool = Query(False, description="随机季节（下拉刷新时传 true）"),
     db: Session = Depends(get_db),
 ):
-    """随机获取养生知识卡片。匹配用户体质优先返回。"""
-    tips = get_wellness_tips(db, constitution_type, limit)
+    """按分类均衡获取养生知识卡片。季节默认展示当前季节，刷新时随机。"""
+    tips = get_wellness_tips(db, constitution_type, limit, randomize_seasons=randomize_seasons)
     return BaseResponse(
         success=True,
         message=f"获取到 {len(tips)} 条养生知识",

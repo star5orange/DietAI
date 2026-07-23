@@ -362,6 +362,34 @@ class RealPetApiService {
     }
   }
 
+  /// 保存OCR识别的食品到用户食品库
+  Future<ApiResponse<Map<String, dynamic>>> saveFood({
+    required String foodName,
+    String? brand,
+    String? category,
+    String? suitableSpecies,
+    double? caloriesPer100g,
+    double? proteinPer100g,
+    double? fatPer100g,
+    double? carbsPer100g,
+  }) async {
+    try {
+      final res = await _api.post('/pets/food-database/save', data: {
+        'food_name': foodName,
+        'brand': brand,
+        'category': category,
+        'suitable_species': suitableSpecies,
+        'calories_per_100g': caloriesPer100g,
+        'protein_per_100g': proteinPer100g,
+        'fat_per_100g': fatPer100g,
+        'carbs_per_100g': carbsPer100g,
+      });
+      return _wrapMap(res);
+    } catch (e) {
+      return ApiResponse.failure(message: '保存食品失败', error: e.toString());
+    }
+  }
+
   // ==================== 换粮对比 ====================
 
   /// 换粮对比
@@ -394,9 +422,12 @@ class RealPetApiService {
 
   /// 触发 AI 生成宠物形象
   Future<ApiResponse<Map<String, dynamic>>> generateAvatar(int petId,
-      {String mode = 'description', String? photo, String? description}) async {
+      {String mode = 'description',
+      String? photo,
+      String? description,
+      String style = 'cartoon'}) async {
     try {
-      final data = <String, dynamic>{'mode': mode};
+      final data = <String, dynamic>{'mode': mode, 'style': style};
       if (photo != null) data['photo'] = photo;
       if (description != null) data['description'] = description;
       final res = await _api.post('/pets/$petId/generate-avatar', data: data);

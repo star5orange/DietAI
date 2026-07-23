@@ -436,26 +436,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             },
           ),
           _buildMenuItem(
-            icon: LucideIcons.barChart3,
-            title: '数据统计',
-            subtitle: '查看详细的营养分析',
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('数据统计功能开发中，敬请期待')),
-              );
-            },
-          ),
-          _buildMenuItem(
-            icon: LucideIcons.download,
-            title: '数据导出',
-            subtitle: '导出您的饮食记录',
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('数据导出功能开发中，敬请期待')),
-              );
-            },
-          ),
-          _buildMenuItem(
             icon: LucideIcons.helpCircle,
             title: '帮助中心',
             subtitle: '常见问题和使用指南',

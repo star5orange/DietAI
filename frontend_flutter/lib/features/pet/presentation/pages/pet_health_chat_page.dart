@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/themes/app_colors.dart';
+import '../../../../shared/utils/species_utils.dart';
 import '../../../chat/presentation/pages/chat_page.dart';
 
 /// 宠物健康咨询专用聊天页面
@@ -51,9 +52,7 @@ class _PetHealthChatPageState extends ConsumerState<PetHealthChatPage> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                species == 'dog'
-                                    ? LucideIcons.dog
-                                    : LucideIcons.cat,
+                                getSpeciesIcon(species),
                                 color: AppColors.primary,
                                 size: 20,
                               ),
@@ -119,7 +118,7 @@ class _PetHealthChatPageState extends ConsumerState<PetHealthChatPage> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                '${species == 'dog' ? '狗' : '猫'} · ${breed.isNotEmpty ? breed : '未知品种'}',
+                                '${getSpeciesLabel(species)} · ${breed.isNotEmpty ? breed : '未知品种'}',
                                 style: const TextStyle(
                                   fontSize: 12,
                                   color: AppColors.textTertiary,

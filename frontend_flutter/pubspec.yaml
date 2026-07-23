@@ -29,6 +29,10 @@ dependencies:
   flutter_local_notifications: ^18.0.1
   timezone: ^0.9.4
   
+  # Firebase (FCM 推送)
+  firebase_core: ^3.6.0
+  firebase_messaging: ^15.1.3
+  
   # 本地存储
   shared_preferences: ^2.2.2
   flutter_secure_storage: ^9.0.0
@@ -42,6 +46,7 @@ dependencies:
   # UI组件
   google_fonts: ^6.1.0
   lucide_icons: ^0.257.0
+  flutter_vector_icons: ^2.0.0
   animations: ^2.0.8
   lottie: ^3.0.0
   

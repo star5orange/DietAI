@@ -631,6 +631,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     final calories = record.analysisResult?.nutritionFacts.totalCalories ??
         record.nutritionDetail?.calories ??
         0.0;
+    final shortComment = record.analysisResult?.shortComment ?? '';
     String time = '';
 
     // 优先使用 recordTime（用户选择的用餐时间），其次用 createdAt
@@ -654,8 +655,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       record.description ?? '',
       '${calories.round()} kcal',
       time,
-      record.imageUrl, // 添加图片URL
-      record, // 传递整个记录对象以便后续操作
+      record.imageUrl,
+      record,
+      shortComment,
     );
   }
 
@@ -755,7 +757,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
 
   Widget _buildFoodItem(
       String name, String amount, String calories, String time,
-      [String? imageUrl, FoodRecord? record]) {
+      [String? imageUrl, FoodRecord? record, String shortComment = '']) {
     return InkWell(
       onTap: record != null ? () => _showFoodDetailModal(record) : null,
       borderRadius: BorderRadius.circular(8),
@@ -825,6 +827,18 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 6),
+                  if (shortComment.isNotEmpty)
+                    Text(
+                      shortComment,
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: const Color(0xFF2BAF74),
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  if (amount.isNotEmpty && shortComment.isNotEmpty)
+                    const SizedBox(height: 4),
                   if (amount.isNotEmpty)
                     Text(
                       amount,
@@ -920,26 +934,6 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                       ],
                     ),
                   ),
-                  const PopupMenuItem(
-                    value: 'save_as_meal',
-                    child: Row(
-                      children: [
-                        Icon(LucideIcons.bookmark, size: 16),
-                        SizedBox(width: 8),
-                        Text('保存为菜品'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'duplicate',
-                    child: Row(
-                      children: [
-                        Icon(LucideIcons.copy, size: 16),
-                        SizedBox(width: 8),
-                        Text('复制记录'),
-                      ],
-                    ),
-                  ),
                   PopupMenuItem(
                     value: 'delete',
                     child: Row(
@@ -967,149 +961,216 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   }
 
   /// 显示食物详情模态框
-  void _showFoodDetailModal(FoodRecord record) {
+  void _showFoodDetailModal(FoodRecord record) async {
+    // 预加载收藏状态，避免弹窗内 setState 导致图片闪烁
+    final savedMealService = SavedMealService();
+    bool isSaved = false;
+    int? savedMealId;
+
+    final mealsResult = await savedMealService.getSavedMeals();
+    if (mealsResult.success && mealsResult.data != null) {
+      final matched = mealsResult.data!.where(
+        (m) => m.mealName == (record.foodName ?? ''),
+      );
+      isSaved = matched.isNotEmpty;
+      savedMealId = matched.isNotEmpty ? matched.first.id : null;
+    }
+
+    if (!mounted) return;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _buildFoodDetailModal(record),
-    );
-  }
-
-  /// 构建食物详情模态框
-  Widget _buildFoodDetailModal(FoodRecord record) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.7,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
-      ),
-      child: Column(
-        children: [
-          // 顶部拖拽指示器
-          Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.only(top: 12),
-            decoration: BoxDecoration(
-              color: AppColors.divider,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-
-          // 标题栏
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Text(
-                  '食物详情',
-                  style: AppTextStyles.h5.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(LucideIcons.x),
-                ),
-              ],
-            ),
-          ),
-
-          // 详情内容
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 食物图片
-                  if (record.imageUrl != null && record.imageUrl!.isNotEmpty)
-                    Container(
-                      width: double.infinity,
-                      height: 200,
-                      margin: const EdgeInsets.only(bottom: 20),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        color: AppColors.backgroundSecondary,
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: FoodImagePreview(
-                          foodRecord: record,
-                          showFullScreen: true,
-                        ),
-                      ),
-                    ),
-
-                  // 基本信息
-                  _buildDetailSection('基本信息', [
-                    _buildDetailRow('食物名称', record.foodName ?? '未命名食物'),
-                    if (record.description != null &&
-                        record.description!.isNotEmpty)
-                      _buildDetailRow('描述', record.description!),
-                    _buildDetailRow('餐次', record.mealTypeName),
-                    _buildDetailRow(
-                        '记录时间', record.recordTime ?? record.createdAt),
-                    _buildDetailRow('分析状态', record.analysisStatusName),
-                    if (record.cost != null && record.cost! > 0) ...[
-                      _buildDetailRow(
-                          '消费金额', '¥${record.cost!.toStringAsFixed(2)}'),
-                      if (record.sourceTag != null)
-                        _buildDetailRow(
-                            '消费来源', _sourceLabelName(record.sourceTag!)),
-                    ],
-                  ]),
-
-                  const SizedBox(height: 20),
-
-                  // 营养信息
-                  _buildNutritionSection(record),
-
-                  const SizedBox(height: 20),
-                ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.7,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
               ),
             ),
-          ),
-
-          // 底部操作按钮
-          Container(
-            padding: const EdgeInsets.all(20),
-            child: Row(
+            child: Column(
               children: [
+                // 顶部拖拽指示器
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(top: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.divider,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+
+                // 标题栏
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      Text(
+                        '食物详情',
+                        style: AppTextStyles.h5.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(LucideIcons.x),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // 详情内容
                 Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _handleFoodAction(record, 'edit');
-                    },
-                    icon: const Icon(LucideIcons.edit, size: 18),
-                    label: const Text('编辑'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 食物图片
+                        if (record.imageUrl != null &&
+                            record.imageUrl!.isNotEmpty)
+                          Container(
+                            width: double.infinity,
+                            height: 200,
+                            margin: const EdgeInsets.only(bottom: 20),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              color: AppColors.backgroundSecondary,
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: FoodImagePreview(
+                                foodRecord: record,
+                                showFullScreen: true,
+                              ),
+                            ),
+                          ),
+
+                        // 基本信息
+                        _buildDetailSection('基本信息', [
+                          _buildDetailRow('食物名称', record.foodName ?? '未命名食物'),
+                          if (record.description != null &&
+                              record.description!.isNotEmpty)
+                            _buildDetailRow('描述', record.description!),
+                          _buildDetailRow('餐次', record.mealTypeName),
+                          _buildDetailRow(
+                              '记录时间', record.recordTime ?? record.createdAt),
+                          _buildDetailRow('分析状态', record.analysisStatusName),
+                          if (record.cost != null && record.cost! > 0) ...[
+                            _buildDetailRow(
+                                '消费金额', '¥${record.cost!.toStringAsFixed(2)}'),
+                            if (record.sourceTag != null)
+                              _buildDetailRow(
+                                  '消费来源', _sourceLabelName(record.sourceTag!)),
+                          ],
+                        ]),
+
+                        const SizedBox(height: 20),
+
+                        // 营养信息
+                        _buildNutritionSection(record),
+
+                        const SizedBox(height: 20),
+                      ],
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _handleFoodAction(record, 'save_as_meal');
-                    },
-                    icon: const Icon(LucideIcons.bookmark, size: 18),
-                    label: const Text('保存为菜品'),
+
+                // 底部操作按钮
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _handleFoodAction(record, 'edit');
+                          },
+                          icon: const Icon(LucideIcons.edit, size: 18),
+                          label: const Text('编辑'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            if (isSaved && savedMealId != null) {
+                              final result = await savedMealService
+                                  .deleteSavedMeal(savedMealId!);
+                              if (result.success) {
+                                setModalState(() {
+                                  isSaved = false;
+                                  savedMealId = null;
+                                });
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('已取消收藏')),
+                                  );
+                                }
+                              }
+                            } else {
+                              final result = await savedMealService
+                                  .createSavedMealFromRecord(
+                                foodRecordId: record.id,
+                                mealName: record.foodName ?? '未命名食物',
+                                description: record.description,
+                              );
+                              if (result.success && result.data != null) {
+                                setModalState(() {
+                                  isSaved = true;
+                                  savedMealId = result.data!.id;
+                                });
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('已保存到收藏')),
+                                  );
+                                }
+                              } else if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text('收藏失败: ${result.message}')),
+                                );
+                              }
+                            }
+                          },
+                          icon: Icon(
+                            isSaved
+                                ? LucideIcons.bookmark
+                                : LucideIcons.bookmark,
+                            size: 18,
+                            color: isSaved ? const Color(0xFFF59E0B) : null,
+                          ),
+                          label: Text(isSaved ? '已收藏' : '保存为菜品'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor:
+                                isSaved ? const Color(0xFFF59E0B) : null,
+                            side: BorderSide(
+                              color: isSaved
+                                  ? const Color(0xFFF59E0B)
+                                  : Colors.grey.shade300,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -1348,12 +1409,6 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         break;
       case 'save_as_meal':
         _showSaveAsMealDialog(record);
-        break;
-      case 'duplicate':
-        // TODO: 复制记录
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('复制功能开发中...')),
-        );
         break;
       case 'delete':
         _showDeleteConfirmDialog(record);
@@ -1826,23 +1881,30 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                 if (context.mounted) {
                   Navigator.pop(context);
                   if (result.success) {
+                    // 清除缓存确保重新加载时获取最新数据
+                    await _foodService
+                        .invalidateRecordsCache(record.recordDate);
                     _loadRecords();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('食物记录已更新')),
-                    );
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('食物记录已更新')),
+                      );
+                    }
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('更新失败: ${result.message}')),
-                    );
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('更新失败: ${result.message}')),
+                      );
+                    }
                   }
                 }
               },
               child: const Text('保存'),
             ),
           ],
-        ),
-      ),
-    );
+        ), // AlertDialog & builder
+      ), // StatefulBuilder
+    ); // showDialog
   }
 
   /// 删除食物记录
