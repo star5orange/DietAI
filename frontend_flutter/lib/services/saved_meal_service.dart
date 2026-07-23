@@ -10,7 +10,7 @@ class SavedMealService {
   /// 获取保存的菜品列表
   Future<ApiResponse<List<SavedMeal>>> getSavedMeals({
     String? category,
-    bool? isPublic,
+    String? source,
     String? search,
     int page = 1,
     int pageSize = 20,
@@ -22,14 +22,16 @@ class SavedMealService {
       };
 
       if (category != null) queryParams['category'] = category;
-      if (isPublic != null) queryParams['is_public'] = isPublic;
+      if (source != null) queryParams['source'] = source;
       if (search != null && search.isNotEmpty) queryParams['search'] = search;
 
-      final response = await _apiService.get('/saved-meals', queryParameters: queryParams);
+      final response =
+          await _apiService.get('/saved-meals', queryParameters: queryParams);
 
       if (response.success && response.data != null) {
         final List<dynamic> data = response.data;
-        final savedMeals = data.map((json) => SavedMeal.fromJson(json)).toList();
+        final savedMeals =
+            data.map((json) => SavedMeal.fromJson(json)).toList();
         return ApiResponse(
           success: true,
           data: savedMeals,
@@ -78,9 +80,11 @@ class SavedMealService {
   }
 
   /// 创建保存的菜品
-  Future<ApiResponse<SavedMeal>> createSavedMeal(SavedMealCreate mealData) async {
+  Future<ApiResponse<SavedMeal>> createSavedMeal(
+      SavedMealCreate mealData) async {
     try {
-      final response = await _apiService.post('/saved-meals', data: mealData.toJson());
+      final response =
+          await _apiService.post('/saved-meals', data: mealData.toJson());
 
       if (response.success && response.data != null) {
         final savedMeal = SavedMeal.fromJson(response.data);
@@ -111,7 +115,6 @@ class SavedMealService {
     String? description,
     String? category,
     List<String>? tags,
-    bool isPublic = false,
   }) async {
     try {
       final data = {
@@ -119,7 +122,6 @@ class SavedMealService {
         'description': description,
         'category': category,
         'tags': tags,
-        'is_public': isPublic,
       };
 
       final response = await _apiService.post(
@@ -150,9 +152,11 @@ class SavedMealService {
   }
 
   /// 更新保存的菜品
-  Future<ApiResponse<SavedMeal>> updateSavedMeal(int mealId, SavedMealUpdate mealData) async {
+  Future<ApiResponse<SavedMeal>> updateSavedMeal(
+      int mealId, SavedMealUpdate mealData) async {
     try {
-      final response = await _apiService.put('/saved-meals/$mealId', data: mealData.toJson());
+      final response = await _apiService.put('/saved-meals/$mealId',
+          data: mealData.toJson());
 
       if (response.success) {
         return ApiResponse(
@@ -195,31 +199,6 @@ class SavedMealService {
       return ApiResponse(
         success: false,
         message: '删除菜品失败: $e',
-      );
-    }
-  }
-
-  /// 收藏/取消收藏菜品
-  Future<ApiResponse<void>> toggleFavoriteMeal(int mealId) async {
-    try {
-      final response = await _apiService.post('/saved-meals/$mealId/favorite');
-
-      if (response.success) {
-        return ApiResponse(
-          success: true,
-          message: response.message,
-        );
-      } else {
-        return ApiResponse(
-          success: false,
-          message: response.message,
-        );
-      }
-    } catch (e) {
-      print('收藏菜品操作失败: $e');
-      return ApiResponse(
-        success: false,
-        message: '操作失败: $e',
       );
     }
   }

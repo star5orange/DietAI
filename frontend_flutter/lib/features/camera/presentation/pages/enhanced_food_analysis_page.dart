@@ -24,10 +24,11 @@ class EnhancedFoodAnalysisPage extends StatefulWidget {
   });
 
   @override
-  State<EnhancedFoodAnalysisPage> createState() => _EnhancedFoodAnalysisPageState();
+  State<EnhancedFoodAnalysisPage> createState() =>
+      _EnhancedFoodAnalysisPageState();
 }
 
-class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage> 
+class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
     with TickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   int _servingCount = 1;
@@ -36,13 +37,13 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
   bool _isLoading = true;
   bool _hasError = false;
   String _errorMessage = '';
-  
+
   // 流式分析相关
   FoodRecord? _currentRecord;
   String _currentStep = '';
   String _currentMessage = '';
   StreamSubscription<Map<String, dynamic>>? _streamSubscription;
-  
+
   // 动画控制器
   late AnimationController _slideController;
   late Animation<Offset> _slideAnimation;
@@ -50,11 +51,12 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
   late Animation<double> _fadeAnimation;
   late AnimationController _backgroundController;
   late Animation<double> _backgroundAnimation;
-  
+
   // 从分析数据中提取营养信息
   Map<String, dynamic> _nutritionFacts = {};
   Map<String, dynamic> _recommendations = {};
   String _imageDescription = '';
+  String _shortComment = '';
   String _foodName = '分析中...';
   double _totalCalories = 0.0;
   Map<String, double> _macronutrients = {
@@ -77,7 +79,7 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
 
   // 背景图片透明度控制
   double _backgroundOpacity = 1.0;
-  
+
   @override
   void initState() {
     super.initState();
@@ -139,17 +141,17 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
     _scrollController.addListener(() {
       final offset = _scrollController.offset;
       final maxScroll = _scrollController.position.maxScrollExtent;
-      
+
       // 计算背景透明度 - 随着滚动渐变
       final scrollProgress = (offset / 300).clamp(0.0, 1.0);
       final newOpacity = 1.0 - (scrollProgress * 0.7); // 最多减少70%透明度
-      
+
       if (_backgroundOpacity != newOpacity) {
         setState(() {
           _backgroundOpacity = newOpacity;
         });
       }
-      
+
       // 当滚动到一定位置时触发背景动画
       if (offset > 200 && !_backgroundController.isCompleted) {
         _backgroundController.forward();
@@ -170,15 +172,15 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
 
   void _listenToAnalysisStream() {
     if (widget.analysisStream == null) return;
-    
+
     _streamSubscription = widget.analysisStream!.listen(
       (event) {
         if (!mounted) return;
-        
+
         final type = event['type'] as String?;
         final success = event['success'] as bool? ?? false;
         final data = event['data'] as Map<String, dynamic>? ?? {};
-        
+
         setState(() {
           switch (type) {
             case 'upload_started':
@@ -310,11 +312,17 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
     if (data['image_description'] != null) {
       _imageDescription = data['image_description'];
     }
-    
+
+    if (data['short_comment'] != null &&
+        data['short_comment'].toString().isNotEmpty) {
+      _shortComment = data['short_comment'].toString();
+    }
+
     if (data['nutrition_facts'] != null) {
       final nutritionFacts = data['nutrition_facts'] as Map<String, dynamic>;
-      _totalCalories = (nutritionFacts['total_calories'] as num?)?.toDouble() ?? 0.0;
-      
+      _totalCalories =
+          (nutritionFacts['total_calories'] as num?)?.toDouble() ?? 0.0;
+
       if (nutritionFacts['macronutrients'] != null) {
         final macros = nutritionFacts['macronutrients'] as Map<String, dynamic>;
         _macronutrients = {
@@ -323,14 +331,14 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
           'carbohydrates': (macros['carbohydrates'] as num?)?.toDouble() ?? 0.0,
         };
       }
-      
+
       _nutritionFacts = {
         'total_calories': _totalCalories,
         'macronutrients': _macronutrients,
         'food_items': nutritionFacts['food_items'] ?? [],
       };
     }
-    
+
     if (data['recommendations'] != null) {
       final recommendations = data['recommendations'] as Map<String, dynamic>;
       _recommendations = {
@@ -343,7 +351,8 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
   }
 
   void _checkLoadingState() {
-    if (_currentRecord?.analysisStatus == 3 && _currentRecord?.analysisResult != null) {
+    if (_currentRecord?.analysisStatus == 3 &&
+        _currentRecord?.analysisResult != null) {
       _parseAnalysisData();
       setState(() {
         _isLoading = false;
@@ -356,7 +365,7 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
 
   Future<void> _pollAnalysisResult() async {
     if (_currentRecord == null) return;
-    
+
     try {
       setState(() {
         _isLoading = true;
@@ -365,15 +374,15 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
 
       int attempts = 0;
       const maxAttempts = 30;
-      
+
       while (attempts < maxAttempts) {
         await Future.delayed(const Duration(seconds: 1));
-        
+
         final result = await _foodService.getFoodRecord(_currentRecord!.id);
 
         if (result.success && result.data != null) {
           final updatedRecord = result.data!;
-          
+
           if (updatedRecord.analysisStatus == 3) {
             _parseAnalysisDataFromRecord(updatedRecord);
             setState(() {
@@ -389,16 +398,15 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
             return;
           }
         }
-        
+
         attempts++;
       }
-      
+
       setState(() {
         _isLoading = false;
         _hasError = true;
         _errorMessage = '分析超时，请稍后查看分析结果';
       });
-      
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -406,7 +414,8 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
         _errorMessage = '获取分析结果失败: $e';
       });
       if (mounted) {
-        NetworkErrorHandler.handleApiError(context, e, onRetry: _pollAnalysisResult);
+        NetworkErrorHandler.handleApiError(context, e,
+            onRetry: _pollAnalysisResult);
       }
     }
   }
@@ -419,29 +428,32 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
 
   void _parseAnalysisDataFromRecord(FoodRecord record) {
     _foodName = record.foodName ?? '';
-    
+
     if (record.analysisResult != null) {
       final analysisResult = record.analysisResult!;
       _imageDescription = analysisResult.imageDescription;
-    
+      _shortComment = analysisResult.shortComment ?? '';
+
       _totalCalories = analysisResult.nutritionFacts.totalCalories;
       _macronutrients = {
         'protein': analysisResult.nutritionFacts.macronutrients.protein,
         'fat': analysisResult.nutritionFacts.macronutrients.fat,
-        'carbohydrates': analysisResult.nutritionFacts.macronutrients.carbohydrates,
+        'carbohydrates':
+            analysisResult.nutritionFacts.macronutrients.carbohydrates,
       };
-      
+
       _nutritionFacts = {
         'total_calories': _totalCalories,
         'macronutrients': _macronutrients,
         'food_items': analysisResult.nutritionFacts.foodItems ?? [],
       };
-      
+
       _recommendations = {
         'health_tips': analysisResult.recommendations.recommendations ?? [],
         'dietary_advice': analysisResult.recommendations.dietaryTips ?? [],
         'warnings': analysisResult.recommendations.warnings ?? [],
-        'alternative_foods': analysisResult.recommendations.alternativeFoods ?? [],
+        'alternative_foods':
+            analysisResult.recommendations.alternativeFoods ?? [],
       };
     } else if (record.nutritionDetail != null) {
       final nutrition = record.nutritionDetail!;
@@ -451,13 +463,13 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
         'fat': nutrition.fat,
         'carbohydrates': nutrition.carbohydrates,
       };
-      
+
       _nutritionFacts = {
         'total_calories': _totalCalories,
         'macronutrients': _macronutrients,
         'food_items': [],
       };
-      
+
       _recommendations = {
         'health_tips': ['营养数据已更新'],
         'dietary_advice': ['请保持均衡饮食'],
@@ -466,7 +478,7 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
       };
     }
   }
-  
+
   Future<void> _loadImageUrl() async {
     final imageUrl = _currentRecord?.imageUrl;
     if (imageUrl != null && imageUrl.isNotEmpty) {
@@ -508,7 +520,7 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
             scrollController: _scrollController,
             opacity: _backgroundOpacity,
           ),
-          
+
           // 内容层
           AnimatedBuilder(
             animation: _slideAnimation,
@@ -519,7 +531,7 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
               );
             },
           ),
-          
+
           // 浮动操作按钮
           if (!_isLoading && !_hasError)
             FloatingActionSection(
@@ -584,7 +596,7 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
         const SliverToBoxAdapter(
           child: SizedBox(height: 300),
         ),
-        
+
         // 主要内容区域
         SliverToBoxAdapter(
           child: Container(
@@ -595,11 +607,11 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
                 topRight: Radius.circular(32),
               ),
             ),
-            child: _isLoading 
-              ? _buildLoadingContent()
-              : _hasError 
-                ? _buildErrorContent() 
-                : _buildAnalysisContent(),
+            child: _isLoading
+                ? _buildLoadingContent()
+                : _hasError
+                    ? _buildErrorContent()
+                    : _buildAnalysisContent(),
           ),
         ),
       ],
@@ -621,7 +633,7 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          
+
           // AI分析进度指示器
           AIAnalysisProgressIndicator(
             progress: _analysisProgress,
@@ -629,7 +641,7 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
             steps: _analysisSteps,
             currentStepIndex: _currentStepIndex,
           ),
-          
+
           const SizedBox(height: 200),
         ],
       ),
@@ -650,7 +662,6 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          
           Container(
             padding: const EdgeInsets.all(32),
             decoration: BoxDecoration(
@@ -723,7 +734,6 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
               ],
             ),
           ),
-          
           const SizedBox(height: 200),
         ],
       ),
@@ -750,12 +760,17 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
                 ),
               ),
             ),
-            
+
             // 食物标题和描述
             _buildFoodTitle(),
-            
+
+            const SizedBox(height: 16),
+
+            // 即时评价卡片
+            if (_shortComment.isNotEmpty) _buildShortCommentCard(),
+
             const SizedBox(height: 24),
-            
+
             // 营养统计卡片
             NutritionStatsCard(
               totalCalories: _totalCalories,
@@ -767,17 +782,17 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
                 });
               },
             ),
-            
+
             const SizedBox(height: 20),
-            
+
             // AI建议卡片
             _buildAIRecommendationsCard(),
-            
+
             const SizedBox(height: 20),
-            
+
             // 识别的食物
             _buildIngredientsCard(),
-            
+
             const SizedBox(height: 100), // 底部留白
           ],
         ),
@@ -811,7 +826,7 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
               height: 1.2,
             ),
           ),
-          
+
           if (_imageDescription.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
@@ -823,9 +838,9 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
               ),
             ),
           ],
-          
+
           const SizedBox(height: 16),
-          
+
           // 快速统计
           Row(
             children: [
@@ -894,15 +909,68 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
     );
   }
 
+  Widget _buildShortCommentCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2BAF74), Color(0xFF1E8C5E)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2BAF74).withValues(alpha: 0.25),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              LucideIcons.sparkles,
+              color: Colors.white,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              _shortComment,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAIRecommendationsCard() {
     final healthTips = _recommendations['health_tips'] as List? ?? [];
     final dietaryAdvice = _recommendations['dietary_advice'] as List? ?? [];
-    final alternativeFoods = _recommendations['alternative_foods'] as List? ?? [];
-    
-    if (healthTips.isEmpty && dietaryAdvice.isEmpty && alternativeFoods.isEmpty) {
+    final alternativeFoods =
+        _recommendations['alternative_foods'] as List? ?? [];
+
+    if (healthTips.isEmpty &&
+        dietaryAdvice.isEmpty &&
+        alternativeFoods.isEmpty) {
       return const SizedBox.shrink();
     }
-    
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -944,47 +1012,50 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
               ),
             ],
           ),
-          
+
           const SizedBox(height: 20),
-          
+
           // 健康提示
           if (healthTips.isNotEmpty) ...[
-            ...healthTips.take(3).map((tip) => Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF2BAF74).withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: const Color(0xFF2BAF74).withValues(alpha: 0.1),
-                ),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    margin: const EdgeInsets.only(top: 8),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF2BAF74),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      tip.toString(),
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: Color(0xFF222222),
-                        height: 1.4,
+            ...healthTips
+                .take(3)
+                .map((tip) => Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2BAF74).withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFF2BAF74).withValues(alpha: 0.1),
+                        ),
                       ),
-                    ),
-                  ),
-                ],
-              ),
-            )).toList(),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            margin: const EdgeInsets.only(top: 8),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF2BAF74),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              tip.toString(),
+                              style: const TextStyle(
+                                fontSize: 15,
+                                color: Color(0xFF222222),
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ))
+                .toList(),
           ],
 
           // 替代食物推荐 - 一键记录
@@ -1012,10 +1083,13 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
               children: alternativeFoods.take(5).map((food) {
                 final foodName = food.toString();
                 return ActionChip(
-                  avatar: const Icon(LucideIcons.plus, size: 14, color: Color(0xFF2BAF74)),
+                  avatar: const Icon(LucideIcons.plus,
+                      size: 14, color: Color(0xFF2BAF74)),
                   label: Text(foodName),
-                  labelStyle: const TextStyle(fontSize: 13, color: Color(0xFF222222)),
-                  backgroundColor: const Color(0xFF2BAF74).withValues(alpha: 0.06),
+                  labelStyle:
+                      const TextStyle(fontSize: 13, color: Color(0xFF222222)),
+                  backgroundColor:
+                      const Color(0xFF2BAF74).withValues(alpha: 0.06),
                   side: const BorderSide(color: Color(0xFF2BAF74), width: 0.5),
                   onPressed: () => _quickAddAlternativeFood(foodName),
                 );
@@ -1070,14 +1144,14 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
       }
     }
   }
-  
+
   Widget _buildIngredientsCard() {
     final foodItems = _nutritionFacts['food_items'] as List? ?? [];
-    
+
     if (foodItems.isEmpty) {
       return const SizedBox.shrink();
     }
-    
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -1102,45 +1176,49 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
               color: Color(0xFF222222),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // 食物列表
-          ...foodItems.take(5).map((item) => Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8F9FA),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2BAF74).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    LucideIcons.utensils, 
-                    size: 16, 
-                    color: Color(0xFF2BAF74),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    item.toString(),
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF222222),
+          ...foodItems
+              .take(5)
+              .map((item) => Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8F9FA),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  ),
-                ),
-              ],
-            ),
-          )).toList(),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color:
+                                const Color(0xFF2BAF74).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            LucideIcons.utensils,
+                            size: 16,
+                            color: Color(0xFF2BAF74),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            item.toString(),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF222222),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ))
+              .toList(),
         ],
       ),
     );
@@ -1171,7 +1249,6 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            
             ListTile(
               leading: const Icon(LucideIcons.share2, color: Color(0xFF2BAF74)),
               title: const Text('分享结果'),
@@ -1180,25 +1257,24 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
                 _handleShareResult();
               },
             ),
-            
             ListTile(
-              leading: const Icon(LucideIcons.bookmark, color: Color(0xFF2BAF74)),
+              leading:
+                  const Icon(LucideIcons.bookmark, color: Color(0xFF2BAF74)),
               title: const Text('保存到收藏'),
               onTap: () {
                 Navigator.pop(context);
                 // TODO: 实现保存功能
               },
             ),
-            
             ListTile(
-              leading: const Icon(LucideIcons.messageCircle, color: Color(0xFF2BAF74)),
+              leading: const Icon(LucideIcons.messageCircle,
+                  color: Color(0xFF2BAF74)),
               title: const Text('AI对话咨询'),
               onTap: () {
                 Navigator.pop(context);
                 // TODO: 跳转到AI对话页面
               },
             ),
-            
             const SizedBox(height: 16),
           ],
         ),

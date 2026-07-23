@@ -227,35 +227,99 @@ def get_solar_terms(db: Session, year: int = 2026) -> list[dict]:
     return result
 
 
+def _get_current_season(today: Optional[date] = None) -> str:
+    """根据日期返回当前季节（春季/夏季/秋季/冬季）"""
+    if today is None:
+        today = date.today()
+    m = today.month
+    if 3 <= m <= 5:
+        return "春季"
+    elif 6 <= m <= 8:
+        return "夏季"
+    elif 9 <= m <= 11:
+        return "秋季"
+    else:
+        return "冬季"
+
+
 def get_wellness_tips(
     db: Session,
     constitution_type: Optional[str] = None,
-    limit: int = 5
+    limit: int = 5,
+    randomize_seasons: bool = False,
 ) -> list[dict]:
-    """随机获取养生知识卡片。
+    """按分类均衡获取养生知识卡片。
 
-    优先匹配用户体质，其次随机返回。
+    各分类配额：节气 3 条 + 四季养生 1 条 + 体质 1 条。
+    若用户有体质类型，体质分类优先匹配该体质。
     """
     query = db.query(WellnessKnowledge)
 
     if constitution_type:
-        # 优先查适用体质的
-        matching = query.filter(
-            WellnessKnowledge.applicable_constitutions.contains([constitution_type])
-        ).all()
-        if matching and len(matching) >= limit:
-            selected = random.sample(matching, min(limit, len(matching)))
-        else:
-            remaining = limit - len(matching) if matching else limit
-            others = db.query(WellnessKnowledge).filter(
-                ~WellnessKnowledge.applicable_constitutions.contains([constitution_type])
-                if matching else True
-            ).all()
-            extra = random.sample(others, min(remaining, len(others))) if others else []
-            selected = (matching or []) + extra
+        # 有体质时：先按分类获取，体质分类优先匹配用户体质
+        all_records = query.all()
+
+        # 按 category 分组
+        by_category: dict[str, list] = {}
+        for r in all_records:
+            by_category.setdefault(r.category, []).append(r)
+
+        selected: list = []
+        # 体质分类：优先匹配用户体质的
+        const_records = by_category.get("体质", [])
+        constitution_matched = [
+            r for r in const_records
+            if r.applicable_constitutions and constitution_type in r.applicable_constitutions
+        ]
+        constitution_pool = constitution_matched + [
+            r for r in const_records if r not in constitution_matched
+        ]
+        if constitution_pool:
+            selected.extend(random.sample(
+                constitution_pool, min(1, len(constitution_pool))
+            ))
+
+        # 节气分类
+        solar_records = by_category.get("节气", [])
+        if solar_records:
+            selected.extend(random.sample(solar_records, min(3, len(solar_records))))
+
+        # 季节分类：优先当前季节，randomize_seasons=True 时随机
+        season_records = by_category.get("季节", [])
+        if season_records:
+            current_season = _get_current_season()
+            if not randomize_seasons:
+                # 首次加载：取当前季节
+                current = [r for r in season_records if r.sub_category == current_season]
+                if current:
+                    selected.extend(current[:1])
+                else:
+                    selected.extend(random.sample(season_records, min(1, len(season_records))))
+            else:
+                # 刷新：随机（含当前季节的可能性）
+                selected.extend(random.sample(season_records, min(1, len(season_records))))
     else:
-        all_knowledge = query.all()
-        selected = random.sample(all_knowledge, min(limit, len(all_knowledge))) if all_knowledge else []
+        # 无体质：节气 3 条 + 季节 1 条（优先当前季节） + 体质 1 条
+        categories = db.query(WellnessKnowledge.category).distinct().all()
+        selected = []
+        quotas = {"节气": 3, "季节": 1, "体质": 1}
+        for (cat,) in categories:
+            cat_records = query.filter(WellnessKnowledge.category == cat).all()
+            if not cat_records:
+                continue
+            if cat == "季节":
+                current_season = _get_current_season()
+                if not randomize_seasons:
+                    current = [r for r in cat_records if r.sub_category == current_season]
+                    if current:
+                        selected.extend(current[:1])
+                        continue
+                selected.extend(random.sample(cat_records, min(1, len(cat_records))))
+            else:
+                quota = quotas.get(cat, 2)
+                selected.extend(random.sample(
+                    cat_records, min(quota, len(cat_records))
+                ))
 
     return [
         {

@@ -12,6 +12,7 @@ from shared.models.food_models import FoodRecord, NutritionDetail
 from shared.models.user_models import User
 from shared.utils.auth import get_current_user
 from shared.models.schemas import BaseResponse
+from shared.config import minio_client
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,6 @@ class SavedMealCreate(BaseModel):
     image_url: Optional[str] = None
     category: Optional[str] = None
     tags: Optional[List[str]] = None
-    is_public: bool = False
     nutrition: SavedMealNutritionCreate
 
 
@@ -54,7 +54,6 @@ class SavedMealUpdate(BaseModel):
     image_url: Optional[str] = None
     category: Optional[str] = None
     tags: Optional[List[str]] = None
-    is_public: Optional[bool] = None
     nutrition: Optional[SavedMealNutritionCreate] = None
 
 
@@ -65,13 +64,12 @@ class SavedMealResponse(BaseModel):
     image_url: Optional[str]
     category: Optional[str]
     tags: Optional[List[str]]
-    is_public: bool
+    source: str = "manual"
     usage_count: int
     favorite_count: int
     created_at: str
     updated_at: str
     nutrition: Optional[SavedMealNutritionCreate]
-    is_favorited: Optional[bool] = False  # 当前用户是否收藏
 
     class Config:
         from_attributes = True
@@ -93,7 +91,6 @@ async def create_saved_meal(
             image_url=meal_data.image_url,
             category=meal_data.category,
             tags=meal_data.tags,
-            is_public=meal_data.is_public
         )
         db.add(saved_meal)
         db.flush()  # 获取ID
@@ -106,15 +103,21 @@ async def create_saved_meal(
         db.add(nutrition)
         db.commit()
         
-        # 构建响应
+        # 构建响应 (手动创建)
+        resolved_image_url = saved_meal.image_url
+        if saved_meal.image_url and not saved_meal.image_url.startswith("http"):
+            try:
+                resolved_image_url = minio_client.get_file_url(saved_meal.image_url)
+            except Exception as e:
+                logger.warning(f"生成图片预签名URL失败: {e}")
+        
         response_data = SavedMealResponse(
             id=saved_meal.id,
             meal_name=saved_meal.meal_name,
             description=saved_meal.description,
-            image_url=saved_meal.image_url,
+            image_url=resolved_image_url,
             category=saved_meal.category,
             tags=saved_meal.tags,
-            is_public=saved_meal.is_public,
             usage_count=saved_meal.usage_count,
             favorite_count=saved_meal.favorite_count,
             created_at=saved_meal.created_at.isoformat(),
@@ -137,7 +140,6 @@ async def create_saved_meal_from_record(
     description: Optional[str] = Body(None, embed=True),
     category: Optional[str] = Body(None, embed=True),
     tags: Optional[List[str]] = Body(None, embed=True),
-    is_public: bool = Body(False, embed=True),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -166,7 +168,7 @@ async def create_saved_meal_from_record(
             image_url=food_record.image_url,
             category=category,
             tags=tags,
-            is_public=is_public
+            source="record"
         )
         db.add(saved_meal)
         db.flush()
@@ -230,14 +232,22 @@ async def create_saved_meal_from_record(
             potassium=float(nutrition.potassium)
         )
         
+        # 构建响应 (从食物记录)
+        resolved_image_url = saved_meal.image_url
+        if saved_meal.image_url and not saved_meal.image_url.startswith("http"):
+            try:
+                resolved_image_url = minio_client.get_file_url(saved_meal.image_url)
+            except Exception as e:
+                logger.warning(f"生成图片预签名URL失败: {e}")
+        
         response_data = SavedMealResponse(
             id=saved_meal.id,
             meal_name=saved_meal.meal_name,
             description=saved_meal.description,
-            image_url=saved_meal.image_url,
+            image_url=resolved_image_url,
             category=saved_meal.category,
             tags=saved_meal.tags,
-            is_public=saved_meal.is_public,
+            source=saved_meal.source or "record",
             usage_count=saved_meal.usage_count,
             favorite_count=saved_meal.favorite_count,
             created_at=saved_meal.created_at.isoformat(),
@@ -258,7 +268,7 @@ async def create_saved_meal_from_record(
 @router.get("/", response_model=BaseResponse[List[SavedMealResponse]])
 async def get_saved_meals(
     category: Optional[str] = Query(None, description="分类筛选"),
-    is_public: Optional[bool] = Query(None, description="是否为公共菜品"),
+    source: Optional[str] = Query(None, description="来源过滤: manual=手动创建, record=从食物记录"),
     search: Optional[str] = Query(None, description="搜索关键词"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
@@ -269,16 +279,11 @@ async def get_saved_meals(
     try:
         query = db.query(SavedMeal).outerjoin(SavedMealNutrition)
         
-        # 筛选条件
-        if is_public is None:
-            # 默认显示用户自己的菜品和公共菜品
-            query = query.filter(
-                or_(SavedMeal.user_id == current_user.id, SavedMeal.is_public == True)
-            )
-        elif is_public:
-            query = query.filter(SavedMeal.is_public == True)
-        else:
-            query = query.filter(SavedMeal.user_id == current_user.id)
+        # 只显示当前用户自己的菜品
+        query = query.filter(SavedMeal.user_id == current_user.id)
+        
+        if source:
+            query = query.filter(SavedMeal.source == source)
         
         if category:
             query = query.filter(SavedMeal.category == category)
@@ -296,16 +301,6 @@ async def get_saved_meals(
         meals = query.order_by(desc(SavedMeal.created_at)).offset(
             (page - 1) * page_size
         ).limit(page_size).all()
-        
-        # 获取当前用户的收藏状态
-        meal_ids = [meal.id for meal in meals]
-        favorites = db.query(UserSavedMealFavorite).filter(
-            and_(
-                UserSavedMealFavorite.user_id == current_user.id,
-                UserSavedMealFavorite.saved_meal_id.in_(meal_ids)
-            )
-        ).all()
-        favorite_meal_ids = {fav.saved_meal_id for fav in favorites}
         
         # 构建响应
         response_data = []
@@ -331,20 +326,27 @@ async def get_saved_meals(
                     potassium=float(meal.nutrition_template.potassium)
                 )
             
+            # 如果是 MinIO 相对路径，生成预签名 URL
+            resolved_image_url = meal.image_url
+            if meal.image_url and not meal.image_url.startswith("http"):
+                try:
+                    resolved_image_url = minio_client.get_file_url(meal.image_url)
+                except Exception as e:
+                    logger.warning(f"生成图片预签名URL失败: {e}")
+            
             meal_response = SavedMealResponse(
                 id=meal.id,
                 meal_name=meal.meal_name,
                 description=meal.description,
-                image_url=meal.image_url,
+                image_url=resolved_image_url,
                 category=meal.category,
                 tags=meal.tags,
-                is_public=meal.is_public,
+                source=meal.source or "manual",
                 usage_count=meal.usage_count,
                 favorite_count=meal.favorite_count,
                 created_at=meal.created_at.isoformat(),
                 updated_at=meal.updated_at.isoformat(),
                 nutrition=nutrition_data,
-                is_favorited=meal.id in favorite_meal_ids
             )
             response_data.append(meal_response)
         
@@ -372,20 +374,9 @@ async def get_saved_meal(
         if not meal:
             raise HTTPException(status_code=404, detail="菜品不存在")
         
-        # 检查权限
-        if not meal.is_public and meal.user_id != current_user.id:
+        # 检查权限：只能查看自己的菜品
+        if meal.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="无权访问此菜品")
-        
-        # 检查是否收藏
-        is_favorited = False
-        if meal.is_public and meal.user_id != current_user.id:
-            favorite = db.query(UserSavedMealFavorite).filter(
-                and_(
-                    UserSavedMealFavorite.user_id == current_user.id,
-                    UserSavedMealFavorite.saved_meal_id == meal_id
-                )
-            ).first()
-            is_favorited = favorite is not None
         
         # 构建营养信息
         nutrition_data = None
@@ -416,13 +407,12 @@ async def get_saved_meal(
             image_url=meal.image_url,
             category=meal.category,
             tags=meal.tags,
-            is_public=meal.is_public,
+            source=meal.source or "manual",
             usage_count=meal.usage_count,
             favorite_count=meal.favorite_count,
             created_at=meal.created_at.isoformat(),
             updated_at=meal.updated_at.isoformat(),
             nutrition=nutrition_data,
-            is_favorited=is_favorited
         )
         
         return BaseResponse(success=True, data=response_data, message="获取菜品详情成功")
@@ -496,7 +486,12 @@ async def delete_saved_meal(
         
         if not meal:
             raise HTTPException(status_code=404, detail="菜品不存在或无权限删除")
-        
+
+        # 先删除关联的营养记录
+        db.query(SavedMealNutrition).filter(
+            SavedMealNutrition.saved_meal_id == meal_id
+        ).delete()
+
         db.delete(meal)
         db.commit()
         
@@ -508,58 +503,6 @@ async def delete_saved_meal(
         logger.error(f"删除保存菜品失败: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail="删除菜品失败")
-
-
-@router.post("/{meal_id}/favorite", response_model=BaseResponse[None])
-async def toggle_favorite_meal(
-    meal_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """收藏/取消收藏公共菜品"""
-    try:
-        meal = db.query(SavedMeal).filter(
-            and_(SavedMeal.id == meal_id, SavedMeal.is_public == True)
-        ).first()
-        
-        if not meal:
-            raise HTTPException(status_code=404, detail="公共菜品不存在")
-        
-        if meal.user_id == current_user.id:
-            raise HTTPException(status_code=400, detail="不能收藏自己的菜品")
-        
-        # 检查是否已收藏
-        favorite = db.query(UserSavedMealFavorite).filter(
-            and_(
-                UserSavedMealFavorite.user_id == current_user.id,
-                UserSavedMealFavorite.saved_meal_id == meal_id
-            )
-        ).first()
-        
-        if favorite:
-            # 取消收藏
-            db.delete(favorite)
-            meal.favorite_count = max(0, meal.favorite_count - 1)
-            message = "取消收藏成功"
-        else:
-            # 添加收藏
-            favorite = UserSavedMealFavorite(
-                user_id=current_user.id,
-                saved_meal_id=meal_id
-            )
-            db.add(favorite)
-            meal.favorite_count += 1
-            message = "收藏成功"
-        
-        db.commit()
-        return BaseResponse(success=True, data=None, message=message)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"收藏/取消收藏菜品失败: {e}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail="操作失败")
 
 
 @router.post("/{meal_id}/use", response_model=BaseResponse[None])
@@ -575,8 +518,8 @@ async def use_saved_meal(
         if not meal:
             raise HTTPException(status_code=404, detail="菜品不存在")
         
-        # 检查权限
-        if not meal.is_public and meal.user_id != current_user.id:
+        # 检查权限：只能用自己的菜品
+        if meal.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="无权使用此菜品")
         
         # 增加使用计数
@@ -628,8 +571,8 @@ async def create_food_record_from_saved_meal(
         if not meal:
             raise HTTPException(status_code=404, detail="菜品不存在")
 
-        # 检查权限
-        if not meal.is_public and meal.user_id != current_user.id:
+        # 检查权限：只能用自己的菜品
+        if meal.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="无权使用此菜品")
 
         # 获取营养模板

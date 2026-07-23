@@ -9,6 +9,7 @@ class ExerciseRecord {
   final String exerciseName;
   final String exerciseType;
   final int durationMinutes;
+  final double? distanceKm;
   final double caloriesBurned;
   final String? notes;
   final String recordedAt;
@@ -20,6 +21,7 @@ class ExerciseRecord {
     required this.exerciseName,
     required this.exerciseType,
     required this.durationMinutes,
+    this.distanceKm,
     required this.caloriesBurned,
     this.notes,
     required this.recordedAt,
@@ -34,6 +36,7 @@ class ExerciseRecord {
           (json['exercise_name'] ?? json['exercise_type'] ?? '').toString(),
       exerciseType: (json['exercise_type'] ?? '').toString(),
       durationMinutes: (json['duration_minutes'] as num?)?.toInt() ?? 0,
+      distanceKm: (json['distance_km'] as num?)?.toDouble(),
       caloriesBurned: (json['calories_burned'] as num?)?.toDouble() ?? 0.0,
       notes: json['notes'] as String?,
       recordedAt: (json['recorded_at'] ?? json['record_date'] ?? '').toString(),
@@ -52,6 +55,7 @@ class ExerciseRecord {
       'notes': notes,
       'recorded_at': recordedAt,
       'created_at': createdAt,
+      if (distanceKm != null) 'distance_km': distanceKm,
       if (strengthDetail != null) 'strength_detail': strengthDetail,
     };
   }
@@ -78,6 +82,21 @@ class ExerciseRecord {
   }
 
   String get formattedCalories => '${caloriesBurned.toStringAsFixed(0)} kcal';
+
+  /// 配速展示 (min/km)，仅当有距离和时长时计算
+  String? get formattedPace {
+    if (distanceKm == null || distanceKm! <= 0 || durationMinutes <= 0) {
+      return null;
+    }
+    final pace = durationMinutes / distanceKm!;
+    final paceMin = pace.floor();
+    final paceSec = ((pace - paceMin) * 60).round();
+    return '$paceMin\'${paceSec.toString().padLeft(2, '0')}"/km';
+  }
+
+  /// 适用于距离类运动（跑步/骑行/游泳/步行）
+  static const _distanceTypes = {'running', 'walking', 'cycling', 'swimming'};
+  bool get supportsDistance => _distanceTypes.contains(exerciseType);
 }
 
 class CreateExerciseRecordRequest {
@@ -85,6 +104,7 @@ class CreateExerciseRecordRequest {
   final String exerciseType;
   final int durationMinutes;
   final double caloriesBurned;
+  final double? distanceKm;
   final String? notes;
   final String? recordedAt;
 
@@ -93,6 +113,7 @@ class CreateExerciseRecordRequest {
     required this.exerciseType,
     required this.durationMinutes,
     required this.caloriesBurned,
+    this.distanceKm,
     this.notes,
     this.recordedAt,
   });
@@ -105,6 +126,7 @@ class CreateExerciseRecordRequest {
       'calories_burned': caloriesBurned,
       'notes': notes,
       'recorded_at': recordedAt,
+      if (distanceKm != null) 'distance_km': distanceKm,
     };
   }
 }

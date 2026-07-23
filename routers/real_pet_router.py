@@ -9,13 +9,13 @@ from shared.models.database import get_db
 from shared.models.schemas import BaseResponse
 from shared.utils.auth import get_current_user
 from shared.models.user_models import User
-from shared.models.pet_models import PetWeightRecord  # 用于查询最新体重
+from shared.models.pet_models import PetWeightRecord, PetAvatar  # 用于查询最新体重和AI形象
 from shared.models.schemas.real_pet import (
     PetProfileCreate, PetProfileUpdate,
     PetWeightCreate, PetVaccineCreate, PetVaccineUpdate,
     PetDewormingCreate, PetDewormingUpdate,
     PetFeedingCreate, PetWaterCreate, PetAIAdviceRequest,
-    PetFoodOCRRequest, GenerateAvatarRequest, RegenerateEmotionRequest,
+    PetFoodOCRRequest, PetFoodSaveRequest, GenerateAvatarRequest, RegenerateEmotionRequest,
 )
 from shared.services.real_pet_service import (
     create_pet, get_pets, get_pet, update_pet, delete_pet,
@@ -24,7 +24,7 @@ from shared.services.real_pet_service import (
     add_deworming, update_deworming, delete_deworming, get_deworming_records,
     add_feeding, get_feeding_records, get_pet_daily_summary, get_feeding_plan,
     add_water, get_water_records, delete_water_record,
-    search_food_database, get_ai_advice,
+    search_food_database, save_food_to_database, _food_to_dict, get_ai_advice,
     compare_pet_foods, calculate_health_score,
     generate_avatar, get_generation_task, regenerate_emotion, upgrade_to_gif,
 )
@@ -68,11 +68,26 @@ def _pet_to_dict(p, db: Session = None) -> dict:
     if db is not None:
         try:
             latest = db.query(PetWeightRecord).filter(
-                PetWeightRecord.pet_id == p.id,
-                PetWeightRecord.is_deleted == False
+                PetWeightRecord.pet_id == p.id
             ).order_by(PetWeightRecord.measured_at.desc()).first()
             if latest:
                 result["weight"] = round(float(latest.weight), 2)
+        except Exception:
+            pass
+
+        # 获取 AI 形象情绪变体 URL
+        try:
+            avatar = db.query(PetAvatar).filter(
+                PetAvatar.pet_id == p.id
+            ).first()
+            if avatar:
+                result["avatar_emotions"] = {
+                    "happy": avatar.emotion_happy_url,
+                    "normal": avatar.emotion_normal_url,
+                    "hungry": avatar.emotion_hungry_url,
+                    "weak": avatar.emotion_weak_url,
+                }
+                result["avatar_base_url"] = avatar.base_image_url
         except Exception:
             pass
 
@@ -113,16 +128,36 @@ async def api_get_breeds(species: Optional[str] = Query(None, description="cat �
 
 @router.get("/food-database", response_model=BaseResponse)
 async def api_food_db(species: Optional[str] = Query(None), category: Optional[str] = Query(None), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """查询宠物食品库"""
-    foods = search_food_database(db, species, category)
+    """查询用户宠物食品库"""
+    foods = search_food_database(db, current_user.id, species, category)
     return BaseResponse(success=True, message="获取食品库成功", data={"foods": foods})
 
 
 @router.get("/food-database/search", response_model=BaseResponse)
 async def api_food_search(keyword: str = Query(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """搜索宠物食品"""
-    foods = search_food_database(db, keyword=keyword)
+    """搜索用户宠物食品"""
+    foods = search_food_database(db, current_user.id, keyword=keyword)
     return BaseResponse(success=True, message="搜索成功", data={"foods": foods})
+
+
+@router.post("/food-database/save", response_model=BaseResponse)
+async def api_save_food(data: PetFoodSaveRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """保存OCR识别的食品到用户食品库"""
+    try:
+        food = save_food_to_database(db, current_user.id, {
+            "food_name": data.food_name,
+            "brand": data.brand or "",
+            "category": data.category or "",
+            "suitable_species": data.suitable_species or "",
+            "calories_per_100g": data.calories_per_100g,
+            "protein_per_100g": data.protein_per_100g,
+            "fat_per_100g": data.fat_per_100g,
+            "carbs_per_100g": data.carbs_per_100g,
+        })
+        return BaseResponse(success=True, message="保存成功", data=_food_to_dict(food))
+    except Exception as e:
+        logger.error(f"Save pet food failed: {e}")
+        raise HTTPException(status_code=500, detail=f"保存失败: {str(e)}")
 
 
 @router.post("/food-database/ocr", response_model=BaseResponse)
@@ -528,6 +563,7 @@ async def api_generate_avatar(pet_id: int, data: GenerateAvatarRequest,
             mode=data.mode,
             photo=data.photo,
             description=data.description,
+            style=data.style,
         )
         return BaseResponse(success=True, message="生成任务已提交", data={"task_id": task_id})
     except ValueError as e:

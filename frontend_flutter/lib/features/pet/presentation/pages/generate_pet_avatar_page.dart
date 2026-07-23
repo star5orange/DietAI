@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -510,6 +511,8 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
         _buildStyleOption('cartoon', '卡通', LucideIcons.smile),
         const SizedBox(width: 12),
         _buildStyleOption('anime', '动漫', LucideIcons.star),
+        const SizedBox(width: 12),
+        _buildStyleOption('realistic', '写实', LucideIcons.camera),
       ],
     );
   }
@@ -664,6 +667,7 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
       mode: _selectedMode,
       photo: _imageBase64,
       description: _descriptionController.text.trim(),
+      style: _selectedStyle,
     );
 
     if (!mounted) return;
@@ -690,31 +694,33 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
   void _startPolling() {
     _pollTimer?.cancel();
     int elapsed = 0;
-    const maxTicks = 30;
+    const maxTicks = 90; // 3 分钟 (基础图 ~120s + 情绪 ~60s)
 
     _pollTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
       elapsed++;
 
       // 根据时间显示具体步骤
       String stepMsg;
-      if (elapsed <= 3) {
-        stepMsg = '🎨 正在生成基础形象...';
-      } else if (elapsed <= 6) {
-        stepMsg = '😊 正在生成开心表情...';
-      } else if (elapsed <= 9) {
-        stepMsg = '😌 正在生成平静表情...';
-      } else if (elapsed <= 12) {
-        stepMsg = '🍖 正在生成饥饿表情...';
-      } else if (elapsed <= 15) {
-        stepMsg = '😴 正在生成虚弱表情...';
-      } else if (elapsed <= 18) {
-        stepMsg = '✨ 正在优化细节...';
+      if (elapsed <= 6) {
+        stepMsg = '正在提交生成任务...';
+      } else if (elapsed <= 20) {
+        stepMsg = '正在分析特征并生成基础形象...';
+      } else if (elapsed <= 35) {
+        stepMsg = '正在生成开心表情...';
+      } else if (elapsed <= 50) {
+        stepMsg = '正在生成饥饿表情...';
+      } else if (elapsed <= 65) {
+        stepMsg = '正在生成虚弱表情...';
+      } else if (elapsed <= 80) {
+        stepMsg = '正在优化细节...';
       } else {
-        stepMsg = '🔄 即将完成...';
+        stepMsg = '即将完成...';
       }
 
       setState(() {
-        _progressValue = 0.3 + (elapsed / maxTicks) * 0.7;
+        // 平滑曲线：从 5% 递增到 ~93%（留余量避免 100% 假象）
+        final t = elapsed / maxTicks;
+        _progressValue = 0.05 + (1 - exp(-3 * t)) * 0.88;
         _progressMessage = stepMsg;
       });
 

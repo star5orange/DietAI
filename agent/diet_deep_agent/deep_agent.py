@@ -74,7 +74,8 @@ from agent.diet_deep_agent.tools.pet_avatar_generator import (
     remove_background,
 )
 from agent.diet_deep_agent.tools.pet_feedback_tools import PET_FEEDBACK_TOOLS
-from agent.diet_deep_agent.prompts.pet_health_prompts import PET_HEALTH_SYSTEM_PROMPT
+# 宠物健康 System Prompt 不再在此处拼接，改为在 router 层根据 session_type 动态注入
+# from agent.diet_deep_agent.prompts.pet_health_prompts import PET_HEALTH_SYSTEM_PROMPT
 
 
 logger = logging.getLogger(__name__)
@@ -187,7 +188,12 @@ def create_diet_deep_agent(config: DietDeepConfig | None = None, use_custom_pers
     agent = create_deep_agent(
         model=model,
         tools=tools,
-        system_prompt=DIET_DEEP_SYSTEM_PROMPT + "\n\n" + PET_HEALTH_SYSTEM_PROMPT,
+        # 不在此处烘焙任何人格 System Prompt
+        # 人类营养师 / 宠物健康顾问的人格由 Router 层根据 session_type 动态注入
+        system_prompt=(
+            "你是 DietAI 智能助手。你的具体角色（营养师/宠物健康顾问）由系统在每次对话时动态指定。"
+            "你可以使用虚拟文件系统 /memories/*、/scratch/*、/todos.md 管理记忆和任务。"
+        ),
         skills=[config.skills_dir],
         subagents=ALL_SUBAGENTS,
         # Layer 2: Deep Agent 原生 Backend 路由

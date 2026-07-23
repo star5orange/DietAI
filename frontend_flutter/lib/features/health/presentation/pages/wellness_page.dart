@@ -71,11 +71,12 @@ class _WellnessPageState extends State<WellnessPage>
     }
   }
 
-  Future<void> _loadWellnessTips() async {
+  Future<void> _loadWellnessTips({bool refresh = false}) async {
     try {
-      final result = await _wellnessService.getWellnessTips();
+      final result =
+          await _wellnessService.getWellnessTips(randomizeSeasons: refresh);
       debugPrint(
-          '[Wellness] tips: isSuccess=${result.isSuccess}, count=${result.data?.length}');
+          '[Wellness] tips: isSuccess=${result.isSuccess}, count=${result.data?.length}, refresh=$refresh');
       if (mounted && result.isSuccess) {
         setState(() => _wellnessTips = result.data ?? []);
       }
@@ -128,7 +129,10 @@ class _WellnessPageState extends State<WellnessPage>
               children: [
                 _buildDailyRecommendTab(),
                 _buildSolarTermTab(),
-                _buildKnowledgeTab(),
+                RefreshIndicator(
+                  onRefresh: () => _loadWellnessTips(refresh: true),
+                  child: _buildKnowledgeTab(),
+                ),
               ],
             ),
     );

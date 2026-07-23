@@ -423,6 +423,28 @@ def setup_scheduler() -> AsyncIOScheduler:
     except ImportError as e:
         logger.warning(f"Pet scheduled tasks not registered: {e}")
 
+    # 健康报告: 每周一 08:10 周报推送
+    try:
+        from shared.tasks.health_report_tasks import send_weekly_health_report, send_monthly_health_report
+        _scheduler.add_job(
+            send_weekly_health_report,
+            trigger=CronTrigger(day_of_week='mon', hour=8, minute=10),
+            id="weekly_health_report",
+            name="Weekly Health Report Push",
+            replace_existing=True,
+        )
+        logger.info("Weekly health report task registered (Monday 08:10)")
+        _scheduler.add_job(
+            send_monthly_health_report,
+            trigger=CronTrigger(day=1, hour=8, minute=15),
+            id="monthly_health_report",
+            name="Monthly Health Report Push",
+            replace_existing=True,
+        )
+        logger.info("Monthly health report task registered (1st 08:15)")
+    except ImportError as e:
+        logger.warning(f"Health report tasks not registered: {e}")
+
     _scheduler.start()
     logger.info("Background task scheduler started")
 
@@ -456,7 +478,27 @@ async def run_task_now(task_name: str) -> bool:
         "nutrition": generate_weekly_nutrition_summary,
         "chat": generate_chat_summary,
         "check_reminders": check_reminders,
+        "pet_vaccine": None,   # lazy import below
+        "pet_weight": None,
+        "weekly_report": None,
+        "monthly_report": None,
     }
+
+    # Lazy import for optional task modules
+    if task_name in ("pet_vaccine", "pet_weight"):
+        try:
+            from shared.tasks.pet_tasks import check_pet_vaccine_reminders, check_pet_weight_anomaly
+            task_mapping["pet_vaccine"] = check_pet_vaccine_reminders
+            task_mapping["pet_weight"] = check_pet_weight_anomaly
+        except ImportError:
+            pass
+    if task_name in ("weekly_report", "monthly_report"):
+        try:
+            from shared.tasks.health_report_tasks import send_weekly_health_report, send_monthly_health_report
+            task_mapping["weekly_report"] = send_weekly_health_report
+            task_mapping["monthly_report"] = send_monthly_health_report
+        except ImportError:
+            pass
 
     task_func = task_mapping.get(task_name)
     if task_func is None:

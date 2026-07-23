@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:flutter_vector_icons/flutter_vector_icons.dart';
 
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
@@ -446,8 +447,8 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
   Widget _buildExerciseRecordCard(ExerciseRecord record) {
     final typeLabel = ExerciseType.getLabel(record.exerciseType);
     final typeIcon = _getExerciseIcon(record.exerciseType);
-    final hasStrengthDetail = record.exerciseType == 'strength' &&
-        record.strengthDetail != null;
+    final hasStrengthDetail =
+        record.exerciseType == 'strength' && record.strengthDetail != null;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -527,10 +528,30 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    record.formattedDuration,
-                    style: AppTextStyles.bodySmall,
-                  ),
+                  if (record.durationMinutes > 0)
+                    Text(
+                      record.formattedDuration,
+                      style: AppTextStyles.bodySmall,
+                    ),
+                  if (record.distanceKm != null && record.distanceKm! > 0) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      '${record.distanceKm!.toStringAsFixed(1)} km',
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                  if (record.formattedPace != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      record.formattedPace!,
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: AppColors.textTertiary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(width: 8),
@@ -554,15 +575,15 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
   Widget _buildStrengthDetailDisplay(Map<String, dynamic> detail) {
     final muscleGroups =
         (detail['muscle_groups'] as List<dynamic>?)?.cast<String>() ?? [];
-    final sets =
-        (detail['sets'] as List<dynamic>?) ?? [];
+    final sets = (detail['sets'] as List<dynamic>?) ?? [];
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xFF66BB6A).withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF66BB6A).withValues(alpha: 0.2)),
+        border:
+            Border.all(color: const Color(0xFF66BB6A).withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -570,7 +591,8 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
           if (muscleGroups.isNotEmpty) ...[
             Row(
               children: [
-                const Icon(LucideIcons.target, size: 14, color: Color(0xFF66BB6A)),
+                const Icon(LucideIcons.target,
+                    size: 14, color: Color(0xFF66BB6A)),
                 const SizedBox(width: 6),
                 Text('训练肌群',
                     style: TextStyle(
@@ -584,26 +606,31 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
             Wrap(
               spacing: 6,
               runSpacing: 4,
-              children: muscleGroups.map((g) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF66BB6A).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(g,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF66BB6A),
-                    )),
-              )).toList(),
+              children: muscleGroups
+                  .map((g) => Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color:
+                              const Color(0xFF66BB6A).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(g,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF66BB6A),
+                            )),
+                      ))
+                  .toList(),
             ),
             if (sets.isNotEmpty) const SizedBox(height: 10),
           ],
           if (sets.isNotEmpty) ...[
             Row(
               children: [
-                const Icon(LucideIcons.dumbbell, size: 14, color: Color(0xFF66BB6A)),
+                const Icon(LucideIcons.dumbbell,
+                    size: 14, color: Color(0xFF66BB6A)),
                 const SizedBox(width: 6),
                 Text('训练内容',
                     style: TextStyle(
@@ -652,29 +679,31 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
   IconData _getExerciseIcon(String type) {
     switch (type) {
       case 'running':
-        return LucideIcons.bike;
+        return MaterialCommunityIcons.run;
       case 'walking':
-        return LucideIcons.footprints;
+        return MaterialCommunityIcons.walk;
       case 'cycling':
-        return LucideIcons.bike;
+        return MaterialCommunityIcons.bike;
       case 'swimming':
-        return LucideIcons.waves;
+        return MaterialCommunityIcons.swim;
       case 'yoga':
-        return LucideIcons.heart;
+        return MaterialCommunityIcons.yoga;
       case 'strength':
-        return LucideIcons.dumbbell;
+        return MaterialCommunityIcons.dumbbell;
       case 'hiit':
-        return LucideIcons.zap;
+        return MaterialCommunityIcons.lightning_bolt;
       case 'dance':
-        return LucideIcons.music;
+        return MaterialCommunityIcons.dance_ballroom;
       case 'basketball':
+        return MaterialCommunityIcons.basketball;
       case 'football':
-        return LucideIcons.trophy;
+        return MaterialCommunityIcons.soccer;
       case 'badminton':
+        return MaterialCommunityIcons.badminton;
       case 'tennis':
-        return LucideIcons.target;
+        return MaterialCommunityIcons.tennis;
       default:
-        return LucideIcons.activity;
+        return MaterialCommunityIcons.run_fast;
     }
   }
 
@@ -1260,25 +1289,42 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _durationController = TextEditingController();
+  final _distanceController = TextEditingController();
   final _caloriesController = TextEditingController();
   final _notesController = TextEditingController();
-
   String _selectedType = 'running';
   bool _isAutoCalories = true;
   bool _isSubmitting = false;
+
+  bool get _isDistanceSport =>
+      _selectedType == 'running' ||
+      _selectedType == 'walking' ||
+      _selectedType == 'cycling' ||
+      _selectedType == 'swimming';
+
+  bool get _isOtherSport => _selectedType == 'other';
 
   // 力量训练详情
   final List<String> _selectedMuscleGroups = [];
   final List<_StrengthSetEntry> _strengthSets = [];
 
   static const List<String> _muscleGroupOptions = [
-    '胸', '背', '肩', '二头', '三头', '核心', '大腿', '小腿', '臀',
+    '胸',
+    '背',
+    '肩',
+    '二头',
+    '三头',
+    '核心',
+    '大腿',
+    '小腿',
+    '臀',
   ];
 
   @override
   void dispose() {
     _nameController.dispose();
     _durationController.dispose();
+    _distanceController.dispose();
     _caloriesController.dispose();
     _notesController.dispose();
     super.dispose();
@@ -1287,8 +1333,11 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
   void _updateAutoCalories() {
     if (!_isAutoCalories) return;
     final duration = int.tryParse(_durationController.text) ?? 0;
-    final calories =
-        widget.exerciseService.estimateCalories(_selectedType, duration);
+    final distance = double.tryParse(_distanceController.text);
+    final type =
+        _selectedType == 'other' ? _nameController.text.trim() : _selectedType;
+    final calories = widget.exerciseService
+        .estimateCalories(type, duration, distanceKm: distance);
     _caloriesController.text = calories.toStringAsFixed(0);
   }
 
@@ -1345,21 +1394,25 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
               TextFormField(
                 controller: _nameController,
                 decoration: InputDecoration(
-                  labelText: '运动名称（可选）',
-                  hintText: '例如：晨跑、游泳训练',
+                  labelText: _isOtherSport ? '运动名称' : '运动名称（可选）',
+                  hintText: _isOtherSport ? '请输入运动名称，如：羽毛球、乒乓球' : '例如：晨跑、游泳训练',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                   prefixIcon: const Icon(LucideIcons.tag, size: 20),
                 ),
+                validator: _isOtherSport
+                    ? (v) => v == null || v.trim().isEmpty ? '请输入运动名称' : null
+                    : null,
+                onChanged: _isOtherSport ? (_) => _updateAutoCalories() : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _durationController,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: '运动时长（分钟）',
-                  hintText: '例如：30',
+                  labelText: _isDistanceSport ? '运动时长（可选）' : '运动时长（分钟）',
+                  hintText: _isDistanceSport ? '不填则用距离估算' : '例如：30',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -1367,6 +1420,9 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
                   suffixText: '分钟',
                 ),
                 validator: (v) {
+                  final hasDistance =
+                      _distanceController.text.trim().isNotEmpty;
+                  if (_isDistanceSport && hasDistance) return null; // 有距离时可选
                   if (v == null || v.isEmpty) return '请输入运动时长';
                   final val = int.tryParse(v);
                   if (val == null || val <= 0) return '请输入有效时长';
@@ -1374,6 +1430,25 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
                 },
                 onChanged: (_) => _updateAutoCalories(),
               ),
+              // 距离输入（仅距离型运动时显示）
+              if (_isDistanceSport) ...[
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _distanceController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: '运动距离（可选）',
+                    hintText: '例如：5.0',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    prefixIcon: const Icon(LucideIcons.mapPin, size: 20),
+                    suffixText: 'km',
+                  ),
+                  onChanged: (_) => _updateAutoCalories(),
+                ),
+              ],
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -1540,17 +1615,19 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
       children: [
         Row(
           children: [
-            const Icon(LucideIcons.dumbbell, size: 16, color: AppColors.primary),
+            const Icon(LucideIcons.dumbbell,
+                size: 16, color: AppColors.primary),
             const SizedBox(width: 8),
             Text('力量训练详情',
-                style: AppTextStyles.labelLarge.copyWith(
-                    fontWeight: FontWeight.w600)),
+                style: AppTextStyles.labelLarge
+                    .copyWith(fontWeight: FontWeight.w600)),
           ],
         ),
         const SizedBox(height: 12),
         // 肌群选择
-        Text('训练肌群', style: AppTextStyles.bodySmall.copyWith(
-            fontWeight: FontWeight.w500)),
+        Text('训练肌群',
+            style:
+                AppTextStyles.bodySmall.copyWith(fontWeight: FontWeight.w500)),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
@@ -1568,7 +1645,8 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
                 });
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: isSelected
                       ? AppColors.primary
@@ -1581,8 +1659,11 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
                 child: Text(group,
                     style: TextStyle(
                       fontSize: 13,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                      color: isSelected ? AppColors.textInverse : AppColors.textSecondary,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.w400,
+                      color: isSelected
+                          ? AppColors.textInverse
+                          : AppColors.textSecondary,
                     )),
               ),
             );
@@ -1592,8 +1673,9 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
         // 训练组列表
         Row(
           children: [
-            Text('训练组', style: AppTextStyles.bodySmall.copyWith(
-                fontWeight: FontWeight.w500)),
+            Text('训练组',
+                style: AppTextStyles.bodySmall
+                    .copyWith(fontWeight: FontWeight.w500)),
             const Spacer(),
             TextButton.icon(
               onPressed: () {
@@ -1728,7 +1810,8 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
       decoration: BoxDecoration(
         color: const Color(0xFF66BB6A).withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF66BB6A).withValues(alpha: 0.2)),
+        border:
+            Border.all(color: const Color(0xFF66BB6A).withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
@@ -1775,11 +1858,15 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
         };
       }
 
+      final durationText = _durationController.text.trim();
+      final duration = durationText.isEmpty ? 0 : int.parse(durationText);
+
       final result = await widget.exerciseService.createRemoteExerciseRecord(
         exerciseName:
             name.isEmpty ? ExerciseType.getLabel(_selectedType) : name,
         exerciseType: _selectedType,
-        durationMinutes: int.parse(_durationController.text),
+        durationMinutes: duration,
+        distanceKm: double.tryParse(_distanceController.text),
         caloriesBurned: double.parse(_caloriesController.text),
         notes: _notesController.text.trim().isEmpty
             ? null

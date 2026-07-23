@@ -146,6 +146,13 @@ class Settings(BaseSettings):
     cache_user_profile_ttl: int = Field(default=1800, description="用户资料缓存过期时间(秒)")
     cache_nutrition_ttl: int = Field(default=7200, description="营养数据缓存过期时间(秒)")
 
+    # FCM 推送配置
+    fcm_enabled: bool = Field(default=False, description="是否启用FCM推送")
+    fcm_service_account_path: str = Field(
+        default="firebase-service-account.json",
+        description="Firebase 服务账号 JSON 文件路径"
+    )
+
     # AI服务配置（预留）
     ai_service_enabled: bool = Field(default=False, description="是否启用AI服务")
     ai_service_url: str = Field(default="http://127.0.0.1:2024", description="AI服务URL")

@@ -23,6 +23,9 @@ class PetState {
   final double foodProgress;
   final double waterProgress;
   final PetSkin currentSkin; // 新增：当前桌宠皮肤
+  final String? customAvatarUrl; // AI 生成的自定义头像 URL（真实宠物形象同步）
+  final Map<String, String>
+      emotionUrls; // AI 生成的情绪变体 URL (happy/normal/hungry/weak → url)
 
   const PetState({
     this.expression = PetExpression.calm,
@@ -41,6 +44,8 @@ class PetState {
     this.foodProgress = 0.0,
     this.waterProgress = 0.0,
     this.currentSkin = PetSkin.defaultPet, // 默认桌宠
+    this.customAvatarUrl,
+    this.emotionUrls = const {},
   });
 
   PetState copyWith({
@@ -60,6 +65,8 @@ class PetState {
     double? foodProgress,
     double? waterProgress,
     PetSkin? currentSkin, // 新增参数
+    String? customAvatarUrl, // AI 自定义头像
+    Map<String, String>? emotionUrls, // 情绪变体 URL 映射
   }) {
     return PetState(
       expression: expression ?? this.expression,
@@ -78,6 +85,8 @@ class PetState {
       foodProgress: foodProgress ?? this.foodProgress,
       waterProgress: waterProgress ?? this.waterProgress,
       currentSkin: currentSkin ?? this.currentSkin,
+      customAvatarUrl: customAvatarUrl ?? this.customAvatarUrl,
+      emotionUrls: emotionUrls ?? this.emotionUrls,
     );
   }
 }
@@ -91,6 +100,10 @@ class PetNotifier extends StateNotifier<PetState> {
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _storage = PetStorage(prefs);
+
+    // 清理可能残留的真实宠物形象数据（真实宠物与虚拟桌宠独立）
+    _storage!.customAvatarUrl = null;
+    _storage!.emotionUrls = {};
 
     if (_storage!.needsDailyReset()) {
       state = state.copyWith(
@@ -291,6 +304,22 @@ class PetNotifier extends StateNotifier<PetState> {
 
   void updateWaterProgress(double progress) {
     state = state.copyWith(waterProgress: progress);
+  }
+
+  /// 设置 AI 自定义头像 URL（从真实宠物形象生成同步）
+  void setCustomAvatarUrl(String? url) {
+    _storage?.customAvatarUrl = url;
+    state = state.copyWith(customAvatarUrl: url);
+  }
+
+  /// 设置 AI 自定义头像和情绪变体 URL（从生成结果同步）
+  void setAvatarWithEmotions(String? baseUrl, Map<String, String> emotions) {
+    _storage?.customAvatarUrl = baseUrl;
+    _storage?.emotionUrls = emotions;
+    state = state.copyWith(
+      customAvatarUrl: baseUrl,
+      emotionUrls: emotions,
+    );
   }
 
   PetStorage? get storage => _storage;

@@ -17,6 +17,7 @@ import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../services/food_service.dart';
 import '../../../../services/water_service.dart';
+import '../../../../shared/utils/species_utils.dart';
 
 class MyPetPage extends ConsumerStatefulWidget {
   const MyPetPage({super.key});
@@ -587,7 +588,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
       ),
       child: Column(
         children: [
-          const Icon(LucideIcons.cat, size: 48, color: AppColors.textTertiary),
+          const Icon(Icons.pets, size: 48, color: AppColors.textTertiary),
           const SizedBox(height: 12),
           Text('还没有添加宠物',
               style: TextStyle(fontSize: 14, color: AppColors.textTertiary)),
@@ -604,7 +605,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
   /// 真实宠物卡片
   Widget _buildRealPetCard(Map<String, dynamic> pet) {
     final species = pet['species'] as String? ?? '';
-    final speciesIcon = species == 'cat' ? LucideIcons.cat : LucideIcons.dog;
+    final speciesIcon = getSpeciesIcon(species);
     final avatarUrl = pet['avatar_url'] as String?;
     final petName = pet['name'] as String? ?? '未命名';
     final petBreed = pet['breed'] as String? ?? '';
@@ -874,6 +875,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                       showLevelBadge: false,
                       enableInteraction: false,
                       skin: petState.currentSkin, // 使用当前选择的桌宠皮肤
+                      customAvatarUrl: petState.customAvatarUrl, // AI 自定义头像
+                      emotionUrls: petState.emotionUrls, // AI 情绪变体
                     ),
                   ),
                 ),

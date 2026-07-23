@@ -15,7 +15,9 @@ import 'pet_food_library_page.dart';
 import 'pet_weekly_report_page.dart';
 import '../../../chat/presentation/pages/chat_page.dart';
 import '../../data/real_pet_api_service.dart';
+import '../../presentation/providers/pet_provider.dart';
 import '../../../../shared/domain/models/api_response.dart';
+import '../../../../shared/utils/species_utils.dart';
 
 /// 真实宠物详情页
 /// 包含：宠物档案、体重趋势图、饮食日报、AI建议
@@ -44,6 +46,9 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
   Map<String, dynamic>? _dailySummary;
   Map<String, dynamic>? _healthScore;
   String? _aiAdvice;
+  String? _aiDisclaimer;
+  Map<String, String> _emotionUrls = {}; // AI 生成的情绪变体 URL
+  String _selectedEmotion = 'normal'; // 当前选中的情绪
 
   int get _petId => (widget.pet['id'] as num?)?.toInt() ?? 0;
 
@@ -68,6 +73,12 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
       api.getPet(_petId).then((r) {
         if (r.isSuccess && r.data != null) {
           widget.pet.addAll(r.data!);
+          // 加载已生成的 AI 形象情绪变体 URL
+          final emotions = r.data!['avatar_emotions'] as Map<String, dynamic>?;
+          if (emotions != null && emotions.isNotEmpty) {
+            _emotionUrls =
+                emotions.map((k, v) => MapEntry(k, v?.toString() ?? ''));
+          }
         }
       }).catchError((_) {}),
       // 体重记录
@@ -135,14 +146,20 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
       api.getAiAdvice(_petId).then((r) {
         if (r.isSuccess && r.data != null) {
           final data = r.data!;
+          final aiEnhanced = (data['ai_enhanced'] as String?)?.trim();
           final generalAdvice =
               (data['general_advice'] as List<dynamic>?)?.join('\n') ?? '';
           final nutritionTips =
               (data['nutrition_tips'] as List<dynamic>?)?.join('\n') ?? '';
           final disclaimer = data['disclaimer'] as String? ?? '';
-          _aiAdvice = [generalAdvice, nutritionTips, disclaimer]
-              .where((s) => s.isNotEmpty)
-              .join('\n\n');
+          final parts = <String>[];
+          if (aiEnhanced != null && aiEnhanced.isNotEmpty) {
+            parts.add(aiEnhanced);
+          }
+          if (generalAdvice.isNotEmpty) parts.add(generalAdvice);
+          if (nutritionTips.isNotEmpty) parts.add(nutritionTips);
+          _aiAdvice = parts.join('\n\n');
+          _aiDisclaimer = disclaimer;
         }
       }).catchError((_) {}),
     ]);
@@ -159,8 +176,8 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
   @override
   Widget build(BuildContext context) {
     final pet = widget.pet;
-    final speciesIcon =
-        pet['species'] == 'cat' ? LucideIcons.cat : LucideIcons.dog;
+    final speciesIcon = getSpeciesIcon(pet['species'] as String?);
+    final speciesLabel = getSpeciesLabel(pet['species'] as String?);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -312,8 +329,14 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
   /// 档案Tab
   Widget _buildProfileTab() {
     final pet = widget.pet;
-    final speciesIcon =
-        pet['species'] == 'cat' ? LucideIcons.cat : LucideIcons.dog;
+    final speciesIcon = getSpeciesIcon(pet['species'] as String?);
+    final speciesLabel = getSpeciesLabel(pet['species'] as String?);
+
+    // 仅使用本页状态，不依赖 petProvider（真实宠物形象与虚拟桌宠独立）
+    final hasEmotions = _emotionUrls.isNotEmpty;
+    final rawUrl = pet['avatar_url'] as String?;
+    final displayImageUrl =
+        (rawUrl != null && rawUrl.isNotEmpty) ? rawUrl : null;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -325,12 +348,23 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
             child: Column(
               children: [
                 PetAvatarDisplay(
-                  emotion: 'happy',
+                  emotion: _selectedEmotion,
                   size: 100,
                   breed: pet['breed'] as String?,
                   species: pet['species'] as String?,
-                  customImageUrl: pet['avatar_url'] as String?,
+                  customImageUrl: displayImageUrl,
+                  emotionUrls: hasEmotions ? _emotionUrls : null,
                 ),
+                // 情绪变体选择器（仅在已生成形象时显示）
+                if (hasEmotions) ...[
+                  const SizedBox(height: 12),
+                  EmotionSelector(
+                    selectedEmotion: _selectedEmotion,
+                    onEmotionSelected: (emotion) {
+                      setState(() => _selectedEmotion = emotion);
+                    },
+                  ),
+                ],
                 const SizedBox(height: 12),
                 ElevatedButton.icon(
                   onPressed: () => _navigateToGenerateAvatar(),
@@ -353,8 +387,8 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
             title: '基本信息',
             icon: LucideIcons.user,
             children: [
-              _buildInfoRow(
-                  '物种', pet['species'] == 'cat' ? '猫咪' : '狗狗', speciesIcon),
+              _buildInfoRow('物种', getSpeciesLabel(pet['species'] as String?),
+                  speciesIcon),
               _buildInfoRow('品种', pet['breed'] ?? '-', LucideIcons.tag),
               _buildInfoRow('年龄', () {
                 final age = pet['age'];
@@ -365,7 +399,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
               _buildInfoRow('体重', () {
                 // 优先从本地体重记录获取最新体重
                 if (_weightRecords.isNotEmpty) {
-                  final latest = _weightRecords.last;
+                  final latest = _weightRecords.first;
                   final w = latest['weight'];
                   if (w != null) return '${w} kg';
                 }
@@ -757,15 +791,16 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
               color: Colors.white,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(LucideIcons.info, size: 14, color: AppColors.textTertiary),
-                SizedBox(width: 8),
+                const Icon(LucideIcons.info,
+                    size: 14, color: AppColors.textTertiary),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '我是AI助手，建议仅供参考，宠物健康问题请咨询专业兽医。',
-                    style:
-                        TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                    _aiDisclaimer ?? 'AI建议仅供参考，宠物健康问题请咨询专业兽医。',
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.textTertiary),
                   ),
                 ),
               ],
@@ -987,6 +1022,16 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
             widget.pet.addAll(res.data!);
           });
         }
+        // 同步刷新体重记录，确保档案页体重显示最新值
+        final weightRes = await api.getWeightRecords(_petId);
+        if (weightRes.isSuccess && weightRes.data != null) {
+          final records = (weightRes.data!['records'] as List<dynamic>?) ?? [];
+          setState(() {
+            _weightRecords = records
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList();
+          });
+        }
       } catch (_) {
         // 兜底：用编辑返回的数据
         setState(() {
@@ -1057,11 +1102,12 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
     // 获取最新体重
     double? latestWeight;
     if (_weightRecords.isNotEmpty) {
-      latestWeight = (_weightRecords.last['weight'] as num?)?.toDouble();
+      latestWeight = (_weightRecords.first['weight'] as num?)?.toDouble();
     }
 
     final species = widget.pet['species'] as String? ?? 'cat';
-    final mlPerKg = species == 'dog' ? 60.0 : 50.0;
+    // 粗略估算每公斤饮水量：狗60ml，猫50ml，其他55ml
+    final mlPerKg = species == 'dog' ? 60.0 : (species == 'cat' ? 50.0 : 55.0);
     final recommended =
         latestWeight != null ? (latestWeight * mlPerKg).round() : 150;
 
@@ -1567,6 +1613,14 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
         if (updateResult.isSuccess) {
           // 刷新数据
           await _loadAllData();
+
+          // 保存情绪变体到本地状态（仅用于本页展示，不影响桌宠）
+          final emotions = (result['emotions'] as Map<String, dynamic>?)
+                  ?.map((k, v) => MapEntry(k, v.toString())) ??
+              {};
+          setState(() {
+            _emotionUrls = emotions;
+          });
 
           // 显示成功提示
           if (mounted) {

@@ -52,6 +52,7 @@ def _record_to_dict(record) -> dict:
         "exercise_name": getattr(record, 'exercise_name', None),
         "duration_minutes": record.duration_minutes,
         "intensity": record.intensity,
+        "distance_km": float(record.distance_km) if getattr(record, 'distance_km', None) is not None else None,
         "calories_burned": record.calories_burned,
         "record_date": record.record_date.isoformat() if hasattr(record.record_date, 'isoformat') else str(record.record_date),
         "notes": record.notes,
@@ -62,6 +63,8 @@ def _record_to_dict(record) -> dict:
 
 @router.post("/records")
 def create(record: ExerciseRecordCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    if record.duration_minutes <= 0 and (record.distance_km is None or record.distance_km <= 0):
+        raise HTTPException(status_code=400, detail="运动时长和距离至少需要填写一项")
     db_record = create_exercise_record(db, user.id, record)
     return BaseResponse(
         success=True,
@@ -89,6 +92,8 @@ def list_records(
 
 @router.put("/records/{record_id}")
 def update(record_id: int, record: ExerciseRecordCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    if record.duration_minutes <= 0 and (record.distance_km is None or record.distance_km <= 0):
+        raise HTTPException(status_code=400, detail="运动时长和距离至少需要填写一项")
     try:
         db_record = update_exercise_record(db, record_id, user.id, record)
         return BaseResponse(

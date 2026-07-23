@@ -7,11 +7,15 @@ class WellnessService {
   /// 获取养生知识
   Future<ApiResponse<List<Map<String, dynamic>>>> getWellnessTips({
     String? category,
+    bool randomizeSeasons = false,
   }) async {
     try {
       final queryParams = <String, dynamic>{};
       if (category != null) {
         queryParams['category'] = category;
+      }
+      if (randomizeSeasons) {
+        queryParams['randomize_seasons'] = true;
       }
 
       final response = await _apiService.dio.get(

@@ -8,11 +8,12 @@
 3. 时间比较精确到分钟 → remind_time 和当前时间都截断到分钟
 4. repeat_days bitmask 正确解析 → Python weekday() 0=Mon 映射到 bitmask 0=Sun
 5. 防重复触发 → 使用已触发 ID 集合去重
-6. 日志输出 → 使用标准 logger 而非 print
+6. FCM 推送 → 通过 firebase-admin 发送远程推送通知
 """
 
+import asyncio
 import logging
-from datetime import datetime, time as dt_time
+from datetime import datetime
 
 from shared.models.database import SessionLocal
 from shared.models.reminder_models import Reminder
@@ -20,7 +21,6 @@ from shared.models.reminder_models import Reminder
 logger = logging.getLogger(__name__)
 
 # 同一分钟内已触发的提醒 ID 集合，防止重复触发
-# key: (user_id, reminder_id)，每分钟清空
 _triggered_this_minute: set = None
 _triggered_minute_key: str = None
 
@@ -33,6 +33,68 @@ def _python_weekday_to_bitmask_index(weekday: int) -> int:
     return (weekday + 1) % 7
 
 
+def _send_fcm_notifications_sync(db, reminders):
+    """同步包装器：在现有 event loop 中运行异步 FCM 推送"""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # 在运行中的 event loop 中，使用 run_coroutine_threadsafe
+            # 创建新的 event loop 在独立线程中运行
+            import concurrent.futures
+            def _run_in_thread():
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    return new_loop.run_until_complete(
+                        _send_fcm_notifications(db, reminders)
+                    )
+                finally:
+                    new_loop.close()
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_run_in_thread)
+                future.result(timeout=30)
+        else:
+            loop.run_until_complete(_send_fcm_notifications(db, reminders))
+    except Exception as e:
+        logger.error(f"FCM 推送执行异常: {e}")
+
+
+async def _send_fcm_notifications(db, reminders):
+    """向所有匹配用户发送 FCM 推送通知"""
+    from shared.services.push_service import send_push_to_user
+
+    for rem in reminders:
+        body = rem.description or (f"{rem.reminder_type} 提醒")
+
+        # 构建附加数据，供前端通知点击时使用
+        data_payload = {
+            "reminder_type": rem.reminder_type,
+            "click_action": "FLUTTER_NOTIFICATION_CLICK",
+        }
+
+        try:
+            count = await send_push_to_user(
+                db=db,
+                user_id=rem.user_id,
+                title=rem.title or "DietAI 提醒",
+                body=body,
+                data=data_payload,
+                reminder_id=rem.id,
+                reminder_type=rem.reminder_type,
+            )
+            if count > 0:
+                logger.info(
+                    f"[FCM推送成功] user={rem.user_id}, "
+                    f"type={rem.reminder_type}, title={rem.title}, count={count}"
+                )
+        except Exception as e:
+            logger.error(
+                f"[FCM推送失败] user={rem.user_id}, "
+                f"type={rem.reminder_type}, error={e}"
+            )
+
+
 def check_reminders():
     """
     检查并触发到时的提醒。
@@ -40,7 +102,7 @@ def check_reminders():
     每分钟执行一次：
     - 查询 is_enabled=True 且 remind_time 匹配当前时间（精确到分钟）的提醒
     - 根据 repeat_days bitmask 检查今天是否应该触发
-    - 触发后记录日志（后续可接入 FCM/APNs 推送）
+    - 通过 FCM 向用户设备发送推送通知
     """
     now = datetime.now()
     current_time = now.time().replace(second=0, microsecond=0)
@@ -64,29 +126,32 @@ def check_reminders():
             Reminder.repeat_days.op('&')(bit_value) > 0
         ).all()
 
-        triggered_count = 0
+        # 去重
+        to_trigger = []
         for rem in reminders:
             dedup_key = (rem.user_id, rem.id)
             if dedup_key in _triggered_this_minute:
                 logger.debug(f"跳过重复触发: user={rem.user_id}, reminder={rem.id}")
                 continue
-
             _triggered_this_minute.add(dedup_key)
-            triggered_count += 1
+            to_trigger.append(rem)
 
+        if not to_trigger:
+            return
+
+        logger.info(
+            f"[提醒触发] 本轮匹配 {len(to_trigger)} 条提醒, "
+            f"time={current_time}, weekday_bit={bit_index}"
+        )
+
+        for rem in to_trigger:
             logger.info(
-                f"[提醒触发] user_id={rem.user_id}, "
-                f"type={rem.reminder_type}, "
-                f"title={rem.title}, "
-                f"time={current_time}, "
-                f"weekday_bit={bit_index}(bit={bit_value})"
+                f"   -> user={rem.user_id}, type={rem.reminder_type}, "
+                f"title={rem.title}"
             )
 
-            # TODO: 接入消息推送 (FCM/APNs)
-            # await push_notification(rem.user_id, rem.title, rem.description)
-
-        if triggered_count > 0:
-            logger.info(f"本轮触发 {triggered_count} 条提醒，共检查到 {len(reminders)} 条匹配")
+        # 发送 FCM 推送通知
+        _send_fcm_notifications_sync(db, to_trigger)
 
     except Exception as e:
         logger.error(f"[提醒检查异常] {e}", exc_info=True)

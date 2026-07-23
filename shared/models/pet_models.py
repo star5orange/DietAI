@@ -115,7 +115,7 @@ class PetProfile(Base):
     gender = Column(String(10), nullable=True, comment="male/female")
     birth_date = Column(Date, nullable=True)
     is_neutered = Column(Boolean, default=False)
-    avatar_url = Column(String(2000), nullable=True)
+    avatar_url = Column(Text, nullable=True, comment="AI生成的头像URL（签名URL可能超2000字符）")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
@@ -284,13 +284,14 @@ class PetDewormingRecord(Base):
 
 
 class PetFoodDatabase(Base):
-    """宠物食品营养库"""
+    """宠物食品营养库（每个用户独立的食品库，通过拍照识别添加）"""
     __tablename__ = "pet_food_database"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     food_name = Column(String(200), nullable=False)
     brand = Column(String(100), nullable=True)
-    category = Column(String(20), nullable=True, comment="dry_food/wet_food/snack")
+    category = Column(String(20), nullable=True, comment="dry_food/wet_food/snack/fresh")
     suitable_species = Column(String(20), nullable=True, comment="cat/dog")
     calories_per_100g = Column(Numeric(8, 2), nullable=True)
     protein_per_100g = Column(Numeric(6, 2), nullable=True)

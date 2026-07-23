@@ -47,6 +47,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     'encouraging_friend': '鼓励型伙伴',
   };
 
+  final Map<String, String> _petStyleLabels = {
+    'vet_assistant': '兽医助理',
+    'pet_nutritionist': '宠物营养师',
+    'pet_caregiver': '贴心宠管',
+  };
+
   @override
   void initState() {
     super.initState();
@@ -59,14 +65,21 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     try {
       final advisorService = AdvisorService(ApiService());
       final settings = await advisorService.getSettings();
+      final isPet = widget.sessionType == 6;
       if (mounted) {
         setState(() {
-          _currentStyleName = _styleLabels[settings.advisorStyle] ?? '营养师';
+          if (isPet) {
+            _currentStyleName =
+                _petStyleLabels[settings.petAdvisorStyle] ?? '兽医助理';
+          } else {
+            _currentStyleName = _styleLabels[settings.advisorStyle] ?? '营养师';
+          }
         });
       }
     } catch (_) {
       if (mounted) {
-        setState(() => _currentStyleName = '营养师');
+        setState(
+            () => _currentStyleName = widget.sessionType == 6 ? '兽医助理' : '营养师');
       }
     }
   }
@@ -77,7 +90,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => const AdvisorStylePage(),
+            builder: (_) => AdvisorStylePage(sessionType: widget.sessionType),
           ),
         );
         _loadAdvisorStyle();
@@ -363,7 +376,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => const AdvisorStylePage(),
+                  builder: (_) =>
+                      AdvisorStylePage(sessionType: widget.sessionType),
                 ),
               );
               _loadAdvisorStyle();

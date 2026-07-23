@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/themes/app_colors.dart';
-import '../../../../core/themes/app_text_styles.dart';
+import '../../../../shared/utils/species_utils.dart';
 import '../providers/pet_provider.dart';
 import '../widgets/pet_animation_widget.dart';
 import '../../domain/services/pet_service.dart';
@@ -220,6 +220,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
             showMoodIndicator: true,
             enableInteraction: true,
             skin: petState.currentSkin,
+            customAvatarUrl: petState.customAvatarUrl, // AI 自定义头像
+            emotionUrls: petState.emotionUrls, // AI 情绪变体
           ),
           const SizedBox(height: 12),
           Text(
@@ -432,8 +434,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                 borderRadius: BorderRadius.circular(50),
               ),
               child: const Center(
-                child:
-                    Icon(LucideIcons.cat, size: 48, color: AppColors.primary),
+                child: Icon(Icons.pets, size: 48, color: AppColors.primary),
               ),
             ),
             const SizedBox(height: 20),
@@ -477,8 +478,8 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
     final breed = (pet['breed'] as String?) ?? '';
     final avatarUrl = (pet['avatar_url'] as String?) ?? '';
 
-    final speciesIcon = species == 'dog' ? LucideIcons.dog : LucideIcons.cat;
-    final speciesLabel = species == 'dog' ? '狗' : '猫';
+    final speciesIcon = getSpeciesIcon(species);
+    final speciesLabel = getSpeciesLabel(species);
 
     return GestureDetector(
       onTap: () => _navigateToRealPetDetail(pet),

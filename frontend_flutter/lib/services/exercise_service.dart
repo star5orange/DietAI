@@ -99,7 +99,7 @@ class ExerciseService {
   }
 
   double estimateCalories(String exerciseType, int durationMinutes,
-      {double? userWeight}) {
+      {double? userWeight, double? distanceKm}) {
     final weight = userWeight ?? 70.0;
     final metValues = {
       'running': 9.8,
@@ -117,7 +117,50 @@ class ExerciseService {
       'other': 5.0,
     };
 
-    final met = metValues[exerciseType] ?? 5.0;
+    // 中文名称映射
+    final chineseNameMap = {
+      '跑步': 'running',
+      '慢跑': 'running',
+      '散步': 'walking',
+      '快走': 'walking',
+      '步行': 'walking',
+      '骑行': 'cycling',
+      '骑车': 'cycling',
+      '自行车': 'cycling',
+      '游泳': 'swimming',
+      '瑜伽': 'yoga',
+      '力量': 'strength',
+      '举重': 'strength',
+      '力量训练': 'strength',
+      '高强度间歇': 'hiit',
+      '间歇训练': 'hiit',
+      '跳舞': 'dance',
+      '舞蹈': 'dance',
+      '篮球': 'basketball',
+      '足球': 'football',
+      '羽毛球': 'badminton',
+      '网球': 'tennis',
+      '乒乓球': 'badminton',
+    };
+
+    // 查找中文名称对应的类型
+    final mappedType = chineseNameMap[exerciseType] ?? exerciseType;
+
+    // 距离型运动有距离数据时，用距离公式计算
+    if (distanceKm != null && distanceKm > 0) {
+      const distanceCalPerKgKm = {
+        'running': 1.0,
+        'walking': 0.7,
+        'cycling': 0.35,
+        'swimming': 3.0,
+      };
+      final coef = distanceCalPerKgKm[mappedType];
+      if (coef != null) {
+        return coef * weight * distanceKm;
+      }
+    }
+
+    final met = metValues[mappedType] ?? 5.0;
     return met * weight * (durationMinutes / 60.0);
   }
 
@@ -167,6 +210,7 @@ class ExerciseService {
     required String exerciseType,
     required int durationMinutes,
     required double caloriesBurned,
+    double? distanceKm,
     String? notes,
     String? recordDate,
     Map<String, dynamic>? strengthDetail,
@@ -179,6 +223,7 @@ class ExerciseService {
         'calories_burned': caloriesBurned,
         'record_date':
             recordDate ?? DateTime.now().toIso8601String().substring(0, 10),
+        if (distanceKm != null && distanceKm > 0) 'distance_km': distanceKm,
         if (notes != null && notes.isNotEmpty) 'notes': notes,
         if (strengthDetail != null) 'strength_detail': strengthDetail,
       };

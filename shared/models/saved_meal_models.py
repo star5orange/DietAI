@@ -20,6 +20,9 @@ class SavedMeal(Base):
     # 是否为公共菜品（可供其他用户使用）
     is_public = Column(Boolean, default=False)
     
+    # 来源: manual=手动创建, record=从食物记录保存
+    source = Column(String(20), default="manual")
+
     # 使用统计
     usage_count = Column(Integer, default=0)  # 使用次数
     favorite_count = Column(Integer, default=0)  # 收藏次数（如果是公共菜品）

@@ -2,11 +2,14 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
 from datetime import datetime
 from typing import List, Dict, Optional
+import logging
 
 from agent.utils.configuration import Configuration
 from agent.utils.chat_states import ChatState
 from agent.common_utils.model_utils import get_model
 from agent.utils.prompts import CHAT_SYSTEM_PROMPTS
+
+logger = logging.getLogger(__name__)
 
 
 def initialize_chat_session(state: ChatState, config: RunnableConfig) -> ChatState:
@@ -20,6 +23,12 @@ def initialize_chat_session(state: ChatState, config: RunnableConfig) -> ChatSta
     advisor_prompt = state.get('advisor_system_prompt', '')
     if advisor_prompt:
         system_prompt = system_prompt + "\n\n" + advisor_prompt
+
+    logger.info(f"[LANGGRAPH] initialize_chat session_type={state['session_type']}, "
+                f"base_prompt_len={len(CHAT_SYSTEM_PROMPTS.get(state['session_type'], ''))}, "
+                f"advisor_prompt_len={len(advisor_prompt)}, "
+                f"final_prompt_len={len(system_prompt)}, "
+                f"final_prompt_preview={system_prompt[:300]}")
 
     # 如果是宠物健康咨询且提供了pet_id，加载宠物信息
     pet_context = state.get('pet_context')
@@ -164,6 +173,34 @@ def analyze_conversation_context(state: ChatState) -> ChatState:
             context_analysis += f"\n人群标签: {state['crowd_tag']}"
         if state.get('constitution_type'):
             context_analysis += f"\n体质类型: {state['constitution_type']}"
+
+        # 注入疾病信息
+        diseases = state.get('diseases')
+        if diseases and isinstance(diseases, list) and len(diseases) > 0:
+            disease_lines = ["【用户疾病/健康状况 - 必须参考】"]
+            for d in diseases:
+                name = d.get('disease_name', '未知')
+                severity = d.get('severity_level', '')
+                is_current = d.get('is_current', False)
+                status = "当前患病" if is_current else "既往病史"
+                severity_label = {1: "轻度", 2: "中度", 3: "重度"}.get(severity, "")
+                disease_lines.append(f"- {name} ({status}, {severity_label})")
+            disease_lines.append("请务必在饮食建议中考虑以上疾病状况，给出针对性的饮食禁忌和推荐。")
+            context_analysis += "\n" + "\n".join(disease_lines)
+
+        # 注入过敏信息
+        allergies = state.get('allergies')
+        if allergies and isinstance(allergies, list) and len(allergies) > 0:
+            allergy_lines = ["【用户过敏原 - 必须遵守，严禁推荐含以下过敏原的食物】"]
+            for a in allergies:
+                name = a.get('allergen_name', '未知')
+                atype = a.get('allergen_type_name', a.get('allergen_type', ''))
+                severity = a.get('severity_level', '')
+                reaction = a.get('reaction_description', '')
+                severity_label = {1: "轻度", 2: "中度", 3: "重度"}.get(severity, "")
+                allergy_lines.append(f"- {name} ({atype}过敏, {severity_label}{', 反应: ' + reaction if reaction else ''})")
+            allergy_lines.append("请严格遵守：所有饮食建议中必须排除以上过敏原及其交叉反应食物。")
+            context_analysis += "\n" + "\n".join(allergy_lines)
 
         # 宠物健康咨询：注入宠物档案、安全守则和免责声明
         if state['session_type'] == 6:

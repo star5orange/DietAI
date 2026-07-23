@@ -235,12 +235,17 @@ class _EditPetDialogState extends State<EditPetDialog> {
       'gender': _selectedGender,
       'is_neutered': _isNeutered,
     };
+
+    // 体重变更 → 通过体重记录专用接口保存
     final weightVal = double.tryParse(_weightController.text.trim());
-    if (weightVal != null) {
-      updateData['weight'] = weightVal;
-    }
+    final oldWeight = (widget.pet['weight'] as num?)?.toDouble();
+    final weightChanged = weightVal != null && weightVal != oldWeight;
 
     final result = await api.updatePet(petId, updateData);
+
+    if (result.isSuccess && weightChanged && weightVal != null) {
+      await api.addWeight(petId, {'weight': weightVal});
+    }
 
     if (!mounted) return;
     setState(() => _isSaving = false);

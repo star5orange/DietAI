@@ -131,11 +131,14 @@ class AgentAnalysisData {
   @JsonKey(name: 'nutrition_facts')
   final NutritionFacts nutritionFacts;
   final Recommendations recommendations;
+  @JsonKey(name: 'short_comment')
+  final String? shortComment;
 
   const AgentAnalysisData({
     required this.imageDescription,
     required this.nutritionFacts,
     required this.recommendations,
+    this.shortComment,
   });
 
   factory AgentAnalysisData.fromJson(Map<String, dynamic> json) =>

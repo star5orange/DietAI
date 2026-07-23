@@ -6,7 +6,7 @@
 /// 3. 编译时常量 devBaseUrl / prodBaseUrl
 class ApiConfig {
   // 开发环境配置
-  static const String devBaseUrl = 'http://localhost:8000';  // 本地开发环境
+  static const String devBaseUrl = 'http://localhost:8000'; // 本地开发环境
   static const String devLocalNetworkUrl =
       'http://192.168.1.108:8000'; // 请修改为您的局域网IP
 
@@ -82,7 +82,8 @@ class ApiConfig {
   static String get effectiveBaseUrl {
     final url = _customBaseUrl ?? baseUrl;
     assert(
-      currentEnvironment == Environment.development || url.startsWith('https://'),
+      currentEnvironment == Environment.development ||
+          url.startsWith('https://'),
       '生产环境必须使用 HTTPS！当前 URL: $url',
     );
     return url;
@@ -91,7 +92,8 @@ class ApiConfig {
   static String get effectiveMinioUrl {
     final url = _customMinioUrl ?? minioUrl;
     assert(
-      currentEnvironment == Environment.development || url.startsWith('https://'),
+      currentEnvironment == Environment.development ||
+          url.startsWith('https://'),
       '生产环境 MinIO 必须使用 HTTPS！当前 URL: $url',
     );
     return url;
