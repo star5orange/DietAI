@@ -159,6 +159,42 @@ class _PetAvatarDisplayState extends State<PetAvatarDisplay>
     super.dispose();
   }
 
+  /// 点击放大查看 AI 生成的宠物形象
+  void _showFullscreen(BuildContext context) {
+    final emotionUrl = widget.emotionUrls?[widget.emotion];
+    final effectiveUrl = emotionUrl ?? widget.customImageUrl;
+    if (effectiveUrl == null || effectiveUrl.isEmpty) return;
+
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        pageBuilder: (_, __, ___) => Scaffold(
+          backgroundColor: Colors.black87,
+          body: GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: Center(
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 4.0,
+                child: Image.network(
+                  effectiveUrl,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.broken_image,
+                    color: Colors.white54,
+                    size: 80,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        transitionsBuilder: (_, animation, __, child) =>
+            FadeTransition(opacity: animation, child: child),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final breedColor = _breedColors[widget.breed] ?? AppColors.primary;
@@ -180,8 +216,10 @@ class _PetAvatarDisplayState extends State<PetAvatarDisplay>
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // 主图片
-                Container(
+                // 主图片（点击可放大查看）
+                GestureDetector(
+                  onTap: () => _showFullscreen(context),
+                  child: Container(
                   width: widget.size,
                   height: widget.size,
                   decoration: BoxDecoration(
@@ -206,6 +244,7 @@ class _PetAvatarDisplayState extends State<PetAvatarDisplay>
                     borderRadius: BorderRadius.circular(widget.size * 0.24),
                     child: _buildAvatarContent(breedColor, emotionColor),
                   ),
+                ),
                 ),
 
                 // 眨眼遮罩（仅伪动画模式）

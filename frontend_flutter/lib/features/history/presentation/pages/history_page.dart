@@ -10,8 +10,9 @@ import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/presentation/widgets/food_image_preview.dart';
 import '../../../home/presentation/widgets/food_record_modal.dart';
 import '../../../camera/presentation/pages/camera_page.dart';
-import '../../../home/presentation/pages/meal_selection_page.dart';
 import '../../../home/presentation/pages/text_describe_page.dart';
+import '../../../saved_meals/presentation/pages/saved_meals_page.dart';
+import '../../../../shared/domain/models/saved_meal_model.dart';
 
 class HistoryPage extends ConsumerStatefulWidget {
   const HistoryPage({super.key});
@@ -523,16 +524,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         );
         break;
       case 'saved_meals':
-        Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (context) =>
-                    MealSelectionPage(recordMethod: method))).then((result) {
-          if (result != null) {
-            // TODO: 处理从常用餐食选择的记录
-            _loadRecords();
-          }
-        });
+        _navigateToSavedMeals(mealName, mealType, recordTime);
         break;
     }
   }
@@ -549,6 +541,94 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         return 4;
       default:
         return 4;
+    }
+  }
+
+  Future<void> _navigateToSavedMeals(String mealName, int mealType,
+      [String? recordTime]) async {
+    final meal =
+        await Navigator.of(context, rootNavigator: true).push<SavedMeal>(
+      MaterialPageRoute(builder: (_) => const SavedMealsPage()),
+    );
+    if (meal != null && mounted) {
+      _createFoodRecordFromSavedMeal(meal, mealName, mealType, recordTime);
+    }
+  }
+
+  Future<void> _createFoodRecordFromSavedMeal(
+      SavedMeal meal, String mealName, int mealType,
+      [String? recordTime]) async {
+    try {
+      final dateStr =
+          '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+
+      final record = FoodRecordCreate(
+        recordDate: dateStr,
+        recordTime: recordTime ?? DateTime.now().toIso8601String(),
+        mealType: mealType,
+        foodName: meal.mealName,
+        description: meal.description,
+        imageUrl: meal.imageUrl,
+        recordingMethod: 4,
+        cost: _pendingCostAmount,
+        sourceTag: _pendingCostSource,
+      );
+
+      final result = await _foodService.createFoodRecord(record);
+      if (result.success && result.data != null) {
+        if (meal.nutrition != null) {
+          try {
+            await _foodService.addNutritionDetail(
+              result.data!.id,
+              NutritionDetailCreate(
+                calories: meal.nutrition!.calories,
+                protein: meal.nutrition!.protein,
+                fat: meal.nutrition!.fat,
+                carbohydrates: meal.nutrition!.carbohydrates,
+                dietaryFiber: meal.nutrition!.dietaryFiber,
+                sugar: meal.nutrition!.sugar,
+                sodium: meal.nutrition!.sodium,
+                cholesterol: meal.nutrition!.cholesterol,
+                analysisMethod: 'saved_meal',
+              ),
+            );
+          } catch (_) {
+            // 营养详情添加失败不影响主流程
+          }
+        }
+
+        _pendingCostAmount = null;
+        _pendingCostSource = null;
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${meal.mealName} 已记录到$mealName'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        }
+        await _foodService.invalidateRecordsCache(dateStr);
+        _loadRecords();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('记录失败: ${result.message}'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('记录失败: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 
@@ -579,7 +659,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     }
 
     final List<Widget> sections = [];
-    final mealTypes = [1, 2, 3, 4]; // 早餐、午餐、晚餐、零食
+    final mealTypes = [1, 2, 3, 4]; // 早餐、午餐、晚餐、加餐
 
     for (final mealType in mealTypes) {
       if (mealGroups.containsKey(mealType)) {

@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     dashscope_api_key: str = Field(default="", description="DashScope API密钥")
     dashscope_image_model: str = Field(default="wanx-v1", description="DashScope图像生成模型")
 
+    # 火山引擎配置 (豆包 Seedream 图像生成)
+    volc_ark_api_key: str = Field(default="", description="火山引擎Ark API密钥")
+    ark_image_model: str = Field(default="doubao-seedream-4-0-250828", description="Seedream图像生成模型ID")
+
     # JWT配置
     jwt_secret_key: str = Field(
         default="CHANGE-ME-generate-with-secrets-token-urlsafe-64",
@@ -157,6 +161,14 @@ class Settings(BaseSettings):
     ai_service_enabled: bool = Field(default=False, description="是否启用AI服务")
     ai_service_url: str = Field(default="http://127.0.0.1:2024", description="AI服务URL")
     ai_service_timeout: int = Field(default=30, description="AI服务超时时间(秒)")
+
+    # DashScope AI配置（通义万相）
+    dashscope_api_key: str = Field(default="", description="DashScope API密钥")
+    dashscope_image_model: str = Field(default="wanx-v1", description="DashScope图像生成模型")
+
+    # 火山引擎配置 (豆包 Seedream 图像生成)
+    volc_ark_api_key: str = Field(default="", description="火山引擎Ark API密钥")
+    ark_image_model: str = Field(default="doubao-seedream-4-0-250828", description="Seedream图像生成模型ID")
 
     # 健康检查配置
     health_check_enabled: bool = Field(default=True, description="是否启用健康检查")

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 from typing import List, Optional
@@ -8,20 +8,19 @@ import json
 from langgraph_sdk import get_client
 from fastapi.responses import StreamingResponse, Response
 
-from shared.models.database import get_db
+from shared.models.database import get_db, SessionLocal
 from shared.models.schemas import (
     BaseResponse, FoodRecordCreate, FoodRecordResponse,
     NutritionDetailCreate, NutritionDetailResponse,
     DailyNutritionSummaryResponse, DateRangeParams,
     PaginationParams, FileUploadResponse, AgentAnalysisData, NutritionFacts, Recommendations
 )
-from shared.utils.auth import get_current_user
+from shared.utils.auth import get_current_user, AuthService
 from shared.models.user_models import User
 from shared.models.food_models import FoodRecord, NutritionDetail, DailyNutritionSummary, FoodDatabase
 from shared.config.redis_config import cache_service
 from shared.config.minio_config import minio_client
 from shared.config.settings import get_settings
-from fastapi.responses import StreamingResponse
 
 from agent.common_utils.configuration import get_agent_model_config
 from shared.utils.model import decimal_to_float
@@ -118,16 +117,17 @@ router = APIRouter(prefix="/foods", tags=["食物记录"])
 
 async def generate_sse_stream(
         food_data: FoodRecordCreate,
-        current_user: User,
-        db: Session
+        user_id: int
 , record_data=None):
+    """SSE 流式生成器 — 自行管理 db session，不依赖 FastAPI DI"""
+    db = SessionLocal()
     try:
         # 1. 首先发送创建记录的状态
         yield f"data: {json.dumps({'type': 'record_created', 'data': {'status': 'creating', 'message': '正在创建食物记录...'}, 'success': True}, ensure_ascii=False)}\n\n"
 
         # 创建食物记录
         food_record = FoodRecord(
-            user_id=current_user.id,
+            user_id=user_id,
             record_date=food_data.record_date,
             record_time=food_data.record_time or datetime.now(),
             meal_type=food_data.meal_type,
@@ -147,7 +147,7 @@ async def generate_sse_stream(
         # 如果有图片URL，使用流式Agent分析（在下方处理）
         if not food_data.image_url:
             # 清除相关缓存
-            cache_key = f"nutrition:daily:{current_user.id}:{food_data.record_date}"
+            cache_key = f"nutrition:daily:{user_id}:{food_data.record_date}"
             cache_service.redis.delete(cache_key)
 
         # 构建响应数据
@@ -181,7 +181,7 @@ async def generate_sse_stream(
                 # 使用Agent分析图片（流式输出）
                 analysis_complete_data = None
                 print(f"[SSE] 开始调用Agent分析图片: {food_data.image_url}")
-                async for chunk in analyze_food_image_with_agent(food_data.image_url, current_user.id, db):
+                async for chunk in analyze_food_image_with_agent(food_data.image_url, user_id, db):
                     chunk_type = chunk.get("type")
                     print(f"[SSE] 收到Agent chunk: type={chunk_type}")
                     if chunk_type == "analysis_progress":
@@ -235,7 +235,7 @@ async def generate_sse_stream(
                         db.commit()
 
                         # 触发每日营养汇总更新
-                        await update_daily_nutrition_summary(current_user.id, food_data.record_date, db)
+                        await update_daily_nutrition_summary(user_id, food_data.record_date, db)
 
                         yield f"data: {json.dumps({'type': 'nutrition_saved', 'data': {'status': 'completed', 'message': '营养分析完成并已保存'}, 'success': True}, ensure_ascii=False)}\n\n"
                     except Exception as save_err:
@@ -260,7 +260,7 @@ async def generate_sse_stream(
                 yield f"data: {json.dumps({'type': 'analysis_failed', 'data': {'status': 'failed', 'message': f'分析失败: {str(e)}'}, 'success': False}, ensure_ascii=False)}\n\n"
 
         # 清除相关缓存
-        cache_key = f"nutrition:daily:{current_user.id}:{food_data.record_date}"
+        cache_key = f"nutrition:daily:{user_id}:{food_data.record_date}"
         cache_service.redis.delete(cache_key)
 
         # 5. 发送完成信号
@@ -270,20 +270,33 @@ async def generate_sse_stream(
         db.rollback()
         yield f"data: {json.dumps({'type': 'error', 'data': {'error': str(e), 'message': f'创建食物记录失败: {str(e)}'}, 'success': False}, ensure_ascii=False)}\n\n"
         yield f"data: {json.dumps({'type': 'stream_complete', 'data': {'status': 'completed'}, 'success': True}, ensure_ascii=False)}\n\n"
+    finally:
+        db.close()
 
 
 @router.post("/records")
 async def create_food_record(
         food_data: FoodRecordCreate,
-        current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        request: Request
 ):
-    """创建食物记录并使用Agent分析图片（流式输出）"""
+    """创建食物记录并使用Agent分析图片（流式输出）
+
+    StreamingResponse 不能使用 Depends(get_db)，因为 FastAPI 会在返回
+    StreamingResponse 后立即关闭 DI 注入的 session，而 SSE 生成器还在运行。
+    改为手动解析 token，生成器内部自行管理 db session 生命周期。
+    """
+    # 手动解析 Authorization header，获取 user_id
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="未提供有效的认证令牌")
+    token = auth_header[7:]  # 去掉 "Bearer " 前缀
+    payload = AuthService.verify_token(token)
+    user_id = int(payload.get("sub"))
+
     return StreamingResponse(
         generate_sse_stream(
             food_data=food_data,
-            current_user=current_user,
-            db=db
+            user_id=user_id
         ),
         media_type="text/event-stream",
         headers={
@@ -296,16 +309,40 @@ async def create_food_record(
 
 
 #
-@router.post("/records/traditional", response_model=BaseResponse)
+@router.post("/records/traditional")
 async def create_food_record_traditional(
         food_data: FoodRecordCreate,
-        current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        request: Request,
 ):
-    """创建食物记录（传统接口，不使用流式输出）"""
+    """创建食物记录（传统接口，不使用流式输出）
+
+    完全不使用 FastAPI DI (Depends)，改为手动解析 token + 管理 session，
+    彻底避免 threadpool 跨线程 session 冲突。
+    """
+    import sys
+    import traceback
+
+    db = None
     try:
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="未提供有效的认证令牌")
+        token = auth_header[7:]
+        payload = AuthService.verify_token(token)
+        user_id = int(payload.get("sub"))
+
+        sys.stderr.write(f"[TRACE-v3] user_id={user_id}\n")
+        sys.stderr.flush()
+
+        db = SessionLocal()
+        sys.stderr.write("[TRACE-v3] SessionLocal created\n")
+        sys.stderr.flush()
+
+        analysis_status = 2 if food_data.image_url else 1
+        analysis_status = 2  # TEST: always 2
+
         food_record = FoodRecord(
-            user_id=current_user.id,
+            user_id=user_id,
             record_date=food_data.record_date,
             record_time=food_data.record_time or datetime.now(),
             meal_type=food_data.meal_type,
@@ -313,33 +350,23 @@ async def create_food_record_traditional(
             description=food_data.description,
             image_url=food_data.image_url,
             recording_method=food_data.recording_method or 1,
-            analysis_status=1,
+            analysis_status=analysis_status,
             cost=food_data.cost,
             source_tag=food_data.source_tag,
         )
 
+        sys.stderr.write(f"[TRACE-v3] FoodRecord object created, calling db.add...\n")
+        sys.stderr.flush()
         db.add(food_record)
+
+        sys.stderr.write(f"[TRACE-v3] db.add done, calling db.commit...\n")
+        sys.stderr.flush()
         db.commit()
-        db.refresh(food_record)
 
-        if food_data.image_url:
-            try:
-                food_record.analysis_status = 2
-                db.commit()
+        sys.stderr.write(f"[TRACE-v3] commit done, record id={food_record.id}\n")
+        sys.stderr.flush()
 
-                import asyncio
-                from concurrent.futures import ThreadPoolExecutor
-
-                def background_analysis():
-                    asyncio.run(_run_background_analysis(food_data.image_url, current_user.id, food_record.id))
-
-                executor = ThreadPoolExecutor(max_workers=1)
-                executor.submit(background_analysis)
-
-            except Exception as e:
-                print(f"启动后台分析失败: {str(e)}")
-
-        cache_key = f"nutrition:daily:{current_user.id}:{food_data.record_date}"
+        cache_key = f"nutrition:daily:{user_id}:{food_data.record_date}"
         cache_service.redis.delete(cache_key)
 
         response_data = {
@@ -364,12 +391,29 @@ async def create_food_record_traditional(
             data=response_data
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
-        db.rollback()
+        sys.stderr.write(f"[TRACE-v3] EXCEPTION: {type(e).__name__}: {e}\n")
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
+        if db is not None:
+            try:
+                db.rollback()
+            except Exception as rb_err:
+                sys.stderr.write(f"[TRACE-v3] rollback failed: {rb_err}\n")
+                sys.stderr.flush()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"创建食物记录失败: {str(e)}"
         )
+    finally:
+        if db is not None:
+            try:
+                db.close()
+            except Exception as close_err:
+                sys.stderr.write(f"[TRACE-v3] close failed: {close_err}\n")
+                sys.stderr.flush()
 
 
 @router.put("/records/{record_id}", response_model=BaseResponse)
@@ -377,13 +421,14 @@ async def update_food_record(
         record_id: int,
         food_data: FoodRecordCreate,
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
 ):
     """更新食物记录"""
+    user_id = current_user.id
+    db = SessionLocal()
     try:
         food_record = db.query(FoodRecord).filter(
             FoodRecord.id == record_id,
-            FoodRecord.user_id == current_user.id
+            FoodRecord.user_id == user_id
         ).first()
 
         if not food_record:
@@ -404,7 +449,7 @@ async def update_food_record(
         db.commit()
         db.refresh(food_record)
 
-        cache_key = f"nutrition:daily:{current_user.id}:{food_data.record_date}"
+        cache_key = f"nutrition:daily:{user_id}:{food_data.record_date}"
         cache_service.redis.delete(cache_key)
 
         response_data = {
@@ -436,19 +481,22 @@ async def update_food_record(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"更新食物记录失败: {str(e)}"
         )
+    finally:
+        db.close()
 
 
 @router.delete("/records/{record_id}", response_model=BaseResponse)
 async def delete_food_record(
         record_id: int,
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
 ):
     """删除食物记录"""
+    user_id = current_user.id
+    db = SessionLocal()
     try:
         food_record = db.query(FoodRecord).filter(
             FoodRecord.id == record_id,
-            FoodRecord.user_id == current_user.id
+            FoodRecord.user_id == user_id
         ).first()
 
         if not food_record:
@@ -466,9 +514,9 @@ async def delete_food_record(
         db.commit()
 
         # 重新计算当日营养汇总
-        await update_daily_nutrition_summary(current_user.id, record_date, db)
+        await update_daily_nutrition_summary(user_id, record_date, db)
 
-        cache_key = f"nutrition:daily:{current_user.id}:{record_date.isoformat() if hasattr(record_date, 'isoformat') else str(record_date)}"
+        cache_key = f"nutrition:daily:{user_id}:{record_date.isoformat() if hasattr(record_date, 'isoformat') else str(record_date)}"
         cache_service.redis.delete(cache_key)
 
         return BaseResponse(
@@ -484,6 +532,8 @@ async def delete_food_record(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"删除食物记录失败: {str(e)}"
         )
+    finally:
+        db.close()
 
 
 async def _run_background_analysis(image_url: str, user_id: int, food_record_id: int):
@@ -551,14 +601,14 @@ async def _run_background_analysis(image_url: str, user_id: int, food_record_id:
 async def confirm_food_record(
         record_id: int,
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
 ):
     """确认食物记录创建完成"""
+    user_id = current_user.id
+    db = SessionLocal()
     try:
-        # 验证记录是否存在且属于当前用户
         record = db.query(FoodRecord).filter(
             FoodRecord.id == record_id,
-            FoodRecord.user_id == current_user.id
+            FoodRecord.user_id == user_id
         ).first()
 
         if not record:
@@ -567,7 +617,6 @@ async def confirm_food_record(
                 detail="食物记录不存在"
             )
 
-        # 获取营养详情
         nutrition_detail = db.query(NutritionDetail).filter(
             NutritionDetail.food_record_id == record_id
         ).first()
@@ -617,6 +666,8 @@ async def confirm_food_record(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"确认食物记录失败: {str(e)}"
         )
+    finally:
+        db.close()
 
 
 async def analyze_food_image_with_agent(image_url: str, user_id: int, db: Session):
@@ -1104,14 +1155,14 @@ async def add_nutrition_detail(
         record_id: int,
         nutrition_data: NutritionDetailCreate,
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
 ):
     """添加营养详情"""
+    user_id = current_user.id
+    db = SessionLocal()
     try:
-        # 验证记录是否存在且属于当前用户
         record = db.query(FoodRecord).filter(
             FoodRecord.id == record_id,
-            FoodRecord.user_id == current_user.id
+            FoodRecord.user_id == user_id
         ).first()
 
         if not record:
@@ -1120,7 +1171,6 @@ async def add_nutrition_detail(
                 detail="食物记录不存在"
             )
 
-        # 检查是否已有营养详情
         existing_detail = db.query(NutritionDetail).filter(
             NutritionDetail.food_record_id == record_id
         ).first()
@@ -1131,7 +1181,6 @@ async def add_nutrition_detail(
                 detail="该食物记录已有营养详情"
             )
 
-        # 创建营养详情
         nutrition_detail = NutritionDetail(
             food_record_id=record_id,
             calories=nutrition_data.calories or 0,
@@ -1153,19 +1202,15 @@ async def add_nutrition_detail(
         )
 
         db.add(nutrition_detail)
-
-        # 更新食物记录的分析状态
-        record.analysis_status = 3  # 已完成
+        record.analysis_status = 3
         record.updated_at = datetime.utcnow()
 
         db.commit()
         db.refresh(nutrition_detail)
 
-        # 触发每日营养汇总更新
-        await update_daily_nutrition_summary(current_user.id, record.record_date, db)
+        await update_daily_nutrition_summary(user_id, record.record_date, db)
 
-        # 清除相关缓存
-        cache_key = f"nutrition:daily:{current_user.id}:{record.record_date}"
+        cache_key = f"nutrition:daily:{user_id}:{record.record_date}"
         cache_service.redis.delete(cache_key)
 
         return BaseResponse(
@@ -1203,6 +1248,8 @@ async def add_nutrition_detail(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"添加营养详情失败: {str(e)}"
         )
+    finally:
+        db.close()
 
 
 @router.get("/daily-summary/{summary_date}", response_model=BaseResponse)

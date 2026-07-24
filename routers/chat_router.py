@@ -41,7 +41,7 @@ async def _resolve_chat_params(
     session_id: Optional[int],
     message: str,
     session_type: int,
-) -> tuple[Optional[int], str, int]:
+) -> tuple[Optional[int], str, int, Optional[int]]:
     """Accept chat params from query, JSON body, or form body."""
     body: dict[str, Any] = {}
     content_type = request.headers.get("content-type", "") if request else ""
@@ -60,8 +60,9 @@ async def _resolve_chat_params(
     resolved_session_id = _coerce_optional_int(body.get("session_id", session_id))
     resolved_message = str(body.get("message", message) or "")
     resolved_session_type = _coerce_int(body.get("session_type", session_type), 1)
+    resolved_pet_id = _coerce_optional_int(body.get("pet_id"))
 
-    return resolved_session_id, resolved_message, resolved_session_type
+    return resolved_session_id, resolved_message, resolved_session_type, resolved_pet_id
 
 
 async def _run_chat_agent(
@@ -125,7 +126,7 @@ async def send_chat_message_stream(
     db: Session = Depends(get_db)
 ):
     """发送聊天消息并返回流式响应"""
-    session_id, message, session_type = await _resolve_chat_params(
+    session_id, message, session_type, pet_id = await _resolve_chat_params(
         request, session_id, message, session_type
     )
     logger.info(f"[CHAT-ROUTER] send-message-stream session_type={session_type}, pet_id={pet_id}, msg_len={len(message)}")
@@ -183,6 +184,36 @@ async def send_chat_message_stream(
             crowd_tag = user_context.get('crowd_tag')
             constitution_type = user_context.get('constitution_type')
 
+            # M3: 宠物健康咨询时加载宠物上下文
+            pet_context = None
+            if session_type == 6 and pet_id:
+                try:
+                    from shared.models.pet_models import PetProfile
+                    from shared.services.pet_nutrition_calc import check_daily_completion
+                    pet = db.query(PetProfile).filter(
+                        PetProfile.id == pet_id,
+                        PetProfile.user_id == current_user.id
+                    ).first()
+                    if pet:
+                        today_summary = check_daily_completion(db, pet_id)
+                        pet_context = {
+                            'pet_id': pet.id,
+                            'pet_name': pet.name,
+                            'species': pet.species,
+                            'breed': pet.breed,
+                            'gender': pet.gender,
+                            'birth_date': str(pet.birth_date) if pet.birth_date else None,
+                            'weight': pet.weight,
+                            'is_neutered': pet.is_neutered,
+                            'daily_calories': pet.daily_calories,
+                            'daily_protein': pet.daily_protein,
+                            'today_intake': today_summary,
+                        }
+                except ImportError:
+                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to load pet context: {e}")
+
             # 4. 调用 LangGraph Agent
             client = get_client(url="http://127.0.0.1:2024")
 
@@ -229,7 +260,8 @@ async def send_chat_message_stream(
                     "diseases": diseases,
                     "allergies": allergies,
                     "conversation_history": conversation_history,
-                    "advisor_system_prompt": advisor_system_prompt
+                    "advisor_system_prompt": advisor_system_prompt,
+                    "pet_context": pet_context,
                 },
                 stream_mode="values"
             ):
