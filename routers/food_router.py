@@ -27,6 +27,21 @@ from shared.utils.model import decimal_to_float
 
 settings = get_settings()
 
+
+def _sanitize_analysis_result(result):
+    """清理 analysis_result 中的 null 值，防止前端 JSON 解析崩溃"""
+    if not isinstance(result, dict):
+        return None
+    clean = dict(result)
+    for key in ("short_comment", "image_description"):
+        if clean.get(key) is None:
+            clean[key] = ""
+    if clean.get("recommendations") is None:
+        clean["recommendations"] = {}
+    if clean.get("food_items") is None:
+        clean["food_items"] = []
+    return clean
+
 # 食物营养成分数据库（每100g）
 # 从前端 _foodNutritionDB 迁移至后端统一管理
 _NUTRITION_DB = {
@@ -145,7 +160,7 @@ async def generate_sse_stream(
         db.refresh(food_record)
 
         # 如果有图片URL，使用流式Agent分析（在下方处理）
-        if not food_data.image_url:
+        if not food_data.image_url and not food_data.description:
             # 清除相关缓存
             cache_key = f"nutrition:daily:{user_id}:{food_data.record_date}"
             cache_service.redis.delete(cache_key)
@@ -169,40 +184,66 @@ async def generate_sse_stream(
 
         yield f"data: {json.dumps({'type': 'record_created', 'data': {'record': response_data, 'status': 'created', 'message': '食物记录创建成功'}, 'success': True}, ensure_ascii=False)}\n\n"
 
-        # 3. 如果有图片URL，则使用Agent进行分析
-        if food_data.image_url:
+        # 3. 如果有图片URL或文字描述，则使用Agent进行分析
+        if food_data.image_url or food_data.description:
             try:
                 # 设置分析状态为处理中
                 food_record.analysis_status = 2  # 分析中
                 db.commit()
 
-                yield f"data: {json.dumps({'type': 'analysis_started', 'data': {'status': 'analyzing', 'message': '开始分析图片...'}, 'success': True}, ensure_ascii=False)}\n\n"
+                is_text_analysis = not food_data.image_url and bool(food_data.description)
+                analysis_type = "文字" if is_text_analysis else "图片"
 
-                # 使用Agent分析图片（流式输出）
+                yield f"data: {json.dumps({'type': 'analysis_started', 'data': {'status': 'analyzing', 'message': f'开始分析{analysis_type}...'}, 'success': True}, ensure_ascii=False)}\n\n"
+
+                # 使用Agent分析（流式输出）
                 analysis_complete_data = None
-                print(f"[SSE] 开始调用Agent分析图片: {food_data.image_url}")
-                async for chunk in analyze_food_image_with_agent(food_data.image_url, user_id, db):
-                    chunk_type = chunk.get("type")
-                    print(f"[SSE] 收到Agent chunk: type={chunk_type}")
-                    if chunk_type == "analysis_progress":
-                        yield f"data: {json.dumps({'type': 'analysis_progress', 'data': chunk['data'], 'success': True}, ensure_ascii=False)}\n\n"
-                    elif chunk_type == "analysis_complete":
-                        analysis_complete_data = chunk["data"]
-                        # 确保数据可序列化（Pydantic对象转dict）
-                        serializable_data = {}
-                        for k, v in analysis_complete_data.items():
-                            if hasattr(v, 'model_dump'):
-                                serializable_data[k] = v.model_dump()
-                            elif hasattr(v, 'dict'):
-                                serializable_data[k] = v.dict()
-                            else:
-                                serializable_data[k] = v
-                        print(f"[SSE] Agent分析完成，数据: {list(serializable_data.keys())}")
-                        yield f"data: {json.dumps({'type': 'analysis_complete', 'data': serializable_data, 'success': True}, ensure_ascii=False)}\n\n"
-                    elif chunk_type == "error":
-                        print(f"[SSE] Agent返回错误: {chunk['data']}")
-                        yield f"data: {json.dumps({'type': 'error', 'data': chunk['data'], 'success': False}, ensure_ascii=False)}\n\n"
-                        break
+                print(f"[SSE] 开始调用Agent分析{food_data.image_url or food_data.description}")
+                if is_text_analysis:
+                    async for chunk in analyze_food_text_with_agent(food_data.description, user_id, db):
+                        chunk_type = chunk.get("type")
+                        print(f"[SSE] 收到Agent chunk: type={chunk_type}")
+                        if chunk_type == "analysis_progress":
+                            yield f"data: {json.dumps({'type': 'analysis_progress', 'data': chunk['data'], 'success': True}, ensure_ascii=False)}\n\n"
+                        elif chunk_type == "analysis_complete":
+                            analysis_complete_data = chunk["data"]
+                            serializable_data = {}
+                            for k, v in analysis_complete_data.items():
+                                if hasattr(v, 'model_dump'):
+                                    serializable_data[k] = v.model_dump()
+                                elif hasattr(v, 'dict'):
+                                    serializable_data[k] = v.dict()
+                                else:
+                                    serializable_data[k] = v
+                            print(f"[SSE] Agent文字分析完成，数据: {list(serializable_data.keys())}")
+                            yield f"data: {json.dumps({'type': 'analysis_complete', 'data': serializable_data, 'success': True}, ensure_ascii=False)}\n\n"
+                        elif chunk_type == "error":
+                            print(f"[SSE] Agent返回错误: {chunk['data']}")
+                            yield f"data: {json.dumps({'type': 'error', 'data': chunk['data'], 'success': False}, ensure_ascii=False)}\n\n"
+                            break
+                else:
+                    async for chunk in analyze_food_image_with_agent(food_data.image_url, user_id, db):
+                        chunk_type = chunk.get("type")
+                        print(f"[SSE] 收到Agent chunk: type={chunk_type}")
+                        if chunk_type == "analysis_progress":
+                            yield f"data: {json.dumps({'type': 'analysis_progress', 'data': chunk['data'], 'success': True}, ensure_ascii=False)}\n\n"
+                        elif chunk_type == "analysis_complete":
+                            analysis_complete_data = chunk["data"]
+                            # 确保数据可序列化（Pydantic对象转dict）
+                            serializable_data = {}
+                            for k, v in analysis_complete_data.items():
+                                if hasattr(v, 'model_dump'):
+                                    serializable_data[k] = v.model_dump()
+                                elif hasattr(v, 'dict'):
+                                    serializable_data[k] = v.dict()
+                                else:
+                                    serializable_data[k] = v
+                            print(f"[SSE] Agent分析完成，数据: {list(serializable_data.keys())}")
+                            yield f"data: {json.dumps({'type': 'analysis_complete', 'data': serializable_data, 'success': True}, ensure_ascii=False)}\n\n"
+                        elif chunk_type == "error":
+                            print(f"[SSE] Agent返回错误: {chunk['data']}")
+                            yield f"data: {json.dumps({'type': 'error', 'data': chunk['data'], 'success': False}, ensure_ascii=False)}\n\n"
+                            break
 
                 print(f"[SSE] Agent分析结束, analysis_complete_data={'有数据' if analysis_complete_data else 'None'}")
 
@@ -224,10 +265,10 @@ async def generate_sse_stream(
 
                         # 持久化AI分析结果
                         food_record.analysis_result = {
-                            "short_comment": analysis_complete_data.get("short_comment", ""),
-                            "image_description": analysis_complete_data.get("image_description", ""),
+                            "short_comment": analysis_complete_data.get("short_comment") or "",
+                            "image_description": analysis_complete_data.get("image_description") or "",
                             "food_items": nf_data.get("food_items", []),
-                            "recommendations": analysis_complete_data.get("recommendations"),
+                            "recommendations": analysis_complete_data.get("recommendations") or {},
                         }
 
                         # 更新分析状态为完成
@@ -338,8 +379,8 @@ async def create_food_record_traditional(
         sys.stderr.write("[TRACE-v3] SessionLocal created\n")
         sys.stderr.flush()
 
-        analysis_status = 2 if food_data.image_url else 1
-        analysis_status = 2  # TEST: always 2
+        # 直接记录：待分析状态（营养详情通过 /nutrition 接口单独添加后会变为3）
+        analysis_status = 1
 
         food_record = FoodRecord(
             user_id=user_id,
@@ -740,6 +781,71 @@ async def analyze_food_image_with_agent(image_url: str, user_id: int, db: Sessio
         raise e
 
 
+async def analyze_food_text_with_agent(text_description: str, user_id: int, db: Session):
+    """使用Langgraph Agent分析文字食物描述（流式输出）"""
+
+    try:
+        # 在进入异步流之前，先提取用户偏好数据，避免session并发问题
+        user_prefs = await get_user_preferences(db, user_id)
+
+        # 初始化Langgraph客户端
+        client = get_client(url=settings.ai_service_url)
+
+        # 创建营养师Agent
+        assistant = await client.assistants.create(
+            graph_id="nutrition_agent",
+            config={"configurable": get_agent_model_config()}
+        )
+
+        # 创建线程
+        thread = await client.threads.create()
+        async for chunk in client.runs.stream(
+                assistant_id=assistant["assistant_id"],
+                thread_id=thread['thread_id'],
+                input={
+                    "text_description": text_description,
+                    "user_preferences": user_prefs
+                },
+                stream_mode="values"
+        ):
+            if chunk.data is not None:
+                if chunk.data.get("current_step") == "completed":
+                    print("Agent文字分析完成")
+                    na = chunk.data.get("nutrition_analysis")
+                    short_comment = ""
+                    if na is not None:
+                        if isinstance(na, dict):
+                            short_comment = na.get("short_comment", "") or ""
+                        elif hasattr(na, "short_comment"):
+                            short_comment = na.short_comment or ""
+                    yield {
+                        "type": "analysis_complete",
+                        "data": {
+                            "image_description": chunk.data.get("image_analysis"),
+                            "nutrition_facts": na,
+                            "short_comment": short_comment,
+                            "recommendations": chunk.data.get("nutrition_advice")
+                        }
+                    }
+                else:
+                    print(f"Agent正在文字分析: {chunk.data}")
+                    yield {
+                        "type": "analysis_progress",
+                        "data": {
+                            "current_step": chunk.data.get("current_step")
+                        }
+                    }
+    except Exception as e:
+        print(f"Agent文字分析失败: {str(e)}")
+        yield {
+            "type": "error",
+            "data": {
+                "error": str(e)
+            }
+        }
+        raise e
+
+
 async def get_user_preferences(db: Session, user_id: int):
     """获取用户完整偏好数据，用于个性化营养建议"""
     try:
@@ -960,6 +1066,12 @@ async def create_nutrition_detail_from_analysis(food_record_id: int, nutrition_f
         try:
             db.add(nutrition_detail)
             db.commit()
+
+            # 同步更新 FoodRecord 的热量值（首页展示用）
+            food_record = db.query(FoodRecord).filter(FoodRecord.id == food_record_id).first()
+            if food_record and food_record.total_calories == 0:
+                food_record.total_calories = nutrition_facts.total_calories or 0
+                db.commit()
         except Exception as e:
             db.rollback()
             print(f"添加数据库失败: {str(e)}")
@@ -1016,7 +1128,7 @@ async def get_food_records(
                 "image_url": minio_client.get_file_url(record.image_url) if record.image_url and not record.image_url.startswith("http") else record.image_url,
                 "recording_method": record.recording_method,
                 "analysis_status": record.analysis_status,
-                "analysis_result": record.analysis_result,
+                "analysis_result": _sanitize_analysis_result(record.analysis_result),
                 "cost": float(record.cost) if record.cost else None,
                 "source_tag": record.source_tag,
                 "created_at": record.created_at.isoformat(),
@@ -1058,12 +1170,39 @@ async def get_food_records(
             "total_pages": (total + page_size - 1) // page_size
         }
 
+        # 如果查询的是单日记录，附带当日营养汇总
+        summary = None
+        if start_date and end_date and start_date == end_date:
+            daily_summary = db.query(DailyNutritionSummary).filter(
+                DailyNutritionSummary.user_id == current_user.id,
+                DailyNutritionSummary.summary_date == start_date
+            ).first()
+            if daily_summary:
+                summary = {
+                    "id": daily_summary.id,
+                    "user_id": daily_summary.user_id,
+                    "summary_date": daily_summary.summary_date.isoformat(),
+                    "total_calories": float(daily_summary.total_calories),
+                    "total_protein": float(daily_summary.total_protein),
+                    "total_fat": float(daily_summary.total_fat),
+                    "total_carbohydrates": float(daily_summary.total_carbohydrates),
+                    "total_fiber": float(daily_summary.total_fiber),
+                    "total_sodium": float(daily_summary.total_sodium),
+                    "meal_count": daily_summary.meal_count,
+                    "water_intake": float(daily_summary.water_intake) if daily_summary.water_intake else 0.0,
+                    "exercise_calories": float(daily_summary.exercise_calories) if daily_summary.exercise_calories else 0.0,
+                    "health_score": float(daily_summary.health_level) if daily_summary.health_level else None,
+                    "created_at": daily_summary.created_at.isoformat(),
+                    "updated_at": daily_summary.updated_at.isoformat(),
+                }
+
         return BaseResponse(
             success=True,
             message="获取食物记录列表成功",
             data={
                 "records": records_data,
-                "pagination": pagination_info
+                "pagination": pagination_info,
+                "summary": summary
             }
         )
     except Exception as e:

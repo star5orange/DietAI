@@ -113,11 +113,24 @@ Map<String, dynamic> _$RecommendationsToJson(Recommendations instance) =>
 
 AgentAnalysisData _$AgentAnalysisDataFromJson(Map<String, dynamic> json) =>
     AgentAnalysisData(
-      imageDescription: json['image_description'] as String,
-      nutritionFacts: NutritionFacts.fromJson(
-          json['nutrition_facts'] as Map<String, dynamic>),
-      recommendations: Recommendations.fromJson(
-          json['recommendations'] as Map<String, dynamic>),
+      imageDescription: (json['image_description'] as String?) ?? '',
+      nutritionFacts: json['nutrition_facts'] != null
+          ? NutritionFacts.fromJson(
+              json['nutrition_facts'] as Map<String, dynamic>)
+          : const NutritionFacts(
+              totalCalories: 0,
+              macronutrients: Macronutrients(
+                protein: 0,
+                fat: 0,
+                carbohydrates: 0,
+                dietaryFiber: 0,
+                sugar: 0,
+              ),
+            ),
+      recommendations: json['recommendations'] != null
+          ? Recommendations.fromJson(
+              json['recommendations'] as Map<String, dynamic>)
+          : const Recommendations(),
       shortComment: json['short_comment'] as String?,
     );
 
@@ -393,6 +406,10 @@ FoodRecordsResponse _$FoodRecordsResponseFromJson(Map<String, dynamic> json) =>
           .toList(),
       pagination:
           PaginationInfo.fromJson(json['pagination'] as Map<String, dynamic>),
+      summary: json['summary'] == null
+          ? null
+          : DailyNutritionSummary.fromJson(
+              json['summary'] as Map<String, dynamic>),
     );
 
 Map<String, dynamic> _$FoodRecordsResponseToJson(
@@ -400,6 +417,7 @@ Map<String, dynamic> _$FoodRecordsResponseToJson(
     <String, dynamic>{
       'records': instance.records,
       'pagination': instance.pagination,
+      'summary': instance.summary,
     };
 
 FileUploadResponse _$FileUploadResponseFromJson(Map<String, dynamic> json) =>

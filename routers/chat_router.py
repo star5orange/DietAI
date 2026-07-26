@@ -234,11 +234,8 @@ async def send_chat_message_stream(
                 }
             )
 
-            # 5. 流式运行聊天 Agent
-            yield f"data: {json.dumps({'type': 'status', 'message': '正在生成回复...'})}\n\n"
-
+            # 5. 流式运行聊天 Agent —— 逐 token 输出
             full_response = ""
-            last_response_len = 0
             metadata = {}
             suggestions = []
 
@@ -263,27 +260,33 @@ async def send_chat_message_stream(
                     "advisor_system_prompt": advisor_system_prompt,
                     "pet_context": pet_context,
                 },
-                stream_mode="values"
+                stream_mode=["custom", "values"]
             ):
-                if chunk.event != "values":
-                    continue
+                if chunk.event == "custom":
+                    # Token 级流式输出：逐字推送给前端
+                    content = chunk.data
+                    if isinstance(content, str) and content:
+                        full_response += content
+                        yield f"data: {json.dumps({'type': 'content', 'content': content}, ensure_ascii=False)}\n\n"
 
-                state_data = chunk.data
-                if not isinstance(state_data, dict):
-                    continue
+                elif chunk.event == "values":
+                    state_data = chunk.data
+                    if not isinstance(state_data, dict):
+                        continue
 
-                response_content = state_data.get("response_content", "")
-                error_msg = state_data.get("error_message")
+                    error_msg = state_data.get("error_message")
+                    if error_msg:
+                        yield f"data: {json.dumps({'type': 'error', 'message': error_msg}, ensure_ascii=False)}\n\n"
+                        return
 
-                if error_msg:
-                    yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
-                    return
+                    # 从最终状态提取元数据和推荐问题
+                    formatted = state_data.get("formatted_response") or {}
+                    metadata = state_data.get("response_metadata") or formatted.get("metadata") or {}
+                    suggestions = formatted.get("suggestions") or []
 
-                if response_content and len(response_content) > last_response_len:
-                    new_content = response_content[last_response_len:]
-                    full_response = response_content
-                    last_response_len = len(response_content)
-                    yield f"data: {json.dumps({'type': 'content', 'content': new_content})}\n\n"
+                    # 兜底：如果没有逐 token 流式输出，则用完整响应
+                    if not full_response:
+                        full_response = state_data.get("response_content") or formatted.get("response_content") or ""
 
             # 6. 合规检查：根据 session_type 使用对应的合规检查
             try:
@@ -328,6 +331,7 @@ async def send_chat_message_stream(
             return
             
         except Exception as e:
+            db.rollback()
             yield f"data: {json.dumps({'type': 'error', 'message': f'发送消息失败: {str(e)}'}, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'complete'}, ensure_ascii=False)}\n\n"
     
@@ -616,11 +620,20 @@ async def get_user_context(user_id: int, db: Session, session_type: int = 0):
     if not user:
         return {}, ""
 
-    # 获取用户档案信息
-    user_profile = db.query(user_models.UserProfile).filter(
-        user_models.UserProfile.user_id == user_id
-    ).first()
-    
+    # 获取用户档案信息（使用 savepoint 避免回滚影响外部事务）
+    user_profile = None
+    try:
+        nested = db.begin_nested()
+        user_profile = db.query(user_models.UserProfile).filter(
+            user_models.UserProfile.user_id == user_id
+        ).first()
+    except Exception as e:
+        logger.warning(f"查询UserProfile失败: {e}")
+        try:
+            nested.rollback()
+        except Exception:
+            pass
+
     context = {
         "username": user.username,
         "age": (date.today().year - user_profile.birth_date.year - ((date.today().month, date.today().day) < (user_profile.birth_date.month, user_profile.birth_date.day))) if user_profile and user_profile.birth_date else None,
@@ -739,8 +752,9 @@ async def get_recent_meals(user_id: int, db: Session, limit: int = 5) -> List[Di
 
         return result
     except Exception as e:
-        # 如果表不存在或其他错误，返回空列表
+        # 如果表不存在或其他错误，返回空列表，并回滚避免事务污染
         print(f"Error getting recent meals: {e}")
+        db.rollback()
         return []
 
 
@@ -778,8 +792,9 @@ async def get_health_goals(user_id: int, db: Session) -> Dict[str, Any]:
         return result
         
     except Exception as e:
-        # 如果表不存在或其他错误，返回空字典
+        # 如果表不存在或其他错误，返回空字典，并回滚避免事务污染
         print(f"Error getting health goals: {e}")
+        db.rollback()
         return {}
 
 
@@ -841,6 +856,7 @@ async def get_weekly_trends(user_id: int, db: Session) -> Dict[str, Any]:
         }
     except Exception as e:
         print(f"Error getting weekly trends: {e}")
+        db.rollback()
         return {}
 
 
@@ -878,6 +894,7 @@ async def get_user_diseases(user_id: int, db: Session) -> List[Dict[str, Any]]:
         ]
     except Exception as e:
         logger.warning(f"获取用户疾病信息失败: {e}")
+        db.rollback()
         return []
 
 
@@ -902,6 +919,7 @@ async def get_user_allergies(user_id: int, db: Session) -> List[Dict[str, Any]]:
         ]
     except Exception as e:
         logger.warning(f"获取用户过敏信息失败: {e}")
+        db.rollback()
         return []
 
 

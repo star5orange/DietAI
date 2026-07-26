@@ -86,13 +86,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         client_ip = request.client.host if request.client else "unknown"
         method = request.method
 
-        # 写入操作更严格
-        is_write = method in ("POST", "PUT", "DELETE") or any(
-            path.startswith(p) for p in WRITE_PATHS
+        # 写入操作更严格（GET/HEAD 即使路径匹配 WRITE_PATHS 也不限流）
+        is_write = method in ("POST", "PUT", "DELETE", "PATCH") or (
+            method not in ("GET", "HEAD") and any(
+                path.startswith(p) for p in WRITE_PATHS
+            )
         )
         max_req = WRITE_DEFAULT_MAX if is_write else DEFAULT_MAX_REQUESTS
         window = WRITE_DEFAULT_WINDOW if is_write else DEFAULT_WINDOW_SECONDS
-        key = f"{client_ip}:{path.split('/')[2] if len(path.split('/')) > 2 else 'root'}"
+        # 按路径前缀分组限流，避免所有 API 调用共用计数器
+        # 例如 /api/foods/records/traditional → 127.0.0.1:/api/foods/records
+        path_parts = path.split('/')
+        path_prefix = '/'.join(path_parts[:4]) if len(path_parts) >= 4 else path
+        key = f"{client_ip}:{path_prefix}"
 
         if not _limiter.is_allowed(key, max_req, window):
             logger.warning(f"Rate limit exceeded: IP={client_ip} path={path}")

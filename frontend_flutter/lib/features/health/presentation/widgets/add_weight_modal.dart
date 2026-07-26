@@ -516,6 +516,7 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
           );
 
           if (result.success) {
+            ref.invalidate(latestWeightRecordProvider);
             Navigator.pop(context);
             widget.onRecordAdded?.call();
           }
@@ -549,6 +550,8 @@ class _AddWeightModalState extends ConsumerState<AddWeightModal> {
 
           if (result.success) {
             debugPrint('[AddWeightModal] 创建成功，关闭弹窗并刷新');
+            // 刷新最新体重记录和趋势，确保"体重概况"显示最新数据
+            ref.invalidate(latestWeightRecordProvider);
             Navigator.pop(context);
             widget.onRecordAdded?.call();
           }

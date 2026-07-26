@@ -24,6 +24,11 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
   bool _isLoading = false;
   String? _errorMessage;
 
+  // AI 解读状态
+  final Map<String, String> _aiResults = {};
+  final Map<String, bool> _aiLoading = {};
+  final Map<String, String?> _aiErrors = {};
+
   @override
   void initState() {
     super.initState();
@@ -72,6 +77,224 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _startAiAnalysis(String metricType) async {
+    final data = _getMetricData(metricType);
+    if (data.isEmpty) return;
+
+    setState(() {
+      _aiLoading[metricType] = true;
+      _aiErrors[metricType] = null;
+      _aiResults[metricType] = '';
+    });
+
+    try {
+      final stream = _healthAnalysisService.streamAiAnalysis(
+        metricType: metricType,
+        metricData: data,
+      );
+
+      await for (final event in stream) {
+        if (!mounted) return;
+        if (event.type == 'token') {
+          setState(() {
+            _aiResults[metricType] = (_aiResults[metricType] ?? '') + (event.content ?? '');
+          });
+        } else if (event.type == 'done') {
+          setState(() => _aiLoading[metricType] = false);
+        } else if (event.type == 'error') {
+          setState(() {
+            _aiLoading[metricType] = false;
+            _aiErrors[metricType] = event.message;
+          });
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _aiLoading[metricType] = false;
+        _aiErrors[metricType] = '分析失败: $e';
+      });
+    }
+  }
+
+  Map<String, dynamic> _getMetricData(String metricType) {
+    switch (metricType) {
+      case 'bmr':
+        final r = _bmrResult;
+        if (r == null) return {};
+        return {
+          'bmr': r.bmr,
+          'unit': r.unit,
+          'method': r.method,
+          'user_data': {
+            'gender': r.userData.gender,
+            'age': r.userData.age,
+            'weight': r.userData.weight,
+            'height': r.userData.height,
+          },
+          'description': r.description,
+        };
+      case 'tdee':
+        final r = _tdeeResult;
+        if (r == null) return {};
+        return {
+          'tdee': r.tdee,
+          'bmr': r.bmr,
+          'unit': r.unit,
+          'activity_level': r.activityLevel,
+          'activity_factor': r.activityFactor,
+          'activity_description': r.activityDescription,
+          'description': r.description,
+        };
+      case 'health-score':
+        final r = _healthScoreResult;
+        if (r == null) return {};
+        final components = <String, dynamic>{};
+        r.components.forEach((k, v) {
+          components[k] = {
+            'score': v.score,
+            'max_score': v.maxScore,
+            'description': v.description,
+          };
+        });
+        return {
+          'total_score': r.totalScore,
+          'grade': r.grade,
+          'components': components,
+          'suggestions': r.suggestions,
+        };
+      case 'nutrition-balance':
+        final r = _nutritionBalanceResult;
+        if (r == null) return {};
+        return {
+          'period': {
+            'start_date': r.period.startDate,
+            'end_date': r.period.endDate,
+            'days': r.period.days,
+          },
+          'averages': {
+            'calories': r.averages.calories,
+            'protein': r.averages.protein,
+            'fat': r.averages.fat,
+            'carbohydrates': r.averages.carbohydrates,
+            'fiber': r.averages.fiber,
+            'sodium': r.averages.sodium,
+          },
+          'percentages': {
+            'protein': r.percentages.protein,
+            'fat': r.percentages.fat,
+            'carbohydrates': r.percentages.carbohydrates,
+          },
+          'reference': {
+            'recommended_calories': r.reference.recommendedCalories,
+            'calorie_ratio': r.reference.calorieRatio,
+          },
+          'recommendations': r.recommendations,
+        };
+      case 'weight-trend':
+        final r = _weightTrendResult;
+        if (r == null) return {};
+        return {
+          'trend': r.trend,
+          'weight_change': r.weightChange,
+          'change_percentage': r.weightChangePercentage,
+          'analysis': r.analysis,
+        };
+      default:
+        return {};
+    }
+  }
+
+  Widget _buildAiSection(String metricType) {
+    final isLoading = _aiLoading[metricType] ?? false;
+    final result = _aiResults[metricType];
+    final error = _aiErrors[metricType];
+    final hasResult = result != null && result.isNotEmpty;
+    final hasData = _getMetricData(metricType).isNotEmpty;
+
+    if (!hasData) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Card(
+        color: const Color(0xFFF0F7FF),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: Color(0xFFB3D9FF), width: 0.5),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Text('🤖', style: TextStyle(fontSize: 18)),
+                  const SizedBox(width: 8),
+                  const Text('AI 解读', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  if (hasResult && !isLoading)
+                    TextButton.icon(
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('重新分析', style: TextStyle(fontSize: 13)),
+                      onPressed: () => _startAiAnalysis(metricType),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (isLoading) ...[
+                Row(
+                  children: [
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text('正在分析中...', style: TextStyle(color: Colors.grey, fontSize: 14)),
+                  ],
+                ),
+                if (result != null && result.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(result, style: const TextStyle(fontSize: 14, height: 1.6)),
+                ],
+              ] else if (error != null) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.red, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(error, style: const TextStyle(color: Colors.red, fontSize: 14))),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.refresh, size: 14),
+                  label: const Text('重试'),
+                  onPressed: () => _startAiAnalysis(metricType),
+                ),
+              ] else if (hasResult) ...[
+                Text(result!, style: const TextStyle(fontSize: 14, height: 1.6)),
+              ] else ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Text('🤖', style: TextStyle(fontSize: 16)),
+                    label: const Text('AI 解读'),
+                    onPressed: () => _startAiAnalysis(metricType),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -154,6 +377,8 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
               ),
             ),
           ),
+          const SizedBox(height: 8),
+          _buildAiSection('bmr'),
         ],
       ),
     );
@@ -191,6 +416,8 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
               ),
             ),
           ),
+          const SizedBox(height: 8),
+          _buildAiSection('tdee'),
         ],
       ),
     );
@@ -244,6 +471,8 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
                 ),
               ),
             ),
+            const SizedBox(height: 8),
+            _buildAiSection('health-score'),
           ],
         ),
       ),
@@ -305,6 +534,8 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
                 ),
               ),
             ),
+            const SizedBox(height: 8),
+            _buildAiSection('nutrition-balance'),
           ],
         ),
       ),
@@ -355,6 +586,8 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
               ),
             ),
           ),
+          const SizedBox(height: 8),
+          _buildAiSection('weight-trend'),
         ],
       ),
     );

@@ -269,8 +269,11 @@ def analyze_conversation_context(state: ChatState) -> ChatState:
 
 
 def generate_chat_response(state: ChatState) -> ChatState:
-    """生成聊天回复"""
+    """生成聊天回复（逐 token 流式输出）"""
     try:
+        from langgraph.config import get_stream_writer
+        writer = get_stream_writer()
+
         # 构建消息历史
         messages = list(state['conversation_history'])
         
@@ -285,15 +288,23 @@ def generate_chat_response(state: ChatState) -> ChatState:
         user_message = HumanMessage(content=state['user_message'])
         messages.append(user_message)
         
-        # 调用模型生成回复
-        response = state['chat_model'].invoke(messages)
+        # 逐 token 流式调用模型
+        full_content = ""
+        for chunk in state['chat_model'].stream(messages):
+            content = chunk.content
+            if content:
+                full_content += content
+                writer(content)  # 实时推送每个 token 到前端
+        
+        # 构建完整的 AI 回复消息
+        response = AIMessage(content=full_content)
         
         # 更新对话历史
         updated_history = messages + [response]
         
         updated_state = state.copy()
         updated_state['conversation_history'] = updated_history
-        updated_state['response_content'] = response.content
+        updated_state['response_content'] = full_content
         updated_state['response_metadata'] = {
             "model": state['chat_model'].model_name,
             "session_type": state['session_type'],

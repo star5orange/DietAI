@@ -284,7 +284,7 @@ class AgentOrchestrator:
             ).first()
 
             goal_type = active_goal.goal_type if active_goal else GoalType.MAINTAIN
-            targets = calculate_daily_targets(tdee, goal_type)
+            targets = calculate_daily_targets(tdee, goal_type, profile.crowd_tag)
 
             # Get today's consumption
             today = date.today()

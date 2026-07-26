@@ -212,7 +212,7 @@ def generate_advice_with_context(state: EnhancedNutritionState) -> EnhancedNutri
             logger.warning(f"RAG retrieval failed, continuing without: {e}")
 
         # Build crowd/constitution description
-        crowd_desc = f"人群标签: {crowd_tag}" if crowd_tag else "人群标签: 普通日常"
+        crowd_desc = f"人群标签: {crowd_tag}" if crowd_tag else "人群标签: 均衡维持"
         constitution_desc = f"体质类型: {constitution_type}" if constitution_type else "体质类型: 未设定"
 
         # M2: Build advisor style context

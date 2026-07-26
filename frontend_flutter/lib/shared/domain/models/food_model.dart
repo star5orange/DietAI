@@ -518,10 +518,13 @@ class PaginationInfo {
 class FoodRecordsResponse {
   final List<FoodRecord> records;
   final PaginationInfo pagination;
+  @JsonKey(name: 'summary')
+  final DailyNutritionSummary? summary;
 
   const FoodRecordsResponse({
     required this.records,
     required this.pagination,
+    this.summary,
   });
 
   factory FoodRecordsResponse.fromJson(Map<String, dynamic> json) =>

@@ -252,7 +252,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
         totalWater.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
 
     // 根据人群标签差异化展示统计卡片
-    final tag = _crowdTag ?? '普通';
+    final tag = _crowdTag ?? '均衡维持';
     List<Widget> statRows;
     if (tag == '减脂') {
       // 减脂：突出热量缺口和运动消耗
@@ -490,7 +490,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
     }
 
     final points = _nutritionTrends!.data;
-    final tag = _crowdTag ?? '普通';
+    final tag = _crowdTag ?? '均衡维持';
 
     // 根据人群标签调整图表顺序和重点
     List<Widget> trendCharts;
@@ -769,9 +769,9 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
           const SizedBox(height: 20),
 
           // 人群标签
-          if (_crowdTag != null && _crowdTag != '普通')
+          if (_crowdTag != null && _crowdTag != '均衡维持' && _crowdTag != '普通' && _crowdTag != '普通日常')
             _buildCrowdTagCard(_crowdTag!),
-          if (_crowdTag != null && _crowdTag != '普通')
+          if (_crowdTag != null && _crowdTag != '均衡维持' && _crowdTag != '普通' && _crowdTag != '普通日常')
             const SizedBox(height: 20),
 
           // 健康指标环形图
@@ -815,7 +815,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
             _weeklySummaries.length;
 
     // 根据人群标签差异化展示健康指标
-    final tag = _crowdTag ?? '普通';
+    final tag = _crowdTag ?? '均衡维持';
     List<Widget> gauges;
     if (tag == '减脂') {
       // 减脂：热量缺口 + 运动消耗 + 体重变化(用饮水占位)

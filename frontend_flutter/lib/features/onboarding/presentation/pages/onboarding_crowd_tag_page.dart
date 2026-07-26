@@ -37,28 +37,10 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
       'description': '增肌塑形，提升体能',
     },
     {
-      'tag': '普通',
+      'tag': '均衡维持',
       'icon': LucideIcons.scale,
       'color': Color(0xFF2BAF74),
-      'description': '均衡饮食，维持健康',
-    },
-    {
-      'tag': '养生',
-      'icon': LucideIcons.leaf,
-      'color': Color(0xFF9C88FF),
-      'description': '调理体质，养生保健',
-    },
-    {
-      'tag': '孕期',
-      'icon': LucideIcons.baby,
-      'color': Color(0xFFFFB6C1),
-      'description': '科学饮食，保障母婴健康',
-    },
-    {
-      'tag': '慢病管理',
-      'icon': LucideIcons.heartPulse,
-      'color': Color(0xFF5B86E5),
-      'description': '控制饮食，辅助慢病管理',
+      'description': '均衡饮食，维持健康体重',
     },
   ];
 
@@ -93,18 +75,12 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
         final tagIcons = {
           '减脂': LucideIcons.flame,
           '健身': LucideIcons.dumbbell,
-          '普通': LucideIcons.scale,
-          '养生': LucideIcons.leaf,
-          '孕期': LucideIcons.baby,
-          '慢病管理': LucideIcons.heartPulse,
+          '均衡维持': LucideIcons.scale,
         };
         final tagColors = {
           '减脂': const Color(0xFFFF6B6B),
           '健身': const Color(0xFF4ECDC4),
-          '普通': const Color(0xFF2BAF74),
-          '养生': const Color(0xFF9C88FF),
-          '孕期': const Color(0xFFFFB6C1),
-          '慢病管理': const Color(0xFF5B86E5),
+          '均衡维持': const Color(0xFF2BAF74),
         };
         final updated = items.map((item) {
           final tag = (item['tag'] ?? item['name'] ?? '').toString();

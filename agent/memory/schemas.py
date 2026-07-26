@@ -99,7 +99,7 @@ class SharedMemoryData(BaseModel):
     activity_level: ActivityLevel = ActivityLevel.LIGHT
 
     # 人群标签与体质
-    crowd_tag: Optional[str] = None  # 减脂/健身/普通日常（逗号分隔多选）
+    crowd_tag: Optional[str] = None  # 减脂/健身/均衡维持
     constitution_type: Optional[str] = None  # 九种体质之一
 
     # 健康状况
@@ -139,7 +139,7 @@ class DailyTargets(BaseModel):
     protein: float  # g
     carbs: float    # g
     fat: float      # g
-    calorie_adjustment: float = 0  # 赤字/盈余
+    calorie_multiplier: float = 1.0  # TDEE倍数 (<1=缺口, >1=盈余)
 
 
 class WeightProgress(BaseModel):

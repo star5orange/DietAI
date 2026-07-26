@@ -56,7 +56,7 @@ def get_model(model_provider: Enum, model_name: str):
                 model=model_name,
                 base_url=DEEPSEEK_API_BASE,
                 api_key=deepseek_api_key,
-                streaming=False,
+                streaming=True,
             )
         case _:
             raise ValueError(f"Unsupported model type: {model_provider}")

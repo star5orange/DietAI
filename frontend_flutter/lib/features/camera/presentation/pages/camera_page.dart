@@ -181,7 +181,12 @@ class _CameraPageState extends ConsumerState<CameraPage> {
           imageFile: imageFile,
         ),
       ),
-    );
+    ).then((result) {
+      // 分析页返回后，自动关闭相机页回到首页
+      if (result == true && mounted) {
+        Navigator.of(context).pop(true);
+      }
+    });
   }
 
   void _navigateToAnalysisPage(dynamic foodRecord) {
@@ -190,7 +195,11 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       MaterialPageRoute(
         builder: (context) => FoodAnalysisPage(foodRecord: foodRecord),
       ),
-    );
+    ).then((result) {
+      if (result == true && mounted) {
+        Navigator.of(context).pop(true);
+      }
+    });
   }
 
   @override

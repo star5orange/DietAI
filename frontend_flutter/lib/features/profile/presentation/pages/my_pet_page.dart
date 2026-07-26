@@ -17,6 +17,7 @@ import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../services/food_service.dart';
 import '../../../../services/water_service.dart';
+import '../../../../services/goal_tracking_service.dart';
 import '../../../../shared/utils/species_utils.dart';
 
 class MyPetPage extends ConsumerStatefulWidget {
@@ -52,6 +53,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
   final PetService _petService = PetService();
   final FoodService _foodService = FoodService();
   final WaterService _waterService = WaterService();
+  final GoalTrackingService _goalTrackingService = GoalTrackingService();
 
   // 真实宠物列表
   List<Map<String, dynamic>> _realPets = [];
@@ -324,11 +326,24 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
     try {
       final today = DateTime.now().toIso8601String().substring(0, 10);
 
+      // 获取动态热量目标
+      double target = 2000.0;
+      try {
+        final goalResult = await _goalTrackingService.getDailyStatus();
+        if (goalResult.success && goalResult.data != null) {
+          final dailyTargets = goalResult.data!['daily_targets'];
+          if (dailyTargets != null && dailyTargets['calories'] != null) {
+            target = (dailyTargets['calories'] as num).toDouble();
+          }
+        }
+      } catch (_) {
+        // 获取目标失败时使用默认值 2000
+      }
+
       final foodResult = await _foodService.getDailySummary(today);
       if (foodResult.success && foodResult.data != null) {
         final summary = foodResult.data!;
         final consumed = summary.totalCalories;
-        const target = 2000.0;
         if (mounted) {
           setState(() {
             _consumedCalories = consumed;

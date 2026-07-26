@@ -12,6 +12,7 @@ class AgentState(TypedDict):
     """Agent状态管理"""
     image_dir: Optional[str]
     image_data: Optional[str]
+    text_description: Optional[str]
     image_analysis: Optional[str]
     nutrition_analysis: Optional[NutritionAnalysis]
     nutrition_advice: Optional[NutritionAdvice]
@@ -29,6 +30,7 @@ class AgentState(TypedDict):
 
 class InputState(TypedDict):
     image_data: Optional[str]
+    text_description: Optional[str]
     user_preferences: Optional[Dict]
 
 

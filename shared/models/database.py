@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, MetaData
+from sqlalchemy import create_engine, MetaData, event
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -17,6 +17,14 @@ engine = create_engine(
     echo=settings.debug  # 开发环境显示SQL
 )
 
+# 每次从连接池取出连接时，回滚任何残留事务，防止 InFailedSqlTransaction
+@event.listens_for(engine, "checkout")
+def _checkout_rollback(dbapi_connection, connection_record, connection_proxy):
+    try:
+        dbapi_connection.rollback()
+    except Exception:
+        pass
+
 # 会话工厂
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -33,6 +41,7 @@ def get_db():
     try:
         yield db
     finally:
+        db.rollback()
         db.close()
 
 

@@ -157,7 +157,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         endDate: dateStr,
       );
       print(
-          '📋 Records API: success=${result.success}, records=${result.data?.records.length ?? 0}');
+          '📋 Records API: success=${result.success}, records=${result.data?.records.length ?? 0}, message=${result.message}');
       DailyNutritionSummary? summary;
       try {
         final summaryResult =
@@ -214,7 +214,8 @@ class _HomePageState extends ConsumerState<HomePage> {
             .loadUserProfileAndGet();
 
         // 卡路里目标优先使用用户设置的值（不依赖 getDailyStatus API）
-        if (userProfile?.targetCalories != null) {
+        // 注意：targetCalories 默认是 0.0 而非 null，需要同时判断 > 0
+        if (userProfile?.targetCalories != null && userProfile!.targetCalories! > 0) {
           _targetCalories = userProfile!.targetCalories!.toDouble();
           print('✅ 使用用户设置的卡路里目标: $_targetCalories');
         }
@@ -230,8 +231,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                 (targets['carbs'] as num?)?.toDouble() ?? _targetCarbs;
             _targetFat = (targets['fat'] as num?)?.toDouble() ?? _targetFat;
 
-            // 如果用户未设置卡路里目标，使用系统计算值
-            if (userProfile?.targetCalories == null) {
+            // 如果用户未设置有效的卡路里目标，使用系统计算值
+            if (userProfile?.targetCalories == null || userProfile!.targetCalories! <= 0) {
               _targetCalories =
                   (targets['calories'] as num?)?.toDouble() ?? _targetCalories;
               print('📊 使用系统计算的卡路里目标: $_targetCalories');
@@ -1160,7 +1161,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget build(BuildContext context) {
     final currentCalories = _dailySummary?.totalCalories ?? 0.0;
     final remainingCalories = (_targetCalories - currentCalories).round();
-    final crowdTag = ref.watch(userProfileProvider).value?.crowdTag ?? '普通';
+    final crowdTag = ref.watch(userProfileProvider).value?.crowdTag ?? '均衡维持';
 
     return Scaffold(
       backgroundColor: AppColors.backgroundSecondary,
@@ -1690,17 +1691,17 @@ class _HomePageState extends ConsumerState<HomePage> {
                 children: [
                   Text(
                       crowdTag == '减脂'
-                          ? '热量缺口'
+                          ? '热量预算'
                           : crowdTag == '健身'
                               ? '能量摄入'
-                              : '卡路里摄入',
+                              : '今日热量',
                       style: AppTextStyles.h4),
                   const SizedBox(height: 4),
                   Text(
                       crowdTag == '减脂'
-                          ? '今日热量缺口 ${remainingCalories >= 0 ? remainingCalories : 0} kcal'
+                          ? '今日目标 ${_targetCalories.round()} kcal'
                           : crowdTag == '健身'
-                              ? '蛋白质目标 150g'
+                              ? '今日目标 ${_targetCalories.round()} kcal'
                               : '每日目标 ${_targetCalories.round()} kcal',
                       style: AppTextStyles.bodySmall
                           .copyWith(color: AppColors.textSecondary)),
@@ -2891,7 +2892,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     // 获取人群标签
     final userProfile = ref.watch(userProfileProvider).value;
-    final crowdTag = userProfile?.crowdTag ?? '普通';
+    final crowdTag = userProfile?.crowdTag ?? '均衡维持';
 
     // 根据人群标签决定展示顺序
     List<Map<String, dynamic>> nutrientList;

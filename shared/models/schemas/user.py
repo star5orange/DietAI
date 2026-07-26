@@ -69,7 +69,7 @@ class UserProfileUpdate(BaseModel):
     onboarding_step: Optional[int] = Field(None, ge=0, description="引导步骤")
     onboarding_completed: Optional[bool] = Field(None, description="引导完成状态")
     # Milestone 1 新增字段
-    crowd_tag: Optional[str] = Field(None, description="人群标签：减脂/健身/普通日常")
+    crowd_tag: Optional[str] = Field(None, description="人群标签：减脂/健身/均衡维持")
     constitution_type: Optional[str] = Field(None, description="体质类型")
     daily_water_goal: Optional[int] = Field(2000, ge=500, le=5000, description="每日饮水目标(ml)")
     target_calories: Optional[int] = Field(None, ge=800, le=5000, description="每日卡路里目标(kcal)")

@@ -74,19 +74,22 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
 
   // 分析进度
   double _analysisProgress = 0.0;
-  List<String> _analysisSteps = [
-    '上传图片',
-    '创建记录',
-    '识别食物',
-    '提取营养',
-    '生成建议',
-    '保存数据'
-  ];
+  late List<String> _analysisSteps;
+  late bool _isTextAnalysis;
   int _currentStepIndex = 0;
+
+  /// 文字分析比图片分析少"上传图片"和"上传完成"两步，索引偏移-2
+  int _stepIndex(int imageBaseIndex) =>
+      _isTextAnalysis ? imageBaseIndex - 2 : imageBaseIndex;
 
   @override
   void initState() {
     super.initState();
+    // 根据是否有图片决定分析步骤
+    _isTextAnalysis = widget.imageFile == null && widget.foodRecord == null;
+    _analysisSteps = _isTextAnalysis
+        ? ['创建记录', '分析食物', '提取营养', '生成建议', '保存数据']
+        : ['上传图片', '创建记录', '识别食物', '提取营养', '生成建议', '保存数据'];
     _initializeAnimations();
     _initializeAnalysis();
   }
@@ -160,14 +163,14 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
               }
               _currentStep = 'record_created';
               _currentMessage = data['message'] ?? '记录创建成功';
-              _currentStepIndex = 2;
+              _currentStepIndex = _stepIndex(2);
               _analysisProgress = 0.48;
               _updateProgressAnimation();
               break;
             case 'analysis_started':
               _currentStep = 'analysis_started';
               _currentMessage = data['message'] ?? '开始AI分析...';
-              _currentStepIndex = 2;
+              _currentStepIndex = _stepIndex(2);
               _analysisProgress = 0.48;
               _updateProgressAnimation();
               break;
@@ -180,14 +183,14 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
               _parseAnalysisDataFromResponse(data);
               _currentStep = 'analysis_complete';
               _currentMessage = '分析完成';
-              _currentStepIndex = 4;
+              _currentStepIndex = _stepIndex(4);
               _analysisProgress = 0.85;
               _updateProgressAnimation();
               break;
             case 'nutrition_saved':
               _currentStep = 'nutrition_saved';
               _currentMessage = data['message'] ?? '营养数据保存完成';
-              _currentStepIndex = 5;
+              _currentStepIndex = _stepIndex(5);
               _analysisProgress = 1.0;
               _updateProgressAnimation();
               break;
@@ -232,23 +235,25 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
   void _updateAnalysisProgress(String step) {
     switch (step) {
       case 'state_init':
-        _currentStepIndex = 2;
+        _currentStepIndex = _stepIndex(2);
         _analysisProgress = 0.50;
         break;
       case 'analyze_image':
-        _currentStepIndex = 3;
+      case 'analyze_text':
+      case 'text_analyzed':
+        _currentStepIndex = _stepIndex(3);
         _analysisProgress = 0.65;
         break;
       case 'extract_nutrition':
-        _currentStepIndex = 3;
+        _currentStepIndex = _stepIndex(3);
         _analysisProgress = 0.75;
         break;
       case 'generate_advice':
-        _currentStepIndex = 4;
+        _currentStepIndex = _stepIndex(4);
         _analysisProgress = 0.80;
         break;
       case 'format_response':
-        _currentStepIndex = 4;
+        _currentStepIndex = _stepIndex(4);
         _analysisProgress = 0.85;
         break;
     }
@@ -265,6 +270,9 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
         return '初始化AI分析系统...';
       case 'analyze_image':
         return '🔍 AI正在识别食物种类...';
+      case 'analyze_text':
+      case 'text_analyzed':
+        return '📝 AI正在分析食物描述...';
       case 'extract_nutrition':
         return '🧮 计算营养成分和卡路里...';
       case 'generate_advice':
@@ -629,8 +637,8 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                         borderRadius: BorderRadius.circular(50),
                       ),
                     ),
-                    child: const Text(
-                      '重新拍摄',
+                    child: Text(
+                      _isTextAnalysis ? '重试' : '重新拍摄',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -840,8 +848,12 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
       );
     }
 
-    // 默认占位符
-    return const Icon(LucideIcons.image, size: 60, color: Colors.grey);
+    // 文字分析显示文字描述图标
+    return Icon(
+      _isTextAnalysis ? LucideIcons.fileText : LucideIcons.image,
+      size: 60,
+      color: Colors.grey,
+    );
   }
 
   Widget _buildAnalysisProgressCard() {
@@ -1934,8 +1946,9 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                       await _updateRecordCost();
                     }
 
-                    Navigator.pop(context);
-                    Navigator.pop(context); // 返回到主页
+                    if (mounted) {
+                      Navigator.of(context).pop(true);
+                    }
                   },
             style: ElevatedButton.styleFrom(
               backgroundColor: _isLoading

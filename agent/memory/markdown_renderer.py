@@ -237,7 +237,7 @@ def render_goal_tracking(data: GoalTrackingData) -> str:
     lines.append("### 每日营养配额")
     if data.daily_targets:
         targets = data.daily_targets
-        adj_str = f"赤字 {abs(targets.calorie_adjustment)}" if targets.calorie_adjustment < 0 else f"盈余 {targets.calorie_adjustment}" if targets.calorie_adjustment > 0 else "无调整"
+        adj_str = f"系数 {targets.calorie_multiplier:.2f}" if targets.calorie_multiplier != 1.0 else "基准"
         lines.append(f"- 卡路里预算: {targets.calories} kcal ({adj_str})")
         lines.append(f"- 蛋白质: {targets.protein}g")
         lines.append(f"- 碳水: {targets.carbs}g")

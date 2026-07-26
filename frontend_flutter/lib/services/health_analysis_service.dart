@@ -1,3 +1,4 @@
+import 'dart:convert';
 import '../core/services/api_service.dart';
 import '../shared/domain/models/api_response.dart';
 
@@ -217,6 +218,62 @@ class HealthAnalysisService {
         message: '健康分析失败: $e',
       );
     }
+  }
+
+  /// AI 健康数据解读（流式）
+  Stream<AiAnalysisEvent> streamAiAnalysis({
+    required String metricType,
+    required Map<String, dynamic> metricData,
+  }) async* {
+    try {
+      final requestData = {
+        'metric_type': metricType,
+        'metric_data': metricData,
+      };
+
+      await for (final chunk in _apiService.postStream(
+        '/health/ai-analysis',
+        data: requestData,
+      )) {
+        if (chunk.trim().isEmpty) continue;
+
+        if (chunk.startsWith('data: ')) {
+          final jsonStr = chunk.substring(6);
+          try {
+            final Map<String, dynamic> data = json.decode(jsonStr);
+            yield AiAnalysisEvent.fromJson(data);
+          } catch (e) {
+            continue;
+          }
+        }
+      }
+    } catch (e) {
+      yield AiAnalysisEvent(type: 'error', message: 'AI分析失败: $e');
+    }
+  }
+}
+
+/// AI 分析事件
+class AiAnalysisEvent {
+  final String type; // 'token', 'done', 'error'
+  final String? content;
+  final String? full;
+  final String? message;
+
+  AiAnalysisEvent({
+    required this.type,
+    this.content,
+    this.full,
+    this.message,
+  });
+
+  factory AiAnalysisEvent.fromJson(Map<String, dynamic> json) {
+    return AiAnalysisEvent(
+      type: json['type'] ?? '',
+      content: json['content'],
+      full: json['full'],
+      message: json['message'],
+    );
   }
 }
 

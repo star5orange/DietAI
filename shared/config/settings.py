@@ -3,6 +3,16 @@ from functools import lru_cache
 from typing import Optional, List
 from pydantic import Field, validator
 from pydantic_settings import BaseSettings
+from dotenv import load_dotenv
+
+# 先于 Pydantic Settings 加载 .env，确保环境变量可用
+_project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_env_file = os.path.join(_project_root, ".env")
+_env_dev = os.path.join(_project_root, ".env.dev")
+if os.path.exists(_env_dev):
+    load_dotenv(_env_dev, override=True, encoding="utf-8")
+if os.path.exists(_env_file):
+    load_dotenv(_env_file, override=False, encoding="utf-8")
 
 
 class Settings(BaseSettings):

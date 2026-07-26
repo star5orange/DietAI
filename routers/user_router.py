@@ -66,8 +66,8 @@ def handle_database_error(e: Exception, operation: str = "数据库操作") -> H
 def calculate_bmi(height: Optional[float], weight: Optional[float]) -> Optional[float]:
     """计算BMI"""
     if height and weight and height > 0:
-        height_m = height / 100
-        return round(weight / (height_m ** 2), 2)
+        height_m = float(height) / 100
+        return round(float(weight) / (height_m ** 2), 2)
     return None
 
 def format_profile_data(profile: UserProfile) -> dict:
@@ -1280,15 +1280,12 @@ async def reset_onboarding(
 async def get_crowd_tags():
     """获取人群标签列表
 
-    返回 6 种人群标签及其图标和颜色，用于用户引导中的标签选择
+    返回 3 种人群标签及其图标和颜色，用于用户引导中的标签选择
     """
     tags = [
         {"id": "减脂", "name": "减脂", "icon": "fitness_center", "color": "#FF6B6B"},
         {"id": "健身", "name": "健身", "icon": "sports_kabaddi", "color": "#4ECDC4"},
-        {"id": "普通", "name": "普通", "icon": "person", "color": "#45B7D1"},
-        {"id": "养生", "name": "养生", "icon": "spa", "color": "#96CEB4"},
-        {"id": "孕期", "name": "孕期", "icon": "pregnant_woman", "color": "#FFEAA7"},
-        {"id": "慢病管理", "name": "慢病管理", "icon": "medical_services", "color": "#DDA0DD"},
+        {"id": "均衡维持", "name": "均衡维持", "icon": "balance", "color": "#45B7D1"},
     ]
 
     return BaseResponse(

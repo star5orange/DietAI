@@ -8,12 +8,14 @@ class HealthGoalCard extends StatelessWidget {
   final HealthGoal goal;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final VoidCallback? onViewProgress;
 
   const HealthGoalCard({
     super.key,
     required this.goal,
     this.onEdit,
     this.onDelete,
+    this.onViewProgress,
   });
 
   @override
@@ -177,9 +179,7 @@ class HealthGoalCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () {
-                      // TODO: 查看详细进度
-                    },
+                    onPressed: onViewProgress,
                     icon: const Icon(LucideIcons.trendingUp, size: 16),
                     label: const Text('查看进度'),
                     style: ElevatedButton.styleFrom(
