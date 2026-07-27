@@ -574,6 +574,60 @@ class FoodService {
     }
   }
 
+  /// 语音识别
+  Future<ApiResponse<Map<String, dynamic>>> recognizeVoice(File audioFile) async {
+    try {
+      print('📤 上传音频文件进行语音识别');
+
+      final fileName = audioFile.path.split(Platform.pathSeparator).last;
+      final ext = fileName.split('.').last.toLowerCase();
+      final contentType = ext == 'mp3' ? 'audio/mpeg' : 'audio/$ext';
+
+      // 检查文件大小
+      final fileSize = await audioFile.length();
+      print('📂 音频文件: $fileName, 大小: $fileSize bytes, 格式: $ext');
+
+      if (fileSize == 0) {
+        return ApiResponse<Map<String, dynamic>>(
+          success: false,
+          message: '录音文件为空，请重新录音',
+        );
+      }
+
+      final formData = FormData.fromMap({
+        'audio': await MultipartFile.fromFile(
+          audioFile.path,
+          filename: fileName,
+          contentType: MediaType.parse(contentType),
+        ),
+      });
+
+      final response = await _apiService.postFormData(
+        '/voice/recognize',
+        data: formData,
+      );
+
+      if (response.success) {
+        return ApiResponse<Map<String, dynamic>>(
+          success: true,
+          message: response.message,
+          data: response.data as Map<String, dynamic>,
+        );
+      } else {
+        return ApiResponse<Map<String, dynamic>>(
+          success: false,
+          message: response.message,
+        );
+      }
+    } catch (e) {
+      print('❌ 语音识别异常: $e');
+      return ApiResponse<Map<String, dynamic>>(
+        success: false,
+        message: '语音识别失败: $e',
+      );
+    }
+  }
+
   /// 获取图片访问URL
   Future<ApiResponse<ImageUrlResponse>> getImageUrl(
     String objectName, {

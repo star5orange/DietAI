@@ -15,6 +15,7 @@ class TextDescribePage extends StatefulWidget {
   final String? recordTime;
   final double? costAmount;
   final String? costSource;
+  final String? initialFoodName;
 
   const TextDescribePage({
     super.key,
@@ -24,6 +25,7 @@ class TextDescribePage extends StatefulWidget {
     this.recordTime,
     this.costAmount,
     this.costSource,
+    this.initialFoodName,
   });
 
   @override
@@ -66,6 +68,14 @@ class _TextDescribePageState extends State<TextDescribePage> {
     {'name': '香蕉', 'icon': '🍌'},
     {'name': '全麦面包', 'icon': '🍞'},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialFoodName != null) {
+      _foodNameController.text = widget.initialFoodName!;
+    }
+  }
 
   @override
   void dispose() {

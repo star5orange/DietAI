@@ -35,6 +35,7 @@ import '../../../cost/data/services/cost_service.dart';
 import '../../../cost/presentation/widgets/budget_progress_card.dart';
 import 'meal_selection_page.dart';
 import 'text_describe_page.dart';
+import 'voice_record_page.dart';
 import '../../../saved_meals/presentation/pages/saved_meals_page.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -2497,12 +2498,22 @@ class _HomePageState extends ConsumerState<HomePage> {
         });
         break;
       case 'voice_record':
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('语音记录功能即将推出，敬请期待'),
-            backgroundColor: AppColors.warning,
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => VoiceRecordPage(
+              mealName: mealName,
+              mealType: mealType,
+              recordDate: dateStr,
+              recordTime: recordTime,
+              costAmount: _pendingCostAmount,
+              costSource: _pendingCostSource,
+            ),
           ),
-        );
+        ).then((result) {
+          _clearPendingCost();
+          if (result == true) _refreshData();
+        });
         break;
       case 'saved_meals':
         await _navigateToSavedMeals(mealName, mealType, recordTime);

@@ -104,9 +104,9 @@ class _FoodRecordModalState extends State<FoodRecordModal> {
       _RecordOption(
         icon: LucideIcons.mic,
         title: '语音记录',
-        subtitle: '即将推出',
+        subtitle: '语音识别食物',
         methodId: 'voice_record',
-        isNew: true,
+        isNew: false,
       ),
     ];
 
@@ -114,7 +114,7 @@ class _FoodRecordModalState extends State<FoodRecordModal> {
   }
 
   Widget _buildOptionTile(_RecordOption option) {
-    final isDisabled = option.methodId == 'voice_record';
+    final isDisabled = false;
     return GestureDetector(
       onTap: isDisabled ? null : () => _handleRecordMethod(option.methodId),
       child: Container(

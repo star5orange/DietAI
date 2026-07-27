@@ -112,6 +112,14 @@ try:
 except ImportError:
     pass
 
+# 语音识别路由器
+_voice_router = None
+try:
+    from routers.voice_router import router as voice_router
+    _voice_router = voice_router
+except ImportError:
+    pass
+
 # Milestone 3: 真实宠物管理
 try:
     from routers.real_pet_router import router as real_pet_router
@@ -380,6 +388,10 @@ if _fasting_router is not None:
     app.include_router(_fasting_router, prefix="/api", tags=["轻断食"])
 if _advisor_router is not None:
     app.include_router(_advisor_router, prefix="/api", tags=["AI顾问设置"])
+
+# 语音识别路由
+if _voice_router is not None:
+    app.include_router(_voice_router, prefix="/api", tags=["语音识别"])
 
 # 启动服务器
 if __name__ == "__main__":

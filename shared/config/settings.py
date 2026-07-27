@@ -180,6 +180,10 @@ class Settings(BaseSettings):
     volc_ark_api_key: str = Field(default="", description="火山引擎Ark API密钥")
     ark_image_model: str = Field(default="doubao-seedream-4-0-250828", description="Seedream图像生成模型ID")
 
+    # 火山引擎语音识别配置 (豆包 Seed-ASR)
+    volc_asr_api_key: str = Field(default="", description="火山引擎语音识别API密钥")
+    volc_asr_resource_id: str = Field(default="volc.seedasr.auc", description="语音识别资源ID(2.0版)")
+
     # 健康检查配置
     health_check_enabled: bool = Field(default=True, description="是否启用健康检查")
     health_check_interval: int = Field(default=30, description="健康检查间隔(秒)")

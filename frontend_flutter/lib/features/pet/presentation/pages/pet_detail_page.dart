@@ -260,8 +260,6 @@ class _PetDetailPageState extends ConsumerState<PetDetailPage>
             const SizedBox(height: 24),
             _buildStatsPanel(petState),
             const SizedBox(height: 24),
-            _buildAchievementsSection(),
-            const SizedBox(height: 24),
             _buildInteractionPanel(),
           ],
         ),
