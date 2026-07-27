@@ -212,3 +212,77 @@ class WeightRecordResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ==================== 密码重置相关模型 ====================
+
+class ForgotPasswordRequest(BaseModel):
+    """忘记密码请求"""
+    phone: str = Field(..., max_length=20, description="手机号")
+
+    @validator('phone')
+    def validate_phone(cls, v):
+        """验证手机号格式"""
+        if not v.isdigit():
+            raise ValueError('手机号必须为数字')
+        if len(v) != 11:
+            raise ValueError('手机号长度必须为11位')
+        if not v.startswith('1'):
+            raise ValueError('手机号格式不正确')
+        return v
+
+
+class VerifyResetCodeRequest(BaseModel):
+    """验证重置验证码请求"""
+    phone: str = Field(..., max_length=20, description="手机号")
+    code: str = Field(..., min_length=6, max_length=6, description="验证码")
+
+    @validator('phone')
+    def validate_phone(cls, v):
+        """验证手机号格式"""
+        if not v.isdigit():
+            raise ValueError('手机号必须为数字')
+        if len(v) != 11:
+            raise ValueError('手机号长度必须为11位')
+        if not v.startswith('1'):
+            raise ValueError('手机号格式不正确')
+        return v
+
+    @validator('code')
+    def validate_code(cls, v):
+        """验证验证码格式"""
+        if not v.isdigit():
+            raise ValueError('验证码必须为数字')
+        return v
+
+
+class ResetPasswordRequest(BaseModel):
+    """重置密码请求"""
+    phone: str = Field(..., max_length=20, description="手机号")
+    code: str = Field(..., min_length=6, max_length=6, description="验证码")
+    new_password: str = Field(..., min_length=8, description="新密码")
+
+    @validator('phone')
+    def validate_phone(cls, v):
+        """验证手机号格式"""
+        if not v.isdigit():
+            raise ValueError('手机号必须为数字')
+        if len(v) != 11:
+            raise ValueError('手机号长度必须为11位')
+        if not v.startswith('1'):
+            raise ValueError('手机号格式不正确')
+        return v
+
+    @validator('code')
+    def validate_code(cls, v):
+        """验证验证码格式"""
+        if not v.isdigit():
+            raise ValueError('验证码必须为数字')
+        return v
+
+    @validator('new_password')
+    def validate_password(cls, v):
+        """验证密码强度"""
+        if len(v) < 8:
+            raise ValueError('密码长度至少8位')
+        return v

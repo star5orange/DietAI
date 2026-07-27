@@ -5,6 +5,8 @@ from .user import (
     PasswordChangeRequest, UserProfileUpdate, OnboardingStepUpdate, OnboardingDataRequest,
     UserProfileResponse, HealthGoalCreate, HealthGoalResponse, DiseaseCreate, DiseaseResponse,
     AllergyCreate, AllergyResponse, WeightRecordCreate, WeightRecordResponse,
+    # 密码重置相关
+    ForgotPasswordRequest, VerifyResetCodeRequest, ResetPasswordRequest,
 )
 from .food import (
     FoodRecordCreate, FoodRecordResponse, NutritionDetailCreate, NutritionDetailResponse,

@@ -7,6 +7,8 @@ import '../services/modal_tracker.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/register_page.dart';
 import '../../features/auth/presentation/pages/change_password_page.dart';
+import '../../features/auth/presentation/pages/forgot_password_page.dart';
+import '../../features/auth/presentation/pages/reset_password_page.dart';
 import '../../features/home/presentation/pages/home_page.dart';
 import '../../features/camera/presentation/pages/camera_page.dart';
 import '../../features/history/presentation/pages/history_page.dart';
@@ -72,7 +74,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           false;
 
       final isAuthRoute = state.matchedLocation == '/login' ||
-          state.matchedLocation == '/register';
+          state.matchedLocation == '/register' ||
+          state.matchedLocation == '/forgot-password' ||
+          state.matchedLocation == '/reset-password';
 
       final isOnboardingRoute = state.matchedLocation.startsWith('/onboarding');
 
@@ -123,6 +127,26 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/register',
         name: 'register',
         builder: (context, state) => const RegisterPage(),
+      ),
+
+      // 忘记密码页面
+      GoRoute(
+        path: '/forgot-password',
+        name: 'forgot_password',
+        builder: (context, state) => const ForgotPasswordPage(),
+      ),
+
+      // 重置密码页面
+      GoRoute(
+        path: '/reset-password',
+        name: 'reset_password',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          return ResetPasswordPage(
+            phone: extra['phone'] as String,
+            code: extra['code'] as String,  // 接收验证码参数
+          );
+        },
       ),
 
       // 修改密码页面

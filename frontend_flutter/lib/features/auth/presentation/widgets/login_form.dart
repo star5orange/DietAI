@@ -223,11 +223,7 @@ class _LoginFormState extends ConsumerState<LoginForm> {
   }
 
   void _handleForgotPassword() {
-    // TODO: 实现忘记密码功能
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('忘记密码功能开发中...'),
-      ),
-    );
+    // 跳转到忘记密码页面
+    context.push('/forgot-password');
   }
 } 

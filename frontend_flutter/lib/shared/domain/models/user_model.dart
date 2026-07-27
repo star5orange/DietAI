@@ -835,3 +835,54 @@ class OnboardingStatus {
       _$OnboardingStatusFromJson(json);
   Map<String, dynamic> toJson() => _$OnboardingStatusToJson(this);
 }
+
+// ==================== 密码重置相关模型 ====================
+
+/// 忘记密码请求模型
+@JsonSerializable()
+class ForgotPasswordRequest {
+  final String phone;
+
+  const ForgotPasswordRequest({
+    required this.phone,
+  });
+
+  factory ForgotPasswordRequest.fromJson(Map<String, dynamic> json) =>
+      _$ForgotPasswordRequestFromJson(json);
+  Map<String, dynamic> toJson() => _$ForgotPasswordRequestToJson(this);
+}
+
+/// 验证重置验证码请求模型
+@JsonSerializable()
+class VerifyResetCodeRequest {
+  final String phone;
+  final String code;
+
+  const VerifyResetCodeRequest({
+    required this.phone,
+    required this.code,
+  });
+
+  factory VerifyResetCodeRequest.fromJson(Map<String, dynamic> json) =>
+      _$VerifyResetCodeRequestFromJson(json);
+  Map<String, dynamic> toJson() => _$VerifyResetCodeRequestToJson(this);
+}
+
+/// 重置密码请求模型
+@JsonSerializable()
+class ResetPasswordRequest {
+  final String phone;
+  final String code;
+  @JsonKey(name: 'new_password')
+  final String newPassword;
+
+  const ResetPasswordRequest({
+    required this.phone,
+    required this.code,
+    required this.newPassword,
+  });
+
+  factory ResetPasswordRequest.fromJson(Map<String, dynamic> json) =>
+      _$ResetPasswordRequestFromJson(json);
+  Map<String, dynamic> toJson() => _$ResetPasswordRequestToJson(this);
+}

@@ -216,6 +216,24 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             },
           ),
           const SizedBox(height: 16),
+
+          // 忘记密码链接
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () {
+                context.push('/forgot-password');
+              },
+              child: Text(
+                '忘记密码？',
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+
           if (_errorMessage != null) ...[
             Container(
               padding: const EdgeInsets.all(12),

@@ -6,13 +6,16 @@ import logging
 from shared.models.database import get_db
 from shared.models.schemas import (
     UserCreate, UserLogin, BaseResponse, TokenResponse,
-    RefreshTokenRequest, PasswordChangeRequest
+    RefreshTokenRequest, PasswordChangeRequest,
+    # 密码重置相关
+    ForgotPasswordRequest, VerifyResetCodeRequest, ResetPasswordRequest
 )
 from shared.utils.auth import (
     AuthService, authenticate_user, create_user,
     get_current_user, update_user_password, update_last_login
 )
 from shared.models.user_models import User
+from shared.services.password_reset_service import PasswordResetService
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 logger = logging.getLogger(__name__)
@@ -251,4 +254,142 @@ async def verify_token_endpoint(current_user: User = Depends(get_current_user)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"令牌验证失败: {str(e)}"
+        )
+
+
+# ==================== 密码重置相关接口 ====================
+
+@router.post("/forgot-password", response_model=BaseResponse)
+async def forgot_password(
+    request: ForgotPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    忘记密码 - 发送验证码
+
+    根据手机号发送验证码，用于重置密码
+    """
+    try:
+        password_reset_service = PasswordResetService(db)
+        result = password_reset_service.send_reset_code(request.phone)
+
+        if not result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result["message"]
+            )
+
+        response_data = {"message": result["message"]}
+
+        # 开发环境返回验证码，方便测试
+        if "code" in result:
+            response_data["code"] = result["code"]
+
+        return BaseResponse(
+            success=True,
+            message=result["message"],
+            data=response_data
+        )
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"发送验证码失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"发送验证码失败: {str(e)}"
+        )
+
+
+@router.post("/verify-reset-code", response_model=BaseResponse)
+async def verify_reset_code(
+    request: VerifyResetCodeRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    验证密码重置验证码
+
+    验证用户输入的验证码是否正确
+    """
+    try:
+        password_reset_service = PasswordResetService(db)
+        is_valid, message = password_reset_service.verify_reset_code(
+            request.phone,
+            request.code
+        )
+
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=message
+            )
+
+        return BaseResponse(
+            success=True,
+            message=message,
+            data={"verified": True}
+        )
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"验证验证码失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"验证验证码失败: {str(e)}"
+        )
+
+
+@router.post("/reset-password", response_model=BaseResponse)
+async def reset_password(
+    request: ResetPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    重置密码
+
+    通过验证码验证后，设置新密码
+    """
+    try:
+        password_reset_service = PasswordResetService(db)
+
+        # 先验证验证码（不消费）
+        is_valid, message = password_reset_service.verify_reset_code(
+            request.phone,
+            request.code
+        )
+
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=message
+            )
+
+        # 重置密码
+        result = password_reset_service.reset_password(
+            request.phone,
+            request.new_password
+        )
+
+        if not result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result["message"]
+            )
+
+        # 密码重置成功，消费验证码（删除）
+        from shared.services.sms_service import get_sms_service
+        sms_service = get_sms_service()
+        sms_service.verify_code(request.phone, request.code, purpose="reset_password", consume=True)
+
+        return BaseResponse(
+            success=True,
+            message=result["message"],
+            data={"reset": True}
+        )
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"重置密码失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"重置密码失败: {str(e)}"
         ) 
