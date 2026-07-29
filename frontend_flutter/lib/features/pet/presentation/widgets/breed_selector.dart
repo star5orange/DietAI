@@ -26,6 +26,8 @@ class BreedSelectorWidget extends StatefulWidget {
 class _BreedSelectorWidgetState extends State<BreedSelectorWidget> {
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _customBreedController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  final FocusNode _customFocusNode = FocusNode();
   List<String> _filteredBreeds = [];
   bool _showDropdown = false;
   bool _showCustomInput = false;
@@ -143,6 +145,8 @@ class _BreedSelectorWidgetState extends State<BreedSelectorWidget> {
   void dispose() {
     _searchController.dispose();
     _customBreedController.dispose();
+    _searchFocusNode.dispose();
+    _customFocusNode.dispose();
     super.dispose();
   }
 
@@ -173,6 +177,9 @@ class _BreedSelectorWidgetState extends State<BreedSelectorWidget> {
             }
             setState(() {
               _showDropdown = true;
+            });
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _searchFocusNode.requestFocus();
             });
           },
           child: Container(
@@ -230,7 +237,7 @@ class _BreedSelectorWidgetState extends State<BreedSelectorWidget> {
                 Expanded(
                   child: TextField(
                     controller: _customBreedController,
-                    autofocus: true,
+                    focusNode: _customFocusNode,
                     decoration: InputDecoration(
                       hintText: '请输入品种名称',
                       hintStyle: AppTextStyles.bodySmall
@@ -296,8 +303,8 @@ class _BreedSelectorWidgetState extends State<BreedSelectorWidget> {
                   padding: const EdgeInsets.all(12),
                   child: TextField(
                     controller: _searchController,
+                    focusNode: _searchFocusNode,
                     onChanged: _filterBreeds,
-                    autofocus: true,
                     decoration: InputDecoration(
                       hintText: '搜索品种...',
                       hintStyle: AppTextStyles.bodySmall
@@ -336,6 +343,9 @@ class _BreedSelectorWidgetState extends State<BreedSelectorWidget> {
                               _showDropdown = false;
                               _showCustomInput = true;
                               _customBreedController.clear();
+                            });
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              _customFocusNode.requestFocus();
                             });
                           } else {
                             _onBreedPicked(breed);

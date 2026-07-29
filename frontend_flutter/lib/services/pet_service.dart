@@ -104,42 +104,6 @@ class AddExpResult {
   }
 }
 
-/// 解锁项数据
-class UnlockableItem {
-  final String unlockType;
-  final String unlockKey;
-  final String name;
-  final String description;
-  final int? requiredLevel;
-  final int? requiredStreak;
-  final bool isUnlocked;
-  final Map<String, dynamic>? progress;
-
-  const UnlockableItem({
-    this.unlockType = '',
-    this.unlockKey = '',
-    this.name = '',
-    this.description = '',
-    this.requiredLevel,
-    this.requiredStreak,
-    this.isUnlocked = false,
-    this.progress,
-  });
-
-  factory UnlockableItem.fromJson(Map<String, dynamic> json) {
-    return UnlockableItem(
-      unlockType: json['unlock_type'] as String? ?? '',
-      unlockKey: json['unlock_key'] as String? ?? '',
-      name: json['name'] as String? ?? '',
-      description: json['description'] as String? ?? '',
-      requiredLevel: json['required_level'] as int?,
-      requiredStreak: json['required_streak'] as int?,
-      isUnlocked: json['is_unlocked'] as bool? ?? false,
-      progress: json['progress'] as Map<String, dynamic>?,
-    );
-  }
-}
-
 /// 设备端宠物状态（精简版，用于硬件轮询）
 class DevicePetStatus {
   final String mood;
@@ -233,47 +197,8 @@ class PetApiService {
     }
   }
 
-  /// 获取解锁项列表
-  Future<ApiResponse<List<UnlockableItem>>> getUnlockables() async {
-    try {
-      final response = await _apiService.get('/virtual-pet/unlockables');
-      if (response.success && response.data != null) {
-        final data = response.data as Map<String, dynamic>;
-        final items = (data['unlockables'] as List)
-            .map((e) => UnlockableItem.fromJson(e as Map<String, dynamic>))
-            .toList();
-        return ApiResponse.success(message: '获取解锁项成功', data: items);
-      }
-      return ApiResponse.failure(message: response.message.isNotEmpty ? response.message : '获取解锁项失败');
-    } catch (e) {
-      debugPrint('PetApiService.getUnlockables error: $e');
-      return ApiResponse.failure(message: '获取解锁项失败: $e');
-    }
-  }
-
-  /// 执行解锁
-  Future<ApiResponse<Map<String, dynamic>>> unlock({required String unlockType, required String unlockKey}) async {
-    try {
-      final response = await _apiService.post('/virtual-pet/unlock', data: {
-        'unlock_type': unlockType,
-        'unlock_key': unlockKey,
-      });
-      if (response.success) {
-        return ApiResponse.success(
-          message: response.message.isNotEmpty ? response.message : '解锁成功',
-          data: response.data as Map<String, dynamic>?,
-        );
-      }
-      return ApiResponse.failure(message: response.message.isNotEmpty ? response.message : '解锁失败');
-    } catch (e) {
-      debugPrint('PetApiService.unlock error: $e');
-      return ApiResponse.failure(message: '解锁失败: $e');
-    }
-  }
-
   /// 重命名宠物
   Future<ApiResponse<Map<String, dynamic>>> rename({required String name}) async {
-    try {
       final response = await _apiService.put('/virtual-pet/rename', data: {'name': name});
       if (response.success) {
         return ApiResponse.success(

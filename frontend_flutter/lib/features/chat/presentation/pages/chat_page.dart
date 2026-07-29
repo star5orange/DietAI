@@ -96,7 +96,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         _loadAdvisorStyle();
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
           color: const Color(0xFF2BAF74).withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
@@ -109,17 +109,20 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           children: [
             const Icon(
               Icons.tune,
-              size: 11,
+              size: 10,
               color: Color(0xFF2BAF74),
             ),
-            const SizedBox(width: 4),
-            Text(
-              _currentStyleName,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF2BAF74),
-                height: 1.3,
+            const SizedBox(width: 3),
+            Flexible(
+              child: Text(
+                _currentStyleName,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF2BAF74),
+                  height: 1.2,
+                ),
               ),
             ),
           ],
@@ -348,8 +351,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             Text(
               widget.title ??
                   _chatService.getSessionTypeName(widget.sessionType),
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 18,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: Color(0xFF222222),
               ),
@@ -454,7 +458,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
 
     if (_messages.isEmpty) {
-      return _buildWelcomeMessage();
+      return SingleChildScrollView(child: _buildWelcomeMessage());
     }
 
     return ListView.builder(

@@ -188,10 +188,6 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
           _buildVirtualPetStatus(petState),
           const SizedBox(height: 20),
 
-          // 快速操作按钮
-          _buildQuickActions(),
-          const SizedBox(height: 20),
-
           // 导航到详情页按钮
           _buildNavigationButton(),
         ],
@@ -298,74 +294,6 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
               label,
               style:
                   const TextStyle(fontSize: 11, color: AppColors.textTertiary),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuickActions() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildActionCard(
-            LucideIcons.candy,
-            '喂食',
-            AppColors.caloriesColor,
-            () => _petService.petFeed(),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _buildActionCard(
-            LucideIcons.droplet,
-            '喂水',
-            AppColors.info,
-            () => _petService.petInteract(action: 'water'),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _buildActionCard(
-            LucideIcons.heart,
-            '抚摸',
-            AppColors.error,
-            () => _petService.petTouch(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActionCard(
-      IconData icon, String label, Color color, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
             ),
           ],
         ),

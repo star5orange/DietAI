@@ -83,19 +83,6 @@ class PetService {
   }) =>
       petInteract(action: 'play', itemId: playType);
 
-  /// 获取可解锁内容列表
-  Future<ApiResponse<Map<String, dynamic>>> getUnlockables() async {
-    try {
-      final response = await _apiService.get('/virtual-pet/unlockables');
-      return ApiResponse.fromJson(
-        response.data,
-        (json) => json as Map<String, dynamic>,
-      );
-    } catch (e) {
-      return ApiResponse.failure(message: '获取可解锁内容失败', error: e.toString());
-    }
-  }
-
   /// 设置宠物可见性
   Future<ApiResponse<bool>> setPetVisible(bool visible) async {
     try {

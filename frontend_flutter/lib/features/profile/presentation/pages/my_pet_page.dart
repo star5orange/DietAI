@@ -10,7 +10,6 @@ import '../../../pet/domain/pet_state_calculator.dart';
 import '../../../pet/domain/pet_skin_config.dart';
 import '../../../pet/presentation/widgets/pet_bubble.dart';
 import '../../../pet/presentation/widgets/pet_animation_widget.dart';
-import '../../../pet/domain/services/pet_service.dart';
 import '../../../pet/presentation/pages/real_pet_detail_page.dart';
 import '../../../pet/presentation/pages/add_pet_page.dart';
 import '../../../../core/themes/app_colors.dart';
@@ -50,7 +49,6 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
   Timer? _bubbleHideTimer;
 
   // Services
-  final PetService _petService = PetService();
   final FoodService _foodService = FoodService();
   final WaterService _waterService = WaterService();
   final GoalTrackingService _goalTrackingService = GoalTrackingService();
@@ -58,10 +56,6 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
   // 真实宠物列表
   List<Map<String, dynamic>> _realPets = [];
   bool _realPetsLoading = true;
-
-  // Unlockables
-  List<Map<String, dynamic>> _unlockables = [];
-  bool _unlockablesLoading = true;
 
   // Stats
   bool _statsLoading = true;
@@ -104,72 +98,6 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
     },
   ];
 
-  static const _interactions = [
-    {
-      'name': '抚摸',
-      'icon': LucideIcons.heartHandshake,
-      'effect': '+5经验',
-      'action': 'pet',
-    },
-    {
-      'name': '喂食',
-      'icon': LucideIcons.cookie,
-      'effect': '+10经验',
-      'action': 'feed',
-    },
-    {
-      'name': '玩耍',
-      'icon': LucideIcons.gamepad2,
-      'effect': '+8经验',
-      'action': 'play',
-    },
-    {
-      'name': '训练',
-      'icon': LucideIcons.graduationCap,
-      'effect': '+12经验',
-      'action': 'train',
-    },
-  ];
-
-  static const _defaultUnlockables = [
-    {
-      'name': '默认外观',
-      'description': '可爱的基础宠物形象',
-      'unlock_type': 'skin',
-      'unlock_key': 'default',
-      'required_level': 1,
-      'required_streak': null,
-      'is_unlocked': true,
-    },
-    {
-      'name': '夏日清凉',
-      'description': '夏日海滩风格外观',
-      'unlock_type': 'skin',
-      'unlock_key': 'summer',
-      'required_level': 3,
-      'required_streak': null,
-      'is_unlocked': false,
-    },
-    {
-      'name': '开心转圈',
-      'description': '达标后的开心转圈动作',
-      'unlock_type': 'action',
-      'unlock_key': 'happy_spin',
-      'required_level': null,
-      'required_streak': 3,
-      'is_unlocked': false,
-    },
-    {
-      'name': '金色光效',
-      'description': '升级时的金色闪光效果',
-      'unlock_type': 'effect',
-      'unlock_key': 'gold_sparkle',
-      'required_level': 10,
-      'required_streak': null,
-      'is_unlocked': false,
-    },
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -209,7 +137,6 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
 
     _startAutoBubble();
     _loadStats();
-    _loadUnlockables();
     _fetchRealPets();
   }
 
@@ -264,60 +191,6 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
     ref.read(petProvider.notifier).onTap();
     final petState = ref.read(petProvider);
     _showBubble(petState.dialogue);
-  }
-
-  Future<void> _onInteract(String action) async {
-    try {
-      await _petService.petInteract(action: action);
-      final notifier = ref.read(petProvider.notifier);
-      switch (action) {
-        case 'feed':
-          notifier.addExp(10);
-          break;
-        case 'play':
-          notifier.addExp(8);
-          break;
-        case 'train':
-          notifier.addExp(12);
-          break;
-        default:
-          notifier.addExp(5);
-      }
-      if (mounted) _showFeedback(action);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('互动失败: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
-
-  void _showFeedback(String action) {
-    final messages = {
-      'feed': '喂食成功！+10经验值',
-      'play': '玩耍成功！+8经验值',
-      'train': '训练成功！+12经验值',
-      'pet': '抚摸成功！+5经验值',
-    };
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(LucideIcons.sparkles, color: Colors.white),
-            const SizedBox(width: 12),
-            Text(messages[action] ?? '互动成功！'),
-          ],
-        ),
-        backgroundColor: AppColors.success,
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
   }
 
   // ==================== Load Data ====================
@@ -386,78 +259,6 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
     }
   }
 
-  Future<void> _loadUnlockables() async {
-    try {
-      final response = await _petService.getUnlockables();
-      if (response.success && response.data != null) {
-        final items = response.data!['unlockables'] as List<dynamic>? ??
-            response.data!['items'] as List<dynamic>? ??
-            [];
-        final petState = ref.read(petProvider);
-        setState(() {
-          _unlockables = items.map((e) {
-            final requiredLevel = e['required_level'] as int?;
-            final requiredStreak = e['required_streak'] as int?;
-            bool isUnlocked = e['is_unlocked'] == true;
-            if (!isUnlocked) {
-              final levelOk =
-                  requiredLevel == null || petState.level >= requiredLevel;
-              final streakOk = requiredStreak == null ||
-                  petState.currentStreak >= requiredStreak;
-              isUnlocked = levelOk && streakOk;
-            }
-            return {
-              'name': e['name'] ?? '',
-              'unlock_type': e['unlock_type'] as String? ?? '',
-              'unlock_key': e['unlock_key'] as String? ?? '',
-              'description': e['description'] as String? ?? '',
-              'required_level': requiredLevel,
-              'required_streak': requiredStreak,
-              'is_unlocked': isUnlocked,
-            };
-          }).toList();
-        });
-      }
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _unlockablesLoading = false);
-    }
-  }
-
-  Future<void> _doUnlock(Map<String, dynamic> item) async {
-    setState(() {
-      final idx = _unlockables.indexOf(item);
-      if (idx >= 0) {
-        _unlockables[idx] = {...item, 'is_unlocked': true};
-      }
-    });
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(children: [
-            const Icon(LucideIcons.trophy, color: Colors.white, size: 18),
-            const SizedBox(width: 8),
-            Text('${item['name']} 解锁成功！'),
-          ]),
-          backgroundColor: AppColors.warning,
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
-    }
-
-    final unlockType = item['unlock_type'] as String;
-    try {
-      await _petService.petInteract(
-        action: 'unlock',
-        itemId: '${unlockType}:${item['unlock_key']}',
-      );
-    } catch (_) {}
-  }
-
   // ==================== Build ====================
 
   @override
@@ -510,8 +311,6 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                 _buildPetTypeSelector(petState),
                 const SizedBox(height: 20),
                 _buildStatsPanel(petState),
-                const SizedBox(height: 20),
-                _buildInteractionPanel(),
               ],
             ),
           ),
@@ -1437,347 +1236,6 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
           ),
         ),
       ],
-    );
-  }
-
-  // ==================== Unlockables ====================
-
-  Widget _buildAchievementsSection() {
-    if (_unlockablesLoading && _unlockables.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    final displayItems =
-        _unlockables.isNotEmpty ? _unlockables : _defaultUnlockables;
-    final unlockedCount =
-        displayItems.where((a) => a['is_unlocked'] == true).length;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Row(
-                children: [
-                  Icon(LucideIcons.trophy, color: AppColors.primary, size: 18),
-                  SizedBox(width: 8),
-                  Text('解锁内容',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF222222))),
-                ],
-              ),
-              Text('$unlockedCount/${displayItems.length}',
-                  style:
-                      const TextStyle(fontSize: 13, color: Color(0xFF999999))),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: displayItems.length,
-            itemBuilder: (context, index) {
-              return _buildUnlockableCard(
-                  displayItems[index] as Map<String, dynamic>);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildUnlockableCard(Map<String, dynamic> item) {
-    final name = item['name'] as String;
-    final description = item['description'] as String? ?? '';
-    final unlockType = item['unlock_type'] as String;
-    final requiredLevel = item['required_level'] as int?;
-    final requiredStreak = item['required_streak'] as int?;
-    final isUnlocked = item['is_unlocked'] as bool? ?? false;
-
-    final petState = ref.watch(petProvider);
-    final icon = _iconForType(unlockType);
-
-    double progress = 0.0;
-    String conditionText = '自动解锁';
-    String progressText = '';
-
-    if (requiredLevel != null) {
-      final currentLevel = petState.level;
-      progress = (currentLevel / requiredLevel).clamp(0.0, 1.0);
-      conditionText = '需要 Lv.$requiredLevel';
-      progressText =
-          isUnlocked ? '已解锁' : 'Lv.$currentLevel / Lv.$requiredLevel';
-    } else if (requiredStreak != null) {
-      final currentStreak = petState.currentStreak;
-      progress = (currentStreak / requiredStreak).clamp(0.0, 1.0);
-      conditionText = '连续达标${requiredStreak}天';
-      progressText =
-          isUnlocked ? '已解锁' : '${currentStreak}天 / ${requiredStreak}天';
-    }
-
-    final canUnlock = !isUnlocked && progress >= 1.0;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: isUnlocked ? AppColors.primarySurface : const Color(0xFFF5F5F5),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: isUnlocked
-              ? AppColors.primary.withValues(alpha: 0.3)
-              : const Color(0xFFE8E8E8),
-          width: 1.5,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: isUnlocked
-                    ? AppColors.primary.withValues(alpha: 0.15)
-                    : const Color(0xFFE0E0E0),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                icon,
-                size: 22,
-                color: isUnlocked ? AppColors.primary : const Color(0xFFBDBDBD),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name,
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: isUnlocked
-                              ? const Color(0xFF222222)
-                              : const Color(0xFF888888))),
-                  if (description.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(description,
-                          style: const TextStyle(
-                              fontSize: 11, color: Color(0xFFAAAAAA)),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Text(conditionText,
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: isUnlocked
-                                  ? AppColors.success
-                                  : const Color(0xFFAAAAAA),
-                              fontWeight: isUnlocked
-                                  ? FontWeight.w600
-                                  : FontWeight.w400)),
-                      if (progressText.isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        Text(progressText,
-                            style: TextStyle(
-                                fontSize: 10,
-                                color: isUnlocked
-                                    ? AppColors.success
-                                    : const Color(0xFF999999))),
-                      ],
-                    ],
-                  ),
-                  if (!isUnlocked) ...[
-                    const SizedBox(height: 4),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        backgroundColor: const Color(0xFFE8E8E8),
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          canUnlock ? AppColors.warning : AppColors.info,
-                        ),
-                        minHeight: 4,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            if (canUnlock)
-              GestureDetector(
-                onTap: () => _doUnlock(item),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    gradient: AppColors.primaryGradient,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text('解锁',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12)),
-                ),
-              )
-            else if (isUnlocked)
-              const Icon(LucideIcons.checkCircle,
-                  color: AppColors.success, size: 20),
-          ],
-        ),
-      ),
-    );
-  }
-
-  IconData _iconForType(String type) {
-    switch (type) {
-      case 'skin':
-        return LucideIcons.shirt;
-      case 'action':
-        return LucideIcons.sparkles;
-      case 'achievement':
-        return LucideIcons.trophy;
-      default:
-        return LucideIcons.gift;
-    }
-  }
-
-  // ==================== Interaction Panel ====================
-
-  Widget _buildInteractionPanel() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(LucideIcons.gamepad2, color: AppColors.primary, size: 18),
-              SizedBox(width: 8),
-              Text('互动面板',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF222222))),
-            ],
-          ),
-          const SizedBox(height: 14),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              childAspectRatio: 2.5,
-            ),
-            itemCount: _interactions.length,
-            itemBuilder: (context, index) {
-              final item = _interactions[index];
-              return _buildInteractionButton(
-                  item['name'] as String,
-                  item['icon'] as IconData,
-                  item['effect'] as String,
-                  item['action'] as String);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInteractionButton(
-    String name,
-    IconData icon,
-    String effect,
-    String action,
-  ) {
-    return GestureDetector(
-      onTap: () => _onInteract(action),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppColors.primarySurface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: AppColors.primary, size: 18),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name,
-                      style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF333333))),
-                  Text(effect,
-                      style: const TextStyle(
-                          fontSize: 11, color: AppColors.success)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
