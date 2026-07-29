@@ -259,12 +259,15 @@ def create_user(db: Session, username: str, email: str, password: str, phone: st
         )
     
     # 检查邮箱是否已存在（通过盲索引）
-    email_hash = _blind_index(email)
-    if db.query(User).filter(User.email_hash == email_hash).first():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="邮箱已存在"
-        )
+    if email:
+        email_hash = _blind_index(email)
+        if db.query(User).filter(User.email_hash == email_hash).first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="邮箱已存在"
+            )
+    else:
+        email_hash = None
     
     # 检查手机号是否已存在（通过盲索引）
     phone_hash = _blind_index(phone) if phone else None

@@ -206,30 +206,11 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
             },
           ),
           const SizedBox(height: 16),
-          
-          // 邮箱输入框
-          AppInput(
-            controller: _emailController,
-            label: '邮箱',
-            placeholder: '请输入您的邮箱',
-            prefixIcon: Icons.email_outlined,
-            type: AppInputType.email,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return '请输入邮箱';
-              }
-              if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value.trim())) {
-                return '请输入有效的邮箱地址';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
-          
-          // 手机号输入框（可选）
+
+          // 手机号输入框
           AppInput(
             controller: _phoneController,
-            label: '手机号（可选）',
+            label: '手机号',
             placeholder: '请输入手机号',
             prefixIcon: Icons.phone_outlined,
             type: AppInputType.number,
@@ -237,6 +218,24 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
               if (value != null && value.trim().isNotEmpty) {
                 if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(value.trim())) {
                   return '请输入有效的手机号';
+                }
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+
+          // 邮箱输入框（可选）
+          AppInput(
+            controller: _emailController,
+            label: '邮箱（可选）',
+            placeholder: '请输入您的邮箱',
+            prefixIcon: Icons.email_outlined,
+            type: AppInputType.email,
+            validator: (value) {
+              if (value != null && value.trim().isNotEmpty) {
+                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value.trim())) {
+                  return '请输入有效的邮箱地址';
                 }
               }
               return null;

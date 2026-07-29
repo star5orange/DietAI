@@ -7,7 +7,7 @@ part 'user_model.g.dart';
 class User {
   final int id;
   final String username;
-  final String email;
+  final String? email;
   final String? phone;
   @JsonKey(name: 'avatar_url')
   final String? avatarUrl;
@@ -20,7 +20,7 @@ class User {
   const User({
     required this.id,
     required this.username,
-    required this.email,
+    this.email,
     this.phone,
     this.avatarUrl,
     required this.status,

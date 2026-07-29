@@ -190,13 +190,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         children: [
           AppInput(
             controller: _usernameController,
-            label: '用户名/邮箱',
-            placeholder: '请输入用户名或邮箱',
+            label: '用户名/手机号',
+            placeholder: '请输入用户名或手机号',
             prefixIcon: Icons.person_outline,
             type: AppInputType.email,
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
-                return '请输入用户名或邮箱';
+                return '请输入用户名或手机号';
               }
               return null;
             },

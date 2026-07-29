@@ -137,9 +137,6 @@ async def generate_sse_stream(
     """SSE 流式生成器 — 自行管理 db session，不依赖 FastAPI DI"""
     db = SessionLocal()
     try:
-        # 1. 首先发送创建记录的状态
-        yield f"data: {json.dumps({'type': 'record_created', 'data': {'status': 'creating', 'message': '正在创建食物记录...'}, 'success': True}, ensure_ascii=False)}\n\n"
-
         # 创建食物记录
         food_record = FoodRecord(
             user_id=user_id,
@@ -165,7 +162,7 @@ async def generate_sse_stream(
             cache_key = f"nutrition:daily:{user_id}:{food_data.record_date}"
             cache_service.redis.delete(cache_key)
 
-        # 构建响应数据
+        # 构建响应数据（直接返回完整数据）
         response_data = {
             "id": food_record.id,
             "user_id": food_record.user_id,
@@ -182,6 +179,7 @@ async def generate_sse_stream(
             "created_at": food_record.created_at.isoformat(),
         }
 
+        # 直接返回完整数据（移除中间状态）
         yield f"data: {json.dumps({'type': 'record_created', 'data': {'record': response_data, 'status': 'created', 'message': '食物记录创建成功'}, 'success': True}, ensure_ascii=False)}\n\n"
 
         # 3. 如果有图片URL或文字描述，则使用Agent进行分析

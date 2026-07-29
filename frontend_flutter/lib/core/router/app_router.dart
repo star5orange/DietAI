@@ -42,6 +42,7 @@ import '../../features/onboarding/presentation/pages/onboarding_crowd_tag_page.d
 import '../../features/onboarding/presentation/pages/onboarding_constitution_page.dart';
 import '../../features/onboarding/presentation/pages/onboarding_complete_page.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
+import '../../features/onboarding/presentation/providers/onboarding_provider.dart';
 import '../../shared/domain/models/user_model.dart';
 import '../../shared/presentation/widgets/main_scaffold.dart';
 import '../../shared/presentation/pages/splash_page.dart';
@@ -93,8 +94,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/login';
       }
 
-      // 如果已登录且在认证页面，重定向到首页
+      // 如果已登录且在认证页面，检查引导状态后重定向
       if (isLoggedIn && isAuthRoute) {
+        final onboardingState = ref.read(onboardingProvider);
+        if (!onboardingState.isCompleted) {
+          print('🔄 已登录用户未完成引导，重定向到引导页');
+          return '/onboarding';
+        }
         print('🔄 已登录用户访问认证页面，重定向到首页');
         return '/';
       }

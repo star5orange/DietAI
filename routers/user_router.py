@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import func
+from sqlalchemy import func, text
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 import json
@@ -1293,3 +1293,62 @@ async def get_crowd_tags():
         message="获取人群标签成功",
         data={"items": tags},
     )
+
+
+@router.delete("/me", response_model=BaseResponse)
+async def delete_account(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """注销账户 - 删除当前用户及其所有数据"""
+    try:
+        logger.info(f"用户 {current_user.id} 请求注销账户")
+        
+        user_id = current_user.id
+        
+        # 使用原生SQL级联删除（只删除有user_id字段的表）
+        tables_to_delete = [
+            "notification_responses",
+            "reminders",
+            "device_tokens",
+            "hardware_quick_buttons",
+            "pet_unlocks",
+            "virtual_pet_states",
+            "conversation_sessions",
+            "user_saved_meal_favorites",
+            "saved_meals",  # saved_meal_nutrition 通过 saved_meal_id 关联
+            "water_intake_records",
+            "exercise_records",
+            "daily_nutrition_summaries",
+            "food_records",
+            "weight_records",
+            "allergies",
+            "diseases",
+            "health_goals",
+            "pet_profiles",
+            "user_profiles",
+        ]
+        
+        for table in tables_to_delete:
+            try:
+                db.execute(text(f"DELETE FROM {table} WHERE user_id = :user_id"), {"user_id": user_id})
+            except Exception as e:
+                logger.warning(f"删除表 {table} 失败: {e}")
+                continue
+        
+        # 最后删除用户
+        db.execute(text("DELETE FROM users WHERE id = :user_id"), {"user_id": user_id})
+        
+        db.commit()
+        
+        logger.info(f"用户 {user_id} 账户已注销")
+        
+        return BaseResponse(
+            success=True,
+            message="账户已注销",
+            data=None
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"注销账户失败: {e}")
+        raise handle_database_error(e, "注销账户")

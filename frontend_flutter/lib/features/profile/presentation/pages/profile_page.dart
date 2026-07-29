@@ -108,6 +108,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
               // 退出登录按钮
               _buildLogoutButton(),
+              const SizedBox(height: 12),
+
+              // 注销账户按钮
+              _buildDeleteAccountButton(),
             ],
           ),
         ),
@@ -483,6 +487,25 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     );
   }
 
+  Widget _buildDeleteAccountButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: TextButton.icon(
+        onPressed: () {
+          _showDeleteAccountDialog();
+        },
+        icon: const Icon(LucideIcons.trash2, color: AppColors.textSecondary),
+        label: const Text(
+          '注销账户',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+        ),
+      ),
+    );
+  }
+
   Widget _buildStatCard(String label, String value, String unit, Color color) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -827,6 +850,87 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               backgroundColor: AppColors.error,
             ),
             child: const Text('退出'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteAccountDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('注销账户'),
+        content: const Text('注销账户将永久删除您的所有数据，此操作不可恢复。您确定要继续吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+
+              // 显示加载提示
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const Center(
+                  child: CircularProgressIndicator(),
+                ),
+              );
+
+              try {
+                // 调用注销账户API
+                final userService = ref.read(userServiceProvider);
+                final response = await userService.deleteAccount();
+
+                // 关闭加载提示
+                if (context.mounted) {
+                  Navigator.pop(context);
+                }
+
+                if (response.isSuccess) {
+                  // 清除本地数据并退出登录
+                  await ref.read(authStateProvider.notifier).logout();
+
+                  // 跳转到登录页
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('账户已注销'),
+                        backgroundColor: AppColors.success,
+                      ),
+                    );
+                    context.go('/login');
+                  }
+                } else {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(response.message),
+                        backgroundColor: AppColors.error,
+                      ),
+                    );
+                  }
+                }
+              } catch (e) {
+                // 关闭加载提示
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('注销账户失败: $e'),
+                      backgroundColor: AppColors.error,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+            ),
+            child: const Text('确认注销'),
           ),
         ],
       ),

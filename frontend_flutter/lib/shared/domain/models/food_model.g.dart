@@ -113,24 +113,11 @@ Map<String, dynamic> _$RecommendationsToJson(Recommendations instance) =>
 
 AgentAnalysisData _$AgentAnalysisDataFromJson(Map<String, dynamic> json) =>
     AgentAnalysisData(
-      imageDescription: (json['image_description'] as String?) ?? '',
-      nutritionFacts: json['nutrition_facts'] != null
-          ? NutritionFacts.fromJson(
-              json['nutrition_facts'] as Map<String, dynamic>)
-          : const NutritionFacts(
-              totalCalories: 0,
-              macronutrients: Macronutrients(
-                protein: 0,
-                fat: 0,
-                carbohydrates: 0,
-                dietaryFiber: 0,
-                sugar: 0,
-              ),
-            ),
-      recommendations: json['recommendations'] != null
-          ? Recommendations.fromJson(
-              json['recommendations'] as Map<String, dynamic>)
-          : const Recommendations(),
+      imageDescription: json['image_description'] as String,
+      nutritionFacts: NutritionFacts.fromJson(
+          json['nutrition_facts'] as Map<String, dynamic>),
+      recommendations: Recommendations.fromJson(
+          json['recommendations'] as Map<String, dynamic>),
       shortComment: json['short_comment'] as String?,
     );
 
