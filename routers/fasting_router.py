@@ -1,4 +1,5 @@
 """轻断食模块路由"""
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any, List
@@ -16,6 +17,7 @@ from shared.services.fasting_service import (
 )
 
 router = APIRouter(prefix="/fasting", tags=["轻断食"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/plan-types", response_model=BaseResponse)

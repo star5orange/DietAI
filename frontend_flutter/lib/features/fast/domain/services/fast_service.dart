@@ -81,7 +81,7 @@ class FastService {
     String eatingWindowEnd = '16:00',
     double? targetWeight,
     Map<String, dynamic>? healthAssessment,
-    bool disclaimerAccepted = false,
+    bool disclaimerAccepted = true,
   }) async {
     try {
       final response = await _apiService.post(

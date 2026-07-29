@@ -240,10 +240,24 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
                             color: Colors.white, fontWeight: FontWeight.w700)),
                     if (plan.eatingWindowStart != null &&
                         plan.eatingWindowEnd != null)
-                      Text(
-                        '进食窗口 ${plan.eatingWindowStart} - ${plan.eatingWindowEnd}',
-                        style: AppTextStyles.caption.copyWith(
-                            color: Colors.white.withValues(alpha: 0.7)),
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            '进食窗口 ${plan.eatingWindowStart} - ${plan.eatingWindowEnd}',
+                            style: AppTextStyles.caption.copyWith(
+                                color: Colors.white.withValues(alpha: 0.7)),
+                          ),
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () => _editEatingWindow(plan),
+                            child: Icon(
+                              LucideIcons.pencil,
+                              size: 14,
+                              color: Colors.white.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
                       ),
                   ],
                 ),
@@ -628,7 +642,87 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
 
   // ==================== 业务逻辑 ====================
 
+  Future<bool> _showDisclaimer() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(LucideIcons.alertTriangle, color: AppColors.warning, size: 24),
+            SizedBox(width: 8),
+            Text('免责声明', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '轻断食并非适用于所有人。在开始任何断食计划之前，请确认以下事项：',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              _disclaimerItem('您已年满18周岁，且身体发育成熟'),
+              _disclaimerItem('您目前没有处于怀孕、备孕或哺乳期'),
+              _disclaimerItem('您没有严重的慢性疾病（如糖尿病、低血糖、心脏病、肝肾疾病等）'),
+              _disclaimerItem('您没有进食障碍病史（如厌食症、暴食症）'),
+              _disclaimerItem('您知晓断食期间可能出现头晕、乏力、注意力不集中等反应'),
+              _disclaimerItem('您愿意在身体出现严重不适时立即停止断食并咨询医生'),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                ),
+                child: const Text(
+                  '本应用提供的断食建议仅供参考，不构成医疗建议。'
+                  '如有任何健康疑虑，请先咨询专业医生。',
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('我已了解，继续'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  Widget _disclaimerItem(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('• ', style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+          Expanded(
+            child: Text(text, style: const TextStyle(fontSize: 14, color: AppColors.textPrimary)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _startPlan(String planId) async {
+    // 首次使用需确认免责声明
+    final accepted = await _showDisclaimer();
+    if (!accepted) return;
+
     // 5:2 和基础断食需要先选择断食日
     if (planId == '5_2' || planId == 'basic_fasting') {
       final requiredDays = planId == '5_2' ? 2 : null; // null 表示 1-2 天
@@ -757,30 +851,18 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
       String planType, List<int>? fastingDays) async {
     try {
       final service = ref.read(fastingServiceProvider);
-      final result = await service.createPlan(
+      await service.createPlan(
         planType: planType,
         startDate: DateTime.now().toIso8601String().split('T')[0],
         fastingDays: fastingDays,
       );
-      final planIdCreated = result['plan_id'] ?? 0;
-      setState(() {
-        _activePlan = FastingPlan(
-          planId: planIdCreated,
-          planType: planType,
-          status: 'active',
-          startDate: DateTime.now().toIso8601String().split('T')[0],
-        );
-        _streakDays = 1;
-        _checkinCount = 0;
-        _weekCount = 1;
-        _progress = null;
-      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('计划已创建，快去打卡吧！')),
         );
-        // 重新加载完整进度数据
-        _loadPlans();
+        // 重新加载，由 _loadPlans 统一设置 _activePlan
+        setState(() => _isLoading = true);
+        await _loadPlans();
       }
     } catch (e) {
       if (mounted) {
@@ -814,6 +896,159 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
           ),
         ],
       ),
+    );
+  }
+
+  /// 修改进食窗口
+  Future<void> _editEatingWindow(FastingPlan plan) async {
+    TimeOfDay startTime = _parseTime(plan.eatingWindowStart ?? '08:00');
+    TimeOfDay endTime = _parseTime(plan.eatingWindowEnd ?? '16:00');
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (ctx) {
+        TimeOfDay localStart = startTime;
+        TimeOfDay localEnd = endTime;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final formatTime = (TimeOfDay t) =>
+                '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+            return AlertDialog(
+              title: const Text('修改进食窗口'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('调整每日进食时间段',
+                      style: AppTextStyles.bodySmall
+                          .copyWith(color: AppColors.textTertiary)),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      Column(
+                        children: [
+                          Text('开始时间',
+                              style: AppTextStyles.caption
+                                  .copyWith(color: AppColors.textTertiary)),
+                          const SizedBox(height: 8),
+                          GestureDetector(
+                            onTap: () async {
+                              final picked = await showTimePicker(
+                                context: ctx,
+                                initialTime: localStart,
+                              );
+                              if (picked != null) {
+                                setDialogState(() => localStart = picked);
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 20, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: AppColors.primarySurface,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: AppColors.primary),
+                              ),
+                              child: Text(formatTime(localStart),
+                                  style: AppTextStyles.h6.copyWith(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w700)),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Icon(LucideIcons.arrowRight,
+                            color: AppColors.textTertiary, size: 20),
+                      ),
+                      Column(
+                        children: [
+                          Text('结束时间',
+                              style: AppTextStyles.caption
+                                  .copyWith(color: AppColors.textTertiary)),
+                          const SizedBox(height: 8),
+                          GestureDetector(
+                            onTap: () async {
+                              final picked = await showTimePicker(
+                                context: ctx,
+                                initialTime: localEnd,
+                              );
+                              if (picked != null) {
+                                setDialogState(() => localEnd = picked);
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 20, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: AppColors.primarySurface,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: AppColors.primary),
+                              ),
+                              child: Text(formatTime(localEnd),
+                                  style: AppTextStyles.h6.copyWith(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w700)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, {
+                    'start': formatTime(localStart),
+                    'end': formatTime(localEnd),
+                  }),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white),
+                  child: const Text('保存'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null) return;
+
+    try {
+      final service = ref.read(fastingServiceProvider);
+      await service.updatePlan(
+        plan.planId,
+        eatingWindowStart: result['start'],
+        eatingWindowEnd: result['end'],
+      );
+      if (mounted) {
+        // 刷新状态
+        setState(() => _isLoading = true);
+        await _loadPlans();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('进食窗口已更新')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog(e.toString().replaceFirst('Exception: ', ''));
+      }
+    }
+  }
+
+  TimeOfDay _parseTime(String timeStr) {
+    final parts = timeStr.split(':');
+    return TimeOfDay(
+      hour: int.tryParse(parts[0]) ?? 8,
+      minute: int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0,
     );
   }
 

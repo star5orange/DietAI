@@ -211,7 +211,7 @@ class FastingService {
     String eatingWindowEnd = '16:00',
     double? targetWeight,
     Map<String, dynamic>? healthAssessment,
-    bool disclaimerAccepted = false,
+    bool disclaimerAccepted = true,
     List<int>? fastingDays,
   }) async {
     try {
