@@ -1258,7 +1258,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
     return GestureDetector(
       onTap: () => _quickAddWater(amountMl: amountMl),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(20),
@@ -1285,7 +1285,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
     return GestureDetector(
       onTap: _showAddWaterModal,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(20),
@@ -1928,12 +1928,13 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                     ],
                   ),
                   onTap: () async {
+                    final vd = vaccinatedAt!; // 新建时默认为 DateTime.now()
                     final picked = await showDatePicker(
                       context: ctx,
-                      initialDate: nextDate ?? DateTime.now(),
-                      firstDate: DateTime.now(),
+                      initialDate: nextDate ?? vd.add(const Duration(days: 90)),
+                      firstDate: vd.add(const Duration(days: 1)),
                       lastDate:
-                          DateTime.now().add(const Duration(days: 365 * 5)),
+                          vd.add(const Duration(days: 365 * 5)),
                     );
                     if (picked != null) setDState(() => nextDate = picked);
                   },
@@ -1955,8 +1956,18 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
             ),
             ElevatedButton(
               onPressed: () async {
-                if (nameCtrl.text.trim().isEmpty) return;
-                if (vaccinatedAt == null) return;
+                if (nameCtrl.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('请输入疫苗名称'), duration: Duration(seconds: 2)),
+                  );
+                  return;
+                }
+                if (vaccinatedAt == null) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('请选择接种日期'), duration: Duration(seconds: 2)),
+                  );
+                  return;
+                }
                 final api = RealPetApiService();
                 final data = <String, dynamic>{
                   'vaccine_name': nameCtrl.text.trim(),
@@ -2225,12 +2236,13 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                     ],
                   ),
                   onTap: () async {
+                    final td = treatedAt ?? DateTime.now();
                     final picked = await showDatePicker(
                       context: ctx,
-                      initialDate: nextDate ?? DateTime.now(),
-                      firstDate: DateTime.now(),
+                      initialDate: nextDate ?? td.add(const Duration(days: 90)),
+                      firstDate: td.add(const Duration(days: 1)),
                       lastDate:
-                          DateTime.now().add(const Duration(days: 365 * 5)),
+                          td.add(const Duration(days: 365 * 5)),
                     );
                     if (picked != null) setDState(() => nextDate = picked);
                   },
@@ -2251,8 +2263,18 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
             ),
             ElevatedButton(
               onPressed: () async {
-                if (selectedType == null) return;
-                if (treatedAt == null) return;
+                if (selectedType == null) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('请选择驱虫类型'), duration: Duration(seconds: 2)),
+                  );
+                  return;
+                }
+                if (treatedAt == null) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('请选择驱虫日期'), duration: Duration(seconds: 2)),
+                  );
+                  return;
+                }
                 final api = RealPetApiService();
                 final data = <String, dynamic>{
                   'deworming_type': selectedType!,

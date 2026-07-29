@@ -73,8 +73,20 @@ PRESET_AVATARS = {
 
 def create_pet(db: Session, user_id: int, data: dict) -> PetProfile:
     """创建宠物档案"""
+    # 提取 weight 字段（不属于 PetProfile 列，需单独处理）
+    init_weight = data.pop("weight", None)
     pet = PetProfile(user_id=user_id, **data)
     db.add(pet)
+    db.flush()  # 获取 pet.id
+    # 创建初始体重记录
+    if init_weight:
+        from shared.models.pet_models import PetWeightRecord
+        weight_record = PetWeightRecord(
+            pet_id=pet.id,
+            weight=init_weight,
+            measured_at=datetime.utcnow(),
+        )
+        db.add(weight_record)
     db.commit()
     db.refresh(pet)
     return pet

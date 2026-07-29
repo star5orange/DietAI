@@ -14,6 +14,7 @@ class PetProfileCreate(BaseModel):
     birth_date: Optional[date] = None
     is_neutered: bool = False
     avatar_url: Optional[str] = Field(None, max_length=2000)
+    weight: Optional[float] = Field(None, gt=0, le=200, description="初始体重(kg)，会自动写入体重历史")
 
 
 class PetProfileUpdate(BaseModel):
