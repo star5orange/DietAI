@@ -29,7 +29,8 @@ settings = get_settings()
 
 
 def _sanitize_analysis_result(result):
-    """清理 analysis_result 中的 null 值，防止前端 JSON 解析崩溃"""
+    """清理 analysis_result 中的 null 值，防止前端 JSON 解析崩溃
+    注意：不补 nutrition_facts 默认值（避免覆盖 nutrition_detail 真实数据）"""
     if not isinstance(result, dict):
         return None
     clean = dict(result)
@@ -40,6 +41,14 @@ def _sanitize_analysis_result(result):
         clean["recommendations"] = {}
     if clean.get("food_items") is None:
         clean["food_items"] = []
+
+    # 处理 recommendations 子字段为 null 的情况
+    rec = clean.get("recommendations")
+    if isinstance(rec, dict):
+        for sub_key in ("recommendations", "dietary_tips", "warnings", "alternative_foods", "action_items"):
+            if rec.get(sub_key) is None:
+                rec[sub_key] = []
+
     return clean
 
 # 食物营养成分数据库（每100g）
@@ -254,20 +263,27 @@ async def generate_sse_stream(
                             nf_data = nf_data.model_dump()
                         elif hasattr(nf_data, 'dict'):
                             nf_data = nf_data.dict()
+
+                        # ⚠️ 优先用AI识别结果更新食物名称（放在最前面，确保不被后续异常跳过）
+                        food_items = nf_data.get("food_items") or []
+                        if food_items:
+                            food_record.food_name = food_items[0] if len(food_items) == 1 else "、".join(food_items[:3])
+                            db.commit()  # 先提交食物名称更新
+
+                        # 持久化AI分析结果
+                        food_record.analysis_result = {
+                            "short_comment": analysis_complete_data.get("short_comment") or "",
+                            "image_description": analysis_complete_data.get("image_description") or "",
+                            "food_items": food_items,
+                            "recommendations": analysis_complete_data.get("recommendations") or {},
+                        }
+
                         nutrition_facts = NutritionFacts(**nf_data)
                         await create_nutrition_detail_from_analysis(
                             food_record.id,
                             nutrition_facts,
                             db
                         )
-
-                        # 持久化AI分析结果
-                        food_record.analysis_result = {
-                            "short_comment": analysis_complete_data.get("short_comment") or "",
-                            "image_description": analysis_complete_data.get("image_description") or "",
-                            "food_items": nf_data.get("food_items", []),
-                            "recommendations": analysis_complete_data.get("recommendations") or {},
-                        }
 
                         # 更新分析状态为完成
                         food_record.analysis_status = 3  # 已完成
@@ -302,8 +318,14 @@ async def generate_sse_stream(
         cache_key = f"nutrition:daily:{user_id}:{food_data.record_date}"
         cache_service.redis.delete(cache_key)
 
-        # 5. 发送完成信号
-        yield f"data: {json.dumps({'type': 'stream_complete', 'data': {'status': 'completed', 'message': '流程完成'}, 'success': True}, ensure_ascii=False)}\n\n"
+        # 5. 发送完成信号（携带最终食物名称供前端刷新）
+        completion_data = {
+            'status': 'completed',
+            'message': '流程完成',
+            'food_name': food_record.food_name,
+            'record_id': food_record.id,
+        }
+        yield f"data: {json.dumps({'type': 'stream_complete', 'data': completion_data, 'success': True}, ensure_ascii=False)}\n\n"
 
     except Exception as e:
         db.rollback()
@@ -610,11 +632,22 @@ async def _run_background_analysis(image_url: str, user_id: int, food_record_id:
                     db
                 )
 
-                # 持久化AI分析结果（short_comment, food_items, image_description, recommendations）
+                # ⚠️ 优先用AI识别结果更新食物名称
+                nf_raw = analysis_complete_data.get("nutrition_facts", {})
+                if hasattr(nf_raw, 'model_dump'):
+                    nf_raw = nf_raw.model_dump()
+                elif hasattr(nf_raw, 'dict'):
+                    nf_raw = nf_raw.dict()
+                food_items_list = (nf_raw.get("food_items") if isinstance(nf_raw, dict) else nf_raw.food_items) or []
+                if food_items_list:
+                    food_record.food_name = food_items_list[0] if len(food_items_list) == 1 else "、".join(food_items_list[:3])
+                    db.commit()
+
+                # 持久化AI分析结果
                 food_record.analysis_result = {
                     "short_comment": analysis_complete_data.get("short_comment", ""),
                     "image_description": analysis_complete_data.get("image_description", ""),
-                    "food_items": analysis_complete_data.get("nutrition_facts", {}).get("food_items", []),
+                    "food_items": food_items_list,
                     "recommendations": analysis_complete_data.get("recommendations"),
                 }
 
@@ -1026,38 +1059,26 @@ async def create_nutrition_detail_from_analysis(food_record_id: int, nutrition_f
             return  # 如果已存在，则不创建
 
         # 从分析结果中提取营养信息
+        vm = nutrition_facts.vitamins_minerals
         nutrition_detail = NutritionDetail(
             food_record_id=food_record_id,
             calories=nutrition_facts.total_calories or 0,
             protein=nutrition_facts.macronutrients.protein or 0,
             fat=nutrition_facts.macronutrients.fat or 0,
             carbohydrates=nutrition_facts.macronutrients.carbohydrates or 0,
-            # dietary_fiber=0,
-            # sugar=0,
-            # sodium=0,
-            # cholesterol=0,
             dietary_fiber=nutrition_facts.macronutrients.dietary_fiber or 0,
             sugar=nutrition_facts.macronutrients.sugar or 0,
-            # 微量营养素
-            sodium=nutrition_facts.vitamins_minerals.sodium or 0,
-            cholesterol=nutrition_facts.vitamins_minerals.cholesterol or 0,
-
+            # 微量营养素（处理 vitamins_minerals 为 None 的情况）
+            sodium=vm.sodium or 0 if vm else 0,
+            cholesterol=vm.cholesterol or 0 if vm else 0,
             # 维生素
-            vitamin_a=nutrition_facts.vitamins_minerals.vitamin_a or 0,
-            vitamin_c=nutrition_facts.vitamins_minerals.vitamin_c or 0,
-            vitamin_d=nutrition_facts.vitamins_minerals.vitamin_d or 0,
-
+            vitamin_a=vm.vitamin_a or 0 if vm else 0,
+            vitamin_c=vm.vitamin_c or 0 if vm else 0,
+            vitamin_d=vm.vitamin_d or 0 if vm else 0,
             # 矿物质
-            calcium=nutrition_facts.vitamins_minerals.calcium or 0,
-            iron=nutrition_facts.vitamins_minerals.iron or 0,
-            potassium=nutrition_facts.vitamins_minerals.potassium or 0,
-            # vitamin_a=nutrition_facts.vitamins_minerals.vitamin_a or 0,
-            # vitamin_c=nutrition_facts.vitamins_minerals.vitamin_c or 0,
-            # vitamin_d=0,
-            # calcium=nutrition_facts.vitamins_minerals.calcium or 0,
-            # iron=0,
-            # potassium=0,
-            # confidence_score=0,#TODO:confidence_score还未实现
+            calcium=vm.calcium or 0 if vm else 0,
+            iron=vm.iron or 0 if vm else 0,
+            potassium=vm.potassium or 0 if vm else 0,
             analysis_method="agent_analysis"
         )
 
@@ -1115,13 +1136,20 @@ async def get_food_records(
                 NutritionDetail.food_record_id == record.id
             ).first()
 
+            # 兜底：如果 food_name 为空，尝试从 analysis_result 中提取
+            food_name = record.food_name
+            if not food_name and record.analysis_result:
+                ar_food_items = record.analysis_result.get("food_items") if isinstance(record.analysis_result, dict) else None
+                if ar_food_items:
+                    food_name = ar_food_items[0] if len(ar_food_items) == 1 else "、".join(ar_food_items[:3])
+
             record_dict = {
                 "id": record.id,
                 "user_id": record.user_id,
                 "record_date": record.record_date.isoformat(),
                 "record_time": record.record_time.isoformat() if record.record_time else None,
                 "meal_type": record.meal_type,
-                "food_name": record.food_name,
+                "food_name": food_name,
                 "description": record.description,
                 "image_url": minio_client.get_file_url(record.image_url) if record.image_url and not record.image_url.startswith("http") else record.image_url,
                 "recording_method": record.recording_method,
@@ -1234,12 +1262,19 @@ async def get_food_record(
             NutritionDetail.food_record_id == record_id
         ).first()
 
+        # 兜底：如果 food_name 为空，尝试从 analysis_result 中提取
+        food_name = record.food_name
+        if not food_name and record.analysis_result:
+            ar_food_items = record.analysis_result.get("food_items") if isinstance(record.analysis_result, dict) else None
+            if ar_food_items:
+                food_name = ar_food_items[0] if len(ar_food_items) == 1 else "、".join(ar_food_items[:3])
+
         record_data = {
             "id": record.id,
             "user_id": record.user_id,
             "record_date": record.record_date.isoformat(),
             "meal_type": record.meal_type,
-            "food_name": record.food_name,
+            "food_name": food_name,
             "description": record.description,
             "image_url": minio_client.get_file_url(record.image_url) if record.image_url and not record.image_url.startswith("http") else record.image_url,
             "recording_method": record.recording_method,

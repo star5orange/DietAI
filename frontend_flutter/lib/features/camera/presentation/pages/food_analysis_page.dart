@@ -198,6 +198,10 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
               _currentStep = 'completed';
               _currentMessage = '分析完成';
               _analysisProgress = 1.0;
+              // 用后端返回的最终食物名更新（兜底确保不空白）
+              if (data['food_name'] != null && data['food_name'].toString().isNotEmpty) {
+                _foodName = data['food_name'].toString();
+              }
               _updateProgressAnimation();
               setState(() {
                 _isLoading = false;
@@ -308,11 +312,19 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
         };
       }
 
+      final foodItems = nutritionFacts['food_items'] as List? ?? [];
       _nutritionFacts = {
         'total_calories': _totalCalories,
         'macronutrients': _macronutrients,
-        'food_items': nutritionFacts['food_items'] ?? [],
+        'food_items': foodItems,
       };
+
+      // 用AI识别的食物名称更新标题
+      if (foodItems.isNotEmpty) {
+        _foodName = foodItems.length == 1
+            ? foodItems[0].toString()
+            : foodItems.take(3).join('、');
+      }
     }
 
     if (data['recommendations'] != null) {
@@ -481,21 +493,34 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
       _imageDescription = analysisResult.imageDescription;
       _shortComment = analysisResult.shortComment ?? '';
 
-      // 解析营养成分
-      _totalCalories = analysisResult.nutritionFacts.totalCalories;
-      _macronutrients = {
-        'protein': analysisResult.nutritionFacts.macronutrients.protein,
-        'fat': analysisResult.nutritionFacts.macronutrients.fat,
-        'carbohydrates':
-            analysisResult.nutritionFacts.macronutrients.carbohydrates,
-      };
-
-      // 转换营养成分为Map格式以兼容现有UI
-      _nutritionFacts = {
-        'total_calories': _totalCalories,
-        'macronutrients': _macronutrients,
-        'food_items': analysisResult.nutritionFacts.foodItems ?? [],
-      };
+      // 解析营养成分（优先nutritionDetail，其次analysisResult.nutritionFacts）
+      if (analysisResult.nutritionFacts != null) {
+        final nf = analysisResult.nutritionFacts!;
+        _totalCalories = nf.totalCalories;
+        _macronutrients = {
+          'protein': nf.macronutrients.protein,
+          'fat': nf.macronutrients.fat,
+          'carbohydrates': nf.macronutrients.carbohydrates,
+        };
+        _nutritionFacts = {
+          'total_calories': _totalCalories,
+          'macronutrients': _macronutrients,
+          'food_items': nf.foodItems ?? [],
+        };
+      } else if (record.nutritionDetail != null) {
+        final nd = record.nutritionDetail!;
+        _totalCalories = nd.calories;
+        _macronutrients = {
+          'protein': nd.protein,
+          'fat': nd.fat,
+          'carbohydrates': nd.carbohydrates,
+        };
+        _nutritionFacts = {
+          'total_calories': _totalCalories,
+          'macronutrients': _macronutrients,
+          'food_items': [],
+        };
+      }
 
       // 转换推荐建议为Map格式以兼容现有UI
       _recommendations = {
@@ -1197,7 +1222,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          _isLoading ? '分析中...' : _foodName,
+          _isLoading ? '分析中...' : (_foodName.isNotEmpty ? _foodName : 'AI分析结果'),
           style: const TextStyle(
             color: Color(0xFF222222),
             fontSize: 18,
@@ -1296,7 +1321,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                 // 卡路里信息
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
                     color: const Color(0xFF2BAF74),
                     borderRadius: BorderRadius.circular(50),
@@ -1307,15 +1332,15 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                       const Icon(
                         LucideIcons.flame,
                         color: Colors.white,
-                        size: 20,
+                        size: 16,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       Text(
-                        '$actualCalories 卡路里',
+                        '$actualCalories 千卡',
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
-                          fontSize: 16,
+                          fontSize: 14,
                         ),
                       ),
                     ],
@@ -1328,12 +1353,12 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                     const Text(
                       '份量',
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w500,
                         color: Color(0xFF222222),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 8),
                     Container(
                       decoration: BoxDecoration(
                         color: const Color(0xFFE6FAF0),
@@ -1347,16 +1372,19 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                                     setState(() => _servingCount--);
                                   }
                                 : null,
-                            icon: const Icon(LucideIcons.minus, size: 16),
+                            icon: const Icon(LucideIcons.minus, size: 14),
                             color: const Color(0xFF2BAF74),
+                            constraints: const BoxConstraints(
+                                minWidth: 32, minHeight: 32),
+                            padding: EdgeInsets.zero,
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
+                                horizontal: 10, vertical: 8),
                             child: Text(
                               '$_servingCount',
                               style: const TextStyle(
-                                fontSize: 16,
+                                fontSize: 14,
                                 fontWeight: FontWeight.w600,
                                 color: Color(0xFF222222),
                               ),
@@ -1366,8 +1394,11 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                             onPressed: () {
                               setState(() => _servingCount++);
                             },
-                            icon: const Icon(LucideIcons.plus, size: 16),
+                            icon: const Icon(LucideIcons.plus, size: 14),
                             color: const Color(0xFF2BAF74),
+                            constraints: const BoxConstraints(
+                                minWidth: 32, minHeight: 32),
+                            padding: EdgeInsets.zero,
                           ),
                         ],
                       ),

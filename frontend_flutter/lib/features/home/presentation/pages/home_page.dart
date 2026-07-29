@@ -832,7 +832,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     Text(
                       '${total.round()}',
                       style: TextStyle(
-                        fontSize: 22,
+                        fontSize: 18,
                         fontWeight: FontWeight.w800,
                         color: color,
                       ),
@@ -1150,6 +1150,9 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Future<void> _refreshData() async {
+    // 清除历史页缓存，确保数据同步
+    final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
+    await _foodService.invalidateRecordsCache(dateStr);
     await _loadDataForDate(_selectedDate);
     ref.read(petProvider.notifier).onFoodRecorded();
   }
@@ -1256,43 +1259,33 @@ class _HomePageState extends ConsumerState<HomePage> {
                               _buildCalorieCard(
                                   remainingCalories, currentCalories, crowdTag),
                               const SizedBox(height: 20),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    flex: 5,
-                                    child: SizedBox(
-                                      height: 300,
-                                      child: WaterIntakeWidget(
-                                        onTapDetails: () {},
-                                        onWaterRecorded: _onWaterRecorded,
-                                        selectedDate: _selectedDate,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    flex: 3,
-                                    child: SizedBox(
-                                      height: 300,
-                                      child: ExerciseQuickAdd(
-                                        todayCalories:
-                                            _todayExerciseCalories > 0
-                                                ? _todayExerciseCalories
-                                                : null,
-                                        todayDuration:
-                                            _todayExerciseDuration > 0
-                                                ? _todayExerciseDuration
-                                                : null,
-                                        onTap: () => Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                              builder: (context) =>
-                                                  const ExerciseRecordPage()),
-                                        ).then((_) => _refreshData()),
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                              SizedBox(
+                                height: 300,
+                                child: WaterIntakeWidget(
+                                  onTapDetails: () {},
+                                  onWaterRecorded: _onWaterRecorded,
+                                  selectedDate: _selectedDate,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                height: 180,
+                                child: ExerciseQuickAdd(
+                                  todayCalories:
+                                      _todayExerciseCalories > 0
+                                          ? _todayExerciseCalories
+                                          : null,
+                                  todayDuration:
+                                      _todayExerciseDuration > 0
+                                          ? _todayExerciseDuration
+                                          : null,
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            const ExerciseRecordPage()),
+                                  ).then((_) => _refreshData()),
+                                ),
                               ),
                               const SizedBox(height: 20),
                               // 节气切换通知横幅
@@ -1696,7 +1689,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                           : crowdTag == '健身'
                               ? '能量摄入'
                               : '今日热量',
-                      style: AppTextStyles.h4),
+                      style: AppTextStyles.h5),
                   const SizedBox(height: 4),
                   Text(
                       crowdTag == '减脂'
@@ -1756,7 +1749,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                           remainingCalories >= 0
                               ? '$remainingCalories'
                               : '${remainingCalories.abs()}',
-                          style: AppTextStyles.numberLarge
+                          style: AppTextStyles.numberMedium
                               .copyWith(color: AppColors.textPrimary),
                         ),
                         Text(
@@ -1788,7 +1781,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('常用餐食', style: AppTextStyles.h4),
+            Text('常用餐食', style: AppTextStyles.h5),
             GestureDetector(
               onTap: () => Navigator.push(
                 context,
@@ -1936,7 +1929,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('消费金额（可选）', style: AppTextStyles.bodyLarge),
+                Text('消费金额（可选）', style: AppTextStyles.bodyMedium),
                 const SizedBox(height: 8),
                 TextField(
                   controller: amountController,
@@ -1952,7 +1945,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   },
                 ),
                 const SizedBox(height: 16),
-                Text('消费来源（可选）', style: AppTextStyles.bodyLarge),
+                Text('消费来源（可选）', style: AppTextStyles.bodyMedium),
                 const SizedBox(height: 8),
                 TextField(
                   controller: sourceController,
@@ -2054,7 +2047,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('食物摄入', style: AppTextStyles.h4),
+        Text('食物摄入', style: AppTextStyles.h5),
         const SizedBox(height: 16),
         ...meals.map((meal) => _buildMealItem(
               meal['name'] as String? ?? '',
@@ -2073,8 +2066,8 @@ class _HomePageState extends ConsumerState<HomePage> {
     final mealCalories = mealRecords.fold<double>(
       0.0,
       (sum, record) {
-        final calories = record.analysisResult?.nutritionFacts.totalCalories ??
-            record.nutritionDetail?.calories ??
+        final calories = record.nutritionDetail?.calories ??
+            record.analysisResult?.nutritionFacts?.totalCalories ??
             0.0;
         return sum + calories;
       },
@@ -2109,7 +2102,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(name,
-                        style: AppTextStyles.bodyLarge
+                        style: AppTextStyles.bodyMedium
                             .copyWith(fontWeight: FontWeight.w500)),
                     if (mealRecords.isNotEmpty) ...[
                       const SizedBox(height: 4),
@@ -2174,20 +2167,19 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildInlineMealRecord(FoodRecord record) {
-    final calories = record.analysisResult?.nutritionFacts.totalCalories ??
-        record.nutritionDetail?.calories ??
+    // 优先使用 nutritionDetail（后端存储的真实营养数据），其次 analysisResult
+    final calories = record.nutritionDetail?.calories ??
+        record.analysisResult?.nutritionFacts?.totalCalories ??
         0.0;
-    final protein =
-        record.analysisResult?.nutritionFacts.macronutrients.protein ??
-            record.nutritionDetail?.protein ??
-            0.0;
-    final fat = record.analysisResult?.nutritionFacts.macronutrients.fat ??
-        record.nutritionDetail?.fat ??
+    final protein = record.nutritionDetail?.protein ??
+        record.analysisResult?.nutritionFacts?.macronutrients.protein ??
         0.0;
-    final carbs =
-        record.analysisResult?.nutritionFacts.macronutrients.carbohydrates ??
-            record.nutritionDetail?.carbohydrates ??
-            0.0;
+    final fat = record.nutritionDetail?.fat ??
+        record.analysisResult?.nutritionFacts?.macronutrients.fat ??
+        0.0;
+    final carbs = record.nutritionDetail?.carbohydrates ??
+        record.analysisResult?.nutritionFacts?.macronutrients.carbohydrates ??
+        0.0;
 
     // 格式化就餐时间
     String? timeText;
@@ -2246,7 +2238,10 @@ class _HomePageState extends ConsumerState<HomePage> {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(record.foodName ?? '未命名食物',
+                      child: Text(
+                          (record.foodName != null && record.foodName!.isNotEmpty)
+                              ? record.foodName!
+                              : '未命名食物',
                           style: AppTextStyles.bodySmall
                               .copyWith(fontWeight: FontWeight.w500),
                           maxLines: 1,
@@ -2326,10 +2321,32 @@ class _HomePageState extends ConsumerState<HomePage> {
           _FoodNameDialog(initialValue: record.foodName ?? ''),
     );
     if (result != null && result != record.foodName) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('食物名称已更新为: $result'),
-          backgroundColor: AppColors.success));
-      _refreshData();
+      try {
+        final updateData = FoodRecordCreate(
+          recordDate: record.recordDate,
+          mealType: record.mealType,
+          foodName: result,
+          description: record.description ?? '',
+          imageUrl: record.imageUrl,
+        );
+        final updateResult = await _foodService.updateFoodRecord(record.id, updateData);
+        if (updateResult.success && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('食物名称已更新为: $result'),
+              backgroundColor: AppColors.success));
+          _refreshData();
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('更新失败: ${updateResult.message}'),
+              backgroundColor: AppColors.error));
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('更新失败: $e'),
+              backgroundColor: AppColors.error));
+        }
+      }
     }
   }
 
@@ -2337,7 +2354,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('删除食物记录', style: AppTextStyles.h4),
+        title: Text('删除食物记录', style: AppTextStyles.h5),
         content: Text('确定要删除"${record.foodName ?? '未命名食物'}"吗？此操作不可撤销。',
             style: AppTextStyles.bodyMedium),
         actions: [
@@ -3000,7 +3017,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   : crowdTag == '减脂'
                       ? '热量来源分析'
                       : '今日宏观营养素',
-              style: AppTextStyles.h4),
+              style: AppTextStyles.h5),
           const SizedBox(height: 16),
           // 营养素比例环形图
           if (protein + carbs + fat > 0) ...[
@@ -3320,7 +3337,7 @@ class _CalorieGoalDialogState extends State<_CalorieGoalDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('设置每日卡路里目标', style: AppTextStyles.h4),
+      title: Text('设置每日卡路里目标', style: AppTextStyles.h5),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -3467,7 +3484,7 @@ class _FoodNameDialogState extends State<_FoodNameDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('编辑食物名称', style: AppTextStyles.h4),
+      title: Text('编辑食物名称', style: AppTextStyles.h5),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

@@ -131,6 +131,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     try {
       final dateString =
           '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+      // 先清除缓存，确保与首页数据同步
+      await _foodService.invalidateRecordsCache(dateString);
       print('📋 历史页面加载记录: date=$dateString');
       final result = await _foodService.getFoodRecordsByDay(dateString);
 
@@ -707,9 +709,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   }
 
   Widget _buildFoodItemFromRecord(FoodRecord record) {
-    // 优先使用 analysisResult 中的卡路里数据，如果没有则使用 nutritionDetail
-    final calories = record.analysisResult?.nutritionFacts.totalCalories ??
-        record.nutritionDetail?.calories ??
+    // 优先使用 nutritionDetail（数据库真实营养数据），其次 analysisResult
+    final calories = record.nutritionDetail?.calories ??
+        record.analysisResult?.nutritionFacts?.totalCalories ??
         0.0;
     final shortComment = record.analysisResult?.shortComment ?? '';
     String time = '';
@@ -1397,8 +1399,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         final confidence = (data['confidence_score'] as num) * 100;
         nutritionRows.add(_buildDetailRow('置信度', '${confidence.round()}%'));
       }
-    } else if (analysisResult != null) {
-      final nutrition = analysisResult.nutritionFacts;
+    } else if (analysisResult != null && analysisResult.nutritionFacts != null) {
+      final nutrition = analysisResult.nutritionFacts!;
       final macros = nutrition.macronutrients;
       final vitamins = nutrition.vitaminsMinerals;
 
@@ -1734,16 +1736,17 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     double fat = 0;
     double carbs = 0;
 
-    if (analysisResult != null) {
-      calories = analysisResult.nutritionFacts.totalCalories;
-      protein = analysisResult.nutritionFacts.macronutrients.protein;
-      fat = analysisResult.nutritionFacts.macronutrients.fat;
-      carbs = analysisResult.nutritionFacts.macronutrients.carbohydrates;
-    } else if (nutritionDetail != null) {
+    // 优先使用 nutritionDetail（数据库真实营养数据），其次 analysisResult.nutritionFacts
+    if (nutritionDetail != null) {
       calories = nutritionDetail.calories;
       protein = nutritionDetail.protein;
       fat = nutritionDetail.fat;
       carbs = nutritionDetail.carbohydrates;
+    } else if (analysisResult != null && analysisResult.nutritionFacts != null) {
+      calories = analysisResult.nutritionFacts!.totalCalories;
+      protein = analysisResult.nutritionFacts!.macronutrients.protein;
+      fat = analysisResult.nutritionFacts!.macronutrients.fat;
+      carbs = analysisResult.nutritionFacts!.macronutrients.carbohydrates;
     }
 
     return Row(

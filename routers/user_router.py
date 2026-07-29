@@ -1306,34 +1306,71 @@ async def delete_account(
         
         user_id = current_user.id
         
-        # 使用原生SQL级联删除（只删除有user_id字段的表）
+        # 使用原生SQL级联删除，注意外键依赖顺序
+        # 每个表独立使用 savepoint，一个表失败不影响其他表
+        
+        # 第一阶段：通过子查询删除无 user_id 列的子表
+        indirect_tables = {
+            "conversation_messages":     ("session_id", "conversation_sessions"),
+            "conversation_contexts":     ("session_id", "conversation_sessions"),
+            "saved_meal_nutrition":      ("saved_meal_id", "saved_meals"),
+            "nutrition_details":         ("food_record_id", "food_records"),
+        }
+        for table, (fk_col, parent_table) in indirect_tables.items():
+            try:
+                sp_name = f"sp_ind_{table}"
+                db.execute(text(f"SAVEPOINT {sp_name}"))
+                db.execute(text(
+                    f"DELETE FROM {table} WHERE {fk_col} IN "
+                    f"(SELECT id FROM {parent_table} WHERE user_id = :user_id)"
+                ), {"user_id": user_id})
+                db.execute(text(f"RELEASE SAVEPOINT {sp_name}"))
+            except Exception as e:
+                try:
+                    db.execute(text(f"ROLLBACK TO SAVEPOINT {sp_name}"))
+                    db.execute(text(f"RELEASE SAVEPOINT {sp_name}"))
+                except Exception:
+                    pass
+                logger.warning(f"删除表 {table} 失败 (非致命): {e}")
+
+        # 第二阶段：删除有 user_id 列的直接关联表
         tables_to_delete = [
-            "notification_responses",
-            "reminders",
-            "device_tokens",
-            "hardware_quick_buttons",
-            "pet_unlocks",
-            "virtual_pet_states",
-            "conversation_sessions",
-            "user_saved_meal_favorites",
-            "saved_meals",  # saved_meal_nutrition 通过 saved_meal_id 关联
-            "water_intake_records",
-            "exercise_records",
-            "daily_nutrition_summaries",
-            "food_records",
-            "weight_records",
-            "allergies",
-            "diseases",
-            "health_goals",
-            "pet_profiles",
-            "user_profiles",
+            "notification_responses",       # 有 user_id + reminder_id FK
+            "device_tokens",                # 有 user_id FK
+            "hardware_quick_buttons",       # 有 user_id FK
+            "pet_unlocks",                  # 有 user_id FK
+            "virtual_pet_states",           # 有 user_id FK
+            "conversation_sessions",        # 有 user_id FK
+            "user_saved_meal_favorites",    # 有 user_id FK
+            "saved_meals",                  # 有 user_id FK
+            "water_intake_records",         # 有 user_id FK
+            "exercise_records",             # 有 user_id FK
+            "daily_nutrition_summaries",    # 有 user_id FK
+            "food_records",                 # 有 user_id FK
+            "weight_records",               # 有 user_id FK
+            "allergies",                    # 有 user_id FK
+            "diseases",                     # 有 user_id FK
+            "health_goals",                 # 有 user_id FK
+            "reminders",                    # 有 user_id FK
+            "pet_profiles",                 # 有 user_id FK
+            "user_profiles",                # 有 user_id FK
         ]
         
         for table in tables_to_delete:
             try:
+                # 使用唯一 savepoint 名，避免名称冲突
+                sp_name = f"sp_del_{table}"
+                db.execute(text(f"SAVEPOINT {sp_name}"))
                 db.execute(text(f"DELETE FROM {table} WHERE user_id = :user_id"), {"user_id": user_id})
+                db.execute(text(f"RELEASE SAVEPOINT {sp_name}"))
             except Exception as e:
-                logger.warning(f"删除表 {table} 失败: {e}")
+                # 回滚到 savepoint 后必须释放它，否则下次 SAVEPOINT 会冲突
+                try:
+                    db.execute(text(f"ROLLBACK TO SAVEPOINT {sp_name}"))
+                    db.execute(text(f"RELEASE SAVEPOINT {sp_name}"))
+                except Exception:
+                    pass
+                logger.warning(f"删除表 {table} 失败 (非致命): {e}")
                 continue
         
         # 最后删除用户

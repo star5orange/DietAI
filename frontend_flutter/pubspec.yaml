@@ -44,7 +44,6 @@ dependencies:
   photo_view: ^0.14.0
   
   # UI组件
-  google_fonts: ^6.1.0
   lucide_icons: ^0.257.0
   flutter_vector_icons: ^2.0.0
   animations: ^2.0.8

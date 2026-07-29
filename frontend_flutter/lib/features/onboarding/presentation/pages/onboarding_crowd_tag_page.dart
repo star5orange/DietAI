@@ -160,15 +160,11 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
                 ),
                 const SizedBox(height: 24),
                 Expanded(
-                  child: GridView.builder(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 1.1,
-                    ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
                     itemCount: _crowdTags.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final tag = _crowdTags[index];
                       final isSelected = _selectedTag == tag['tag'];
@@ -180,6 +176,8 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
                         },
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
+                          height: 80,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? (tag['color'] as Color).withValues(alpha: 0.1)
@@ -203,8 +201,7 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
                                   ]
                                 : AppColors.lightShadow,
                           ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                          child: Row(
                             children: [
                               Container(
                                 width: 48,
@@ -220,29 +217,36 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
                                   size: 24,
                                 ),
                               ),
-                              const SizedBox(height: 10),
-                              Text(
-                                tag['tag'] as String,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: isSelected
-                                      ? FontWeight.w700
-                                      : FontWeight.w500,
-                                  color: isSelected
-                                      ? (tag['color'] as Color)
-                                      : AppColors.textPrimary,
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      tag['tag'] as String,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                        color: isSelected
+                                            ? (tag['color'] as Color)
+                                            : AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      tag['description'] as String,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textTertiary,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                tag['description'] as String,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: AppColors.textTertiary,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:lottie/lottie.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../shared/presentation/widgets/app_button.dart';
@@ -45,7 +44,7 @@ class _OnboardingWelcomePageState extends ConsumerState<OnboardingWelcomePage>
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
             children: [
               // 跳过按钮
@@ -55,14 +54,12 @@ class _OnboardingWelcomePageState extends ConsumerState<OnboardingWelcomePage>
                   TextButton(
                     onPressed: () async {
                       print('📝 用户点击了跳过按钮');
-                      // 调用后端API记录用户已跳过引导，避免下次登录再次弹出
                       try {
                         final service = ref.read(onboardingServiceProvider);
                         await service.updateOnboardingStep(step: 1, completed: true);
                       } catch (e) {
                         print('⚠️ 更新引导步骤失败: $e');
                       }
-                      // 同时更新本地状态，避免当前会话中再次弹出
                       ref.read(onboardingProvider.notifier).updateStep(6);
                       if (mounted) {
                         context.go('/');
@@ -78,28 +75,21 @@ class _OnboardingWelcomePageState extends ConsumerState<OnboardingWelcomePage>
                 ],
               ),
               
+              // 主体内容区域，自动撑满剩余空间
               Expanded(
                 child: FadeTransition(
                   opacity: _fadeAnimation,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // 欢迎动画
-                      Container(
-                        width: 280,
-                        height: 280,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.restaurant_menu,
-                          size: 120,
-                          color: AppColors.primary,
-                        ),
+                      // Logo
+                      Image.asset(
+                        'assets/images/logo_welcome.png',
+                        width: 200,
+                        height: 200,
                       ),
                       
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 24),
                       
                       // 标题
                       Text(
@@ -111,7 +101,7 @@ class _OnboardingWelcomePageState extends ConsumerState<OnboardingWelcomePage>
                         textAlign: TextAlign.center,
                       ),
                       
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 8),
                       
                       // 副标题
                       Text(
@@ -122,11 +112,11 @@ class _OnboardingWelcomePageState extends ConsumerState<OnboardingWelcomePage>
                         textAlign: TextAlign.center,
                       ),
                       
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 20),
                       
-                      // 描述
+                      // 功能特性
                       Container(
-                        padding: const EdgeInsets.all(20),
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: AppColors.cardBackground,
                           borderRadius: BorderRadius.circular(16),
@@ -141,13 +131,13 @@ class _OnboardingWelcomePageState extends ConsumerState<OnboardingWelcomePage>
                               title: '智能分析',
                               description: 'AI 驱动的食物识别与营养分析',
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 8),
                             _buildFeatureItem(
                               icon: Icons.favorite,
                               title: '个性化建议',
                               description: '根据您的健康状况定制饮食方案',
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 8),
                             _buildFeatureItem(
                               icon: Icons.trending_up,
                               title: '健康追踪',
@@ -161,7 +151,7 @@ class _OnboardingWelcomePageState extends ConsumerState<OnboardingWelcomePage>
                 ),
               ),
               
-              // 开始按钮
+              // 底部按钮区
               AppButton(
                 text: '开始设置',
                 onPressed: () {
@@ -171,7 +161,7 @@ class _OnboardingWelcomePageState extends ConsumerState<OnboardingWelcomePage>
                 variant: AppButtonVariant.primary,
               ),
               
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               
               // 进度指示器
               Row(
@@ -189,6 +179,8 @@ class _OnboardingWelcomePageState extends ConsumerState<OnboardingWelcomePage>
                     ),
                 ],
               ),
+              
+              const SizedBox(height: 12),
             ],
           ),
         ),
@@ -204,8 +196,8 @@ class _OnboardingWelcomePageState extends ConsumerState<OnboardingWelcomePage>
     return Row(
       children: [
         Container(
-          width: 40,
-          height: 40,
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
             color: AppColors.primary.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
@@ -213,10 +205,10 @@ class _OnboardingWelcomePageState extends ConsumerState<OnboardingWelcomePage>
           child: Icon(
             icon,
             color: AppColors.primary,
-            size: 20,
+            size: 18,
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

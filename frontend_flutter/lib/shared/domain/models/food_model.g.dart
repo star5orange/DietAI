@@ -114,8 +114,10 @@ Map<String, dynamic> _$RecommendationsToJson(Recommendations instance) =>
 AgentAnalysisData _$AgentAnalysisDataFromJson(Map<String, dynamic> json) =>
     AgentAnalysisData(
       imageDescription: json['image_description'] as String,
-      nutritionFacts: NutritionFacts.fromJson(
-          json['nutrition_facts'] as Map<String, dynamic>),
+      nutritionFacts: json['nutrition_facts'] == null
+          ? null
+          : NutritionFacts.fromJson(
+              json['nutrition_facts'] as Map<String, dynamic>),
       recommendations: Recommendations.fromJson(
           json['recommendations'] as Map<String, dynamic>),
       shortComment: json['short_comment'] as String?,
