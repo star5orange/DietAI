@@ -36,10 +36,12 @@ class _WellnessPageState extends State<WellnessPage>
   }
 
   Future<void> _loadData() async {
-    // 独立加载每个接口，一个失败不影响其他
-    await _loadRecommendation();
-    await _loadSolarTerms();
-    await _loadWellnessTips();
+    // 并行加载所有接口，提高加载速度
+    await Future.wait([
+      _loadRecommendation(),
+      _loadSolarTerms(),
+      _loadWellnessTips(),
+    ]);
     if (mounted) {
       setState(() => _isLoading = false);
     }

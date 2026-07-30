@@ -167,16 +167,16 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
       appBar: AppBar(
         backgroundColor: AppColors.background,
         elevation: 0,
-        leading: IconButton(
-          icon:
-              const Icon(LucideIcons.chevronLeft, color: AppColors.textPrimary),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leadingWidth: 44,
         title: Text('数据可视化',
             style: AppTextStyles.h5.copyWith(
                 color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true,
+          padding: EdgeInsets.zero,
+          labelPadding: const EdgeInsets.symmetric(horizontal: 12),
+          indicatorSize: TabBarIndicatorSize.label,
           labelColor: AppColors.primary,
           unselectedLabelColor: AppColors.textTertiary,
           indicatorColor: AppColors.primary,
@@ -497,7 +497,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
     if (tag == '减脂') {
       // 减脂：热量趋势优先，蛋白质次之
       trendCharts = [
-        _buildSectionHeader('热量趋势 (30天)', LucideIcons.flame),
+        _buildSectionHeader('热量趋势 (7天)', LucideIcons.flame),
         const SizedBox(height: 12),
         _buildLineChart(points, 'calories', AppColors.caloriesColor, 'kcal'),
         const SizedBox(height: 24),
@@ -512,7 +512,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
     } else if (tag == '健身') {
       // 健身：蛋白质趋势优先，碳水次之
       trendCharts = [
-        _buildSectionHeader('蛋白质趋势 (30天)', LucideIcons.beef),
+        _buildSectionHeader('蛋白质趋势 (7天)', LucideIcons.beef),
         const SizedBox(height: 12),
         _buildLineChart(points, 'protein', AppColors.proteinColor, 'g'),
         const SizedBox(height: 24),
@@ -527,7 +527,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
     } else {
       // 普通/养生：均衡展示
       trendCharts = [
-        _buildSectionHeader('热量趋势 (30天)', LucideIcons.flame),
+        _buildSectionHeader('热量趋势 (7天)', LucideIcons.flame),
         const SizedBox(height: 12),
         _buildLineChart(points, 'calories', AppColors.caloriesColor, 'kcal'),
         const SizedBox(height: 24),
