@@ -217,12 +217,6 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                   ),
                   onPressed: () => _showFilterSheet(),
                 ),
-                IconButton(
-                  icon: const Icon(LucideIcons.testTube),
-                  onPressed: () {
-                    Navigator.pushNamed(context, '/history/test');
-                  },
-                ),
               ],
             ),
       body: Padding(
@@ -766,7 +760,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         children: [
           // 餐次标题
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
@@ -784,8 +778,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
             child: Row(
               children: [
                 Container(
-                  width: 16,
-                  height: 16,
+                  width: 10,
+                  height: 10,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [color, color.withValues(alpha: 0.7)],
@@ -802,10 +796,10 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     ],
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 10),
                 Text(
                   title,
-                  style: AppTextStyles.h5.copyWith(
+                  style: AppTextStyles.bodyLarge.copyWith(
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
                   ),
@@ -814,15 +808,15 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                 GestureDetector(
                   onTap: () => _showFoodRecordModal(title),
                   child: Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Icon(
                       LucideIcons.plus,
                       color: color,
-                      size: 18,
+                      size: 16,
                     ),
                   ),
                 ),

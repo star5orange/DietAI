@@ -211,7 +211,7 @@ def get_solar_terms(db: Session, year: int = 2026) -> list[dict]:
         WellnessKnowledge.category == "节气"
     ).all()
 
-    db_terms = {r.solar_term: r.title for r in records if r.solar_term}
+    db_terms = {r.solar_term: r.content for r in records if r.solar_term}
 
     # 合并预设日期和数据库描述
     result = []

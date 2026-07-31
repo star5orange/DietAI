@@ -151,11 +151,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               ),
             ],
           ),
-          child: const Center(
-            child: Text(
-              '🍳',
-              style: TextStyle(fontSize: 32),
-            ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Image.asset('assets/images/logo_welcome.png'),
           ),
         ),
 

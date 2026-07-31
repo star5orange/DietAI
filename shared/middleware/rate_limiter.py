@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 # 默认配置：每个 IP 每分钟 120 个请求（适合一般 API 使用）
 DEFAULT_MAX_REQUESTS = 120
 DEFAULT_WINDOW_SECONDS = 60
-# 敏感端点（写入操作）更严格：每分钟 30 个请求
-WRITE_DEFAULT_MAX = 30
+# 敏感端点（写入操作）限制：每分钟 60 个请求
+WRITE_DEFAULT_MAX = 60
 WRITE_DEFAULT_WINDOW = 60
 
 # 写入类路径前缀

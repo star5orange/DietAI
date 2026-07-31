@@ -159,11 +159,9 @@ class _SplashPageState extends ConsumerState<SplashPage>
                           ),
                         ],
                       ),
-                      child: const Center(
-                        child: Text(
-                          '🥗',
-                          style: TextStyle(fontSize: 48),
-                        ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Image.asset('assets/images/logo_welcome.png'),
                       ),
                     ),
                     

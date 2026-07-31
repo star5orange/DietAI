@@ -1521,7 +1521,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         showMonthYear ? DateFormat('yyyy年M月').format(_selectedDate) : null;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: AppColors.backgroundCard,
       child: Row(
         children: [
@@ -1530,10 +1530,12 @@ class _HomePageState extends ConsumerState<HomePage> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(dateText, style: AppTextStyles.headlineSmall),
+                Text(dateText,
+                    style: AppTextStyles.headlineSmall
+                        .copyWith(fontSize: 18)),
                 const SizedBox(width: 4),
                 const Icon(LucideIcons.chevronDown,
-                    size: 18, color: AppColors.textSecondary),
+                    size: 16, color: AppColors.textSecondary),
               ],
             ),
           ),
@@ -1542,7 +1544,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             Text(
               suffixText,
               style: AppTextStyles.bodySmall
-                  .copyWith(color: AppColors.textTertiary),
+                  .copyWith(color: AppColors.textTertiary, fontSize: 10),
             ),
           ],
           const Spacer(),
@@ -1601,9 +1603,9 @@ class _HomePageState extends ConsumerState<HomePage> {
     final now = DateTime.now();
 
     return Container(
-      height: 80,
+      height: 70,
       color: AppColors.backgroundCard,
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: 7,
@@ -1638,18 +1640,18 @@ class _HomePageState extends ConsumerState<HomePage> {
                     Text(
                       dayNames[date.weekday - 1],
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 12,
                         color: isSelected
                             ? AppColors.textInverse
                             : AppColors.textTertiary,
                         fontWeight: FontWeight.w400,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
                       '${date.day}',
                       style: TextStyle(
-                        fontSize: 18,
+                        fontSize: 16,
                         color: isSelected
                             ? AppColors.textInverse
                             : AppColors.textPrimary,
@@ -3185,7 +3187,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     return GestureDetector(
       onTap: () => context.push('/cost-statistics'),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: budgetWarning != null &&
@@ -3222,8 +3224,8 @@ class _HomePageState extends ConsumerState<HomePage> {
             Row(
               children: [
                 Container(
-                  width: 48,
-                  height: 48,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: budgetWarning != null &&
@@ -3243,10 +3245,10 @@ class _HomePageState extends ConsumerState<HomePage> {
                                   const Color(0xFF4ECDC4)
                                 ],
                     ),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(LucideIcons.wallet,
-                      color: Colors.white, size: 24),
+                      color: Colors.white, size: 20),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -3255,7 +3257,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     children: [
                       Row(
                         children: [
-                          Text('消费概览', style: AppTextStyles.h5),
+                          Text('消费概览', style: AppTextStyles.h5.copyWith(fontSize: 15)),
                           if (budgetWarning != null)
                             Container(
                               margin: const EdgeInsets.only(left: 8),
@@ -3281,7 +3283,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                             ),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         '本周 ¥${weekCost.toStringAsFixed(1)} | 今日 ¥${todayCost.toStringAsFixed(1)}',
                         style: AppTextStyles.bodyMedium.copyWith(
@@ -3297,7 +3299,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             ),
             if (budget != null && budget > 0)
               Padding(
-                padding: const EdgeInsets.only(top: 16),
+                padding: const EdgeInsets.only(top: 12),
                 child: BudgetProgressCard(
                   budget: budget,
                   used: monthCost,
