@@ -25,6 +25,7 @@ from shared.models.schemas.constitution import (
 from shared.utils.auth import get_current_user
 from shared.models.user_models import User, UserProfile, HealthGoal, Disease, Allergy, WeightRecord
 from shared.config.redis_config import cache_service
+from shared.utils.nutrition_calc import calculate_bmr, calculate_tdee, calculate_daily_targets
 
 router = APIRouter(prefix="/users", tags=["用户", "用户管理"])
 logger = logging.getLogger(__name__)
@@ -1057,6 +1058,27 @@ async def complete_onboarding(
         bmi = calculate_bmi(profile.height, profile.weight)
         if bmi:
             profile.bmi = bmi
+
+        # 根据引导填写的信息，计算每日目标热量
+        try:
+            if profile.weight and profile.height and profile.birth_date and profile.gender:
+                today = date.today()
+                age = today.year - profile.birth_date.year - (
+                    (today.month, today.day) < (profile.birth_date.month, profile.birth_date.day)
+                )
+                bmr = calculate_bmr(float(profile.weight), float(profile.height), age, profile.gender)
+                tdee = calculate_tdee(bmr, profile.activity_level or 2)
+
+                goal_type = 3  # 默认维持
+                if onboarding_data.health_goals and len(onboarding_data.health_goals) > 0:
+                    goal_type = onboarding_data.health_goals[0].get('goal_type', 3)
+
+                targets = calculate_daily_targets(tdee, goal_type, profile.crowd_tag)
+                profile.target_calories = int(targets['calories'])
+                logger.info(f"用户 {current_user.id} 引导完成，计算每日目标热量: {profile.target_calories} kcal "
+                            f"(BMR={bmr}, TDEE={tdee}, goal_type={goal_type}, crowd_tag={profile.crowd_tag})")
+        except Exception as calc_e:
+            logger.warning(f"计算每日目标热量失败，使用默认值2000: {calc_e}")
         
         # 标记引导已完成
         profile.onboarding_completed = True
@@ -1066,6 +1088,19 @@ async def complete_onboarding(
         
         db.commit()
         db.refresh(profile)
+        
+        # 创建初始体重记录（用于趋势图和趋势分析）
+        if profile.weight is not None:
+            initial_weight_record = WeightRecord(
+                user_id=current_user.id,
+                weight=profile.weight,
+                bmi=profile.bmi,
+                measured_at=datetime.utcnow(),
+                notes="引导注册时填写的初始体重"
+            )
+            db.add(initial_weight_record)
+            db.commit()
+            logger.info(f"用户 {current_user.id} 引导完成，创建初始体重记录: {profile.weight}kg")
         
         # 创建健康目标
         health_goals_created = 0

@@ -68,6 +68,7 @@ class CreateFastingPlanRequest(BaseModel):
     start_date: date = Field(..., description="开始日期")
     eating_window_start: str = Field("08:00", description="进食窗口开始 HH:MM")
     eating_window_end: str = Field("16:00", description="进食窗口结束 HH:MM")
+    fasting_days: Optional[List[int]] = Field(None, description="断食日列表，5:2需要2天，basic_fasting需要1-2天 (1=周一)")
     health_assessment: Optional[HealthAssessment] = Field(None, description="健康评估数据")
     disclaimer_accepted: bool = Field(False, description="是否已接受免责声明")
 
@@ -123,6 +124,7 @@ async def create_plan(
             target_weight=request.target_weight,
             eating_window_start=request.eating_window_start,
             eating_window_end=request.eating_window_end,
+            fasting_days=request.fasting_days,
         )
         return BaseResponse(
             success=True,

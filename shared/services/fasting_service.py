@@ -131,6 +131,7 @@ def create_fasting_plan(
     target_weight: Optional[float] = None,
     eating_window_start: Optional[str] = "08:00",
     eating_window_end: Optional[str] = "16:00",
+    fasting_days: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
     """创建轻断食计划
 
@@ -164,6 +165,7 @@ def create_fasting_plan(
         status="active",
         eating_window_start=datetime.strptime(eating_window_start, "%H:%M").time(),
         eating_window_end=datetime.strptime(eating_window_end, "%H:%M").time(),
+        fasting_days=fasting_days,
         disclaimer_accepted=disclaimer_accepted,
         disclaimer_accepted_at=datetime.utcnow() if disclaimer_accepted else None,
         health_assessment=health_assessment,
@@ -225,6 +227,7 @@ def get_fasting_plans(
             "current_weight": float(latest_checkin.weight) if latest_checkin else None,
             "eating_window_start": p.eating_window_start.strftime("%H:%M"),
             "eating_window_end": p.eating_window_end.strftime("%H:%M"),
+            "fasting_days": p.fasting_days,
         })
 
     return {"plans": result}

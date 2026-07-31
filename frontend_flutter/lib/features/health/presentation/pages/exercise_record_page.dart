@@ -308,7 +308,7 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
     IconData icon,
   ) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: AppColors.whiteWithOpacity(0.15),
         borderRadius: BorderRadius.circular(12),
@@ -316,17 +316,20 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.whiteWithOpacity(0.7), size: 16),
-          const SizedBox(height: 8),
+          Icon(icon, color: AppColors.whiteWithOpacity(0.7), size: 14),
+          const SizedBox(height: 6),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textInverse,
+              Flexible(
+                child: Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textInverse,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 4),
