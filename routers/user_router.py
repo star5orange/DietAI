@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import func
+from sqlalchemy import func, text
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 import json
@@ -25,6 +25,7 @@ from shared.models.schemas.constitution import (
 from shared.utils.auth import get_current_user
 from shared.models.user_models import User, UserProfile, HealthGoal, Disease, Allergy, WeightRecord
 from shared.config.redis_config import cache_service
+from shared.utils.nutrition_calc import calculate_bmr, calculate_tdee, calculate_daily_targets
 
 router = APIRouter(prefix="/users", tags=["用户", "用户管理"])
 logger = logging.getLogger(__name__)
@@ -66,8 +67,8 @@ def handle_database_error(e: Exception, operation: str = "数据库操作") -> H
 def calculate_bmi(height: Optional[float], weight: Optional[float]) -> Optional[float]:
     """计算BMI"""
     if height and weight and height > 0:
-        height_m = height / 100
-        return round(weight / (height_m ** 2), 2)
+        height_m = float(height) / 100
+        return round(float(weight) / (height_m ** 2), 2)
     return None
 
 def format_profile_data(profile: UserProfile) -> dict:
@@ -1057,6 +1058,27 @@ async def complete_onboarding(
         bmi = calculate_bmi(profile.height, profile.weight)
         if bmi:
             profile.bmi = bmi
+
+        # 根据引导填写的信息，计算每日目标热量
+        try:
+            if profile.weight and profile.height and profile.birth_date and profile.gender:
+                today = date.today()
+                age = today.year - profile.birth_date.year - (
+                    (today.month, today.day) < (profile.birth_date.month, profile.birth_date.day)
+                )
+                bmr = calculate_bmr(float(profile.weight), float(profile.height), age, profile.gender)
+                tdee = calculate_tdee(bmr, profile.activity_level or 2)
+
+                goal_type = 3  # 默认维持
+                if onboarding_data.health_goals and len(onboarding_data.health_goals) > 0:
+                    goal_type = onboarding_data.health_goals[0].get('goal_type', 3)
+
+                targets = calculate_daily_targets(tdee, goal_type, profile.crowd_tag)
+                profile.target_calories = int(targets['calories'])
+                logger.info(f"用户 {current_user.id} 引导完成，计算每日目标热量: {profile.target_calories} kcal "
+                            f"(BMR={bmr}, TDEE={tdee}, goal_type={goal_type}, crowd_tag={profile.crowd_tag})")
+        except Exception as calc_e:
+            logger.warning(f"计算每日目标热量失败，使用默认值2000: {calc_e}")
         
         # 标记引导已完成
         profile.onboarding_completed = True
@@ -1066,6 +1088,19 @@ async def complete_onboarding(
         
         db.commit()
         db.refresh(profile)
+        
+        # 创建初始体重记录（用于趋势图和趋势分析）
+        if profile.weight is not None:
+            initial_weight_record = WeightRecord(
+                user_id=current_user.id,
+                weight=profile.weight,
+                bmi=profile.bmi,
+                measured_at=datetime.utcnow(),
+                notes="引导注册时填写的初始体重"
+            )
+            db.add(initial_weight_record)
+            db.commit()
+            logger.info(f"用户 {current_user.id} 引导完成，创建初始体重记录: {profile.weight}kg")
         
         # 创建健康目标
         health_goals_created = 0
@@ -1280,15 +1315,12 @@ async def reset_onboarding(
 async def get_crowd_tags():
     """获取人群标签列表
 
-    返回 6 种人群标签及其图标和颜色，用于用户引导中的标签选择
+    返回 3 种人群标签及其图标和颜色，用于用户引导中的标签选择
     """
     tags = [
         {"id": "减脂", "name": "减脂", "icon": "fitness_center", "color": "#FF6B6B"},
         {"id": "健身", "name": "健身", "icon": "sports_kabaddi", "color": "#4ECDC4"},
-        {"id": "普通", "name": "普通", "icon": "person", "color": "#45B7D1"},
-        {"id": "养生", "name": "养生", "icon": "spa", "color": "#96CEB4"},
-        {"id": "孕期", "name": "孕期", "icon": "pregnant_woman", "color": "#FFEAA7"},
-        {"id": "慢病管理", "name": "慢病管理", "icon": "medical_services", "color": "#DDA0DD"},
+        {"id": "均衡维持", "name": "均衡维持", "icon": "balance", "color": "#45B7D1"},
     ]
 
     return BaseResponse(
@@ -1296,3 +1328,99 @@ async def get_crowd_tags():
         message="获取人群标签成功",
         data={"items": tags},
     )
+
+
+@router.delete("/me", response_model=BaseResponse)
+async def delete_account(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """注销账户 - 删除当前用户及其所有数据"""
+    try:
+        logger.info(f"用户 {current_user.id} 请求注销账户")
+        
+        user_id = current_user.id
+        
+        # 使用原生SQL级联删除，注意外键依赖顺序
+        # 每个表独立使用 savepoint，一个表失败不影响其他表
+        
+        # 第一阶段：通过子查询删除无 user_id 列的子表
+        indirect_tables = {
+            "conversation_messages":     ("session_id", "conversation_sessions"),
+            "conversation_contexts":     ("session_id", "conversation_sessions"),
+            "saved_meal_nutrition":      ("saved_meal_id", "saved_meals"),
+            "nutrition_details":         ("food_record_id", "food_records"),
+        }
+        for table, (fk_col, parent_table) in indirect_tables.items():
+            try:
+                sp_name = f"sp_ind_{table}"
+                db.execute(text(f"SAVEPOINT {sp_name}"))
+                db.execute(text(
+                    f"DELETE FROM {table} WHERE {fk_col} IN "
+                    f"(SELECT id FROM {parent_table} WHERE user_id = :user_id)"
+                ), {"user_id": user_id})
+                db.execute(text(f"RELEASE SAVEPOINT {sp_name}"))
+            except Exception as e:
+                try:
+                    db.execute(text(f"ROLLBACK TO SAVEPOINT {sp_name}"))
+                    db.execute(text(f"RELEASE SAVEPOINT {sp_name}"))
+                except Exception:
+                    pass
+                logger.warning(f"删除表 {table} 失败 (非致命): {e}")
+
+        # 第二阶段：删除有 user_id 列的直接关联表
+        tables_to_delete = [
+            "notification_responses",       # 有 user_id + reminder_id FK
+            "device_tokens",                # 有 user_id FK
+            "hardware_quick_buttons",       # 有 user_id FK
+            "pet_unlocks",                  # 有 user_id FK
+            "virtual_pet_states",           # 有 user_id FK
+            "conversation_sessions",        # 有 user_id FK
+            "user_saved_meal_favorites",    # 有 user_id FK
+            "saved_meals",                  # 有 user_id FK
+            "water_intake_records",         # 有 user_id FK
+            "exercise_records",             # 有 user_id FK
+            "daily_nutrition_summaries",    # 有 user_id FK
+            "food_records",                 # 有 user_id FK
+            "weight_records",               # 有 user_id FK
+            "allergies",                    # 有 user_id FK
+            "diseases",                     # 有 user_id FK
+            "health_goals",                 # 有 user_id FK
+            "reminders",                    # 有 user_id FK
+            "pet_profiles",                 # 有 user_id FK
+            "user_profiles",                # 有 user_id FK
+        ]
+        
+        for table in tables_to_delete:
+            try:
+                # 使用唯一 savepoint 名，避免名称冲突
+                sp_name = f"sp_del_{table}"
+                db.execute(text(f"SAVEPOINT {sp_name}"))
+                db.execute(text(f"DELETE FROM {table} WHERE user_id = :user_id"), {"user_id": user_id})
+                db.execute(text(f"RELEASE SAVEPOINT {sp_name}"))
+            except Exception as e:
+                # 回滚到 savepoint 后必须释放它，否则下次 SAVEPOINT 会冲突
+                try:
+                    db.execute(text(f"ROLLBACK TO SAVEPOINT {sp_name}"))
+                    db.execute(text(f"RELEASE SAVEPOINT {sp_name}"))
+                except Exception:
+                    pass
+                logger.warning(f"删除表 {table} 失败 (非致命): {e}")
+                continue
+        
+        # 最后删除用户
+        db.execute(text("DELETE FROM users WHERE id = :user_id"), {"user_id": user_id})
+        
+        db.commit()
+        
+        logger.info(f"用户 {user_id} 账户已注销")
+        
+        return BaseResponse(
+            success=True,
+            message="账户已注销",
+            data=None
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"注销账户失败: {e}")
+        raise handle_database_error(e, "注销账户")

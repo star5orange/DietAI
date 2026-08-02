@@ -66,8 +66,8 @@ class _LoginFormState extends ConsumerState<LoginForm> {
         children: [
           // 用户名/邮箱输入框
           AppInput(
-            label: '用户名或邮箱',
-            placeholder: '请输入用户名或邮箱',
+            label: '用户名/手机号',
+            placeholder: '请输入用户名或手机号',
             controller: _usernameController,
             prefixIcon: LucideIcons.user,
             textInputAction: TextInputAction.next,
@@ -183,7 +183,7 @@ class _LoginFormState extends ConsumerState<LoginForm> {
 
   String? _validateUsername(String? value) {
     if (value == null || value.trim().isEmpty) {
-      return '请输入用户名或邮箱';
+      return '请输入用户名或手机号';
     }
     return null;
   }
@@ -223,11 +223,7 @@ class _LoginFormState extends ConsumerState<LoginForm> {
   }
 
   void _handleForgotPassword() {
-    // TODO: 实现忘记密码功能
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('忘记密码功能开发中...'),
-      ),
-    );
+    // 跳转到忘记密码页面
+    context.push('/forgot-password');
   }
 } 

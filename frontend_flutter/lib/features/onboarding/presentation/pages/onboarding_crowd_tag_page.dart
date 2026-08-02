@@ -37,28 +37,10 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
       'description': '增肌塑形，提升体能',
     },
     {
-      'tag': '普通',
+      'tag': '均衡维持',
       'icon': LucideIcons.scale,
       'color': Color(0xFF2BAF74),
-      'description': '均衡饮食，维持健康',
-    },
-    {
-      'tag': '养生',
-      'icon': LucideIcons.leaf,
-      'color': Color(0xFF9C88FF),
-      'description': '调理体质，养生保健',
-    },
-    {
-      'tag': '孕期',
-      'icon': LucideIcons.baby,
-      'color': Color(0xFFFFB6C1),
-      'description': '科学饮食，保障母婴健康',
-    },
-    {
-      'tag': '慢病管理',
-      'icon': LucideIcons.heartPulse,
-      'color': Color(0xFF5B86E5),
-      'description': '控制饮食，辅助慢病管理',
+      'description': '均衡饮食，维持健康体重',
     },
   ];
 
@@ -93,18 +75,12 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
         final tagIcons = {
           '减脂': LucideIcons.flame,
           '健身': LucideIcons.dumbbell,
-          '普通': LucideIcons.scale,
-          '养生': LucideIcons.leaf,
-          '孕期': LucideIcons.baby,
-          '慢病管理': LucideIcons.heartPulse,
+          '均衡维持': LucideIcons.scale,
         };
         final tagColors = {
           '减脂': const Color(0xFFFF6B6B),
           '健身': const Color(0xFF4ECDC4),
-          '普通': const Color(0xFF2BAF74),
-          '养生': const Color(0xFF9C88FF),
-          '孕期': const Color(0xFFFFB6C1),
-          '慢病管理': const Color(0xFF5B86E5),
+          '均衡维持': const Color(0xFF2BAF74),
         };
         final updated = items.map((item) {
           final tag = (item['tag'] ?? item['name'] ?? '').toString();
@@ -184,15 +160,11 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
                 ),
                 const SizedBox(height: 24),
                 Expanded(
-                  child: GridView.builder(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 1.1,
-                    ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
                     itemCount: _crowdTags.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final tag = _crowdTags[index];
                       final isSelected = _selectedTag == tag['tag'];
@@ -204,6 +176,8 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
                         },
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
+                          height: 80,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? (tag['color'] as Color).withValues(alpha: 0.1)
@@ -227,8 +201,7 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
                                   ]
                                 : AppColors.lightShadow,
                           ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                          child: Row(
                             children: [
                               Container(
                                 width: 48,
@@ -244,29 +217,36 @@ class _OnboardingCrowdTagPageState extends ConsumerState<OnboardingCrowdTagPage>
                                   size: 24,
                                 ),
                               ),
-                              const SizedBox(height: 10),
-                              Text(
-                                tag['tag'] as String,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: isSelected
-                                      ? FontWeight.w700
-                                      : FontWeight.w500,
-                                  color: isSelected
-                                      ? (tag['color'] as Color)
-                                      : AppColors.textPrimary,
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      tag['tag'] as String,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                        color: isSelected
+                                            ? (tag['color'] as Color)
+                                            : AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      tag['description'] as String,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textTertiary,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                tag['description'] as String,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: AppColors.textTertiary,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),

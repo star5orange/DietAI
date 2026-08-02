@@ -21,7 +21,8 @@ def state_init(state: AgentState, config: RunnableConfig):
     configurable = Configuration.from_runnable_config(config)
     if state.get("image_dir") is None:
         initial_state = AgentState(
-            image_data=state['image_data'],
+            image_data=state.get('image_data'),
+            text_description=state.get('text_description'),
             image_analysis=None,
             nutrition_analysis=None,
             nutrition_advice=None,
@@ -44,6 +45,7 @@ def state_init(state: AgentState, config: RunnableConfig):
     print(configurable.vision_model)
     initial_state = AgentState(
         image_data=image_data,
+        text_description=state.get('text_description'),
         image_analysis=None,
         nutrition_analysis=None,
         nutrition_advice=None,
@@ -134,6 +136,48 @@ def analyze_image(state: AgentState) -> AgentState:
     except Exception as e:
         state["error_message"] = f"图片分析失败: {str(e)}"
     state['image_data'] = ""
+    return state
+
+
+def analyze_text(state: AgentState) -> AgentState:
+    """第一步(文字)：根据用户文字描述分析食物"""
+    try:
+        text_desc = state.get("text_description", "")
+        if not text_desc:
+            state["error_message"] = "未提供食物描述"
+            return state
+
+        messages = [
+            SystemMessage(content="""你是一位专业的营养师，擅长根据用户对食物的文字描述进行详细的食物营养分析，尤其精通中式菜肴。
+
+## 分析要求
+
+请根据用户的文字描述，详细推断和分析以下内容：
+1. 具体的食物名称和种类（优先使用中文菜名）
+2. 估计的分量和重量（1份≈多少克）
+3. 烹饪方式（煎、炒、蒸、煮、炖、炸、凉拌等）
+4. 可能的调料和配菜
+5. 该食物的营养特点
+
+## 中式食物参考
+- 米饭1碗≈150g，炒饭1份≈300g
+- 面条1碗≈200g（煮后），炒面1份≈350g
+- 鸡排1份≈150-200g（炸），鸡胸肉1份≈150g
+- 蔬菜1份≈100-150g
+- 炒菜用油约15-30g/份，炸制用油约20-40g/份
+
+请用中文详细描述，将用户的文字转换为可用于营养计算的详细食物描述。"""),
+
+            HumanMessage(content=f"请根据以下食物描述进行详细分析：\n{text_desc}")
+        ]
+
+        response = state['vision_model'].invoke(messages)
+        state["image_analysis"] = response.content
+        state["current_step"] = "text_analyzed"
+        print(state["current_step"])
+
+    except Exception as e:
+        state["error_message"] = f"文字分析失败: {str(e)}"
     return state
 
 

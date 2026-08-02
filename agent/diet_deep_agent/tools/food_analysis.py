@@ -54,6 +54,7 @@ async def _load_user_preferences(user_id: int) -> dict:
                     "disease": d.disease_name,
                     "severity": d.severity_level or 1,
                     "is_current": d.is_current or False,
+                    "notes": d.notes or "",
                 })
 
             # 加载健康目标

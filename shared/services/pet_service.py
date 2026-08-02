@@ -156,6 +156,7 @@ def get_pet_status(db: Session, user_id: int) -> Dict[str, Any]:
         "current_skin": pet.current_skin,
         "unlocked_skins": pet.unlocked_skins or [],
         "habit_score": pet.habit_score,
+        "pet_name": pet.pet_name,
         "last_interact_at": pet.last_interact_at.isoformat() if pet.last_interact_at else None,
         "streak_days": streak_days,
     }
@@ -459,7 +460,7 @@ def update_pet_settings(
         pet.current_skin = pet_type
         updated_fields.append("pet_type")
     if pet_name is not None:
-        pet.custom_name = pet_name
+        pet.pet_name = pet_name
         updated_fields.append("pet_name")
 
     if updated_fields:

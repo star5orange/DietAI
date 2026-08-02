@@ -116,6 +116,17 @@ class RealPetApiService {
     }
   }
 
+  /// 更新体重记录
+  Future<ApiResponse<Map<String, dynamic>>> updateWeightRecord(
+      int petId, int recordId, Map<String, dynamic> data) async {
+    try {
+      final res = await _api.put('/pets/$petId/weight-records/$recordId', data: data);
+      return _wrapMap(res);
+    } catch (e) {
+      return ApiResponse.failure(message: '更新体重记录失败', error: e.toString());
+    }
+  }
+
   // ==================== 疫苗 ====================
 
   /// 添加疫苗记录

@@ -74,7 +74,7 @@ class AuthStateNotifier extends StateNotifier<AsyncValue<User?>> {
   }
 
   /// 登录
-  Future<void> login({
+  Future<bool> login({
     required String username,
     required String password,
   }) async {
@@ -96,24 +96,33 @@ class AuthStateNotifier extends StateNotifier<AsyncValue<User?>> {
         if (userResponse.isSuccess && userResponse.data != null) {
           print('✅ 用户信息获取成功');
           state = AsyncValue.data(userResponse.data);
-          
-          // 登录成功后检查引导状态
-          await _checkOnboardingStatus();
         } else {
-          print('❌ 用户信息获取失败: ${userResponse.message}');
-          // 即使获取用户信息失败，登录仍然成功，设置空用户状态
-          state = const AsyncValue.data(null);
+          print('⚠️ 用户信息获取失败但登录成功: ${userResponse.message}');
+          // 登录成功但获取用户信息失败，仍标记为已登录（使用占位User）
+          state = AsyncValue.data(User(
+            id: 0,
+            username: username,
+            email: '',
+            status: 1,
+            createdAt: DateTime.now().toIso8601String(),
+          ));
         }
+        
+        // 登录成功后检查引导状态
+        await _checkOnboardingStatus();
+        return true;
       } else {
         print('❌ 登录失败: ${response.message}');
         state = AsyncValue.error(
           response.message,
           StackTrace.current,
         );
+        return false;
       }
     } catch (e) {
       print('❌ 登录过程发生异常: $e');
       state = AsyncValue.error(e, StackTrace.current);
+      return false;
     }
   }
 
@@ -153,12 +162,10 @@ class AuthStateNotifier extends StateNotifier<AsyncValue<User?>> {
       
       print('✅ 注册成功，开始自动登录...');
       
-      // 注册成功后自动登录
-      await login(username: username, password: password);
+      // 注册成功后自动登录，login() 返回 true/false 表示是否成功
+      final loginSuccess = await login(username: username, password: password);
       
-      // 检查登录是否成功
-      final currentUser = state.value;
-      if (currentUser != null) {
+      if (loginSuccess) {
         print('✅ 注册和登录流程完成');
         return true;
       } else {

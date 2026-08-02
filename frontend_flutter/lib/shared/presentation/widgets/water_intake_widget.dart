@@ -29,6 +29,7 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
   DailyWaterSummary? _summary;
   List<WaterIntakeRecord> _todayRecords = [];
   bool _isLoading = true;
+  bool _isOperating = false;
 
   @override
   void initState() {
@@ -67,56 +68,43 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
     }
   }
 
-  Future<void> _quickAdd(
-      {int amountMl = 250, String? drinkType, String? timeSlot}) async {
-    final result = await _waterService.addWaterIntake(
-        amountMl: amountMl,
-        recordedAt: widget.selectedDate,
-        drinkType: drinkType);
+  Future<void> _quickAdd({int amountMl = 250}) async {
+    if (_isOperating) return;
+    _isOperating = true;
+    try {
+      final result = await _waterService.addWaterIntake(
+          amountMl: amountMl, recordedAt: widget.selectedDate);
 
-    if (result.success) {
-      await _loadData();
-      widget.onWaterRecorded?.call();
-      if (mounted) {
-        final msg = drinkType != null && drinkType != '水'
-            ? '已添加 ${amountMl}ml $drinkType'
-            : '已添加 ${amountMl}ml 饮水';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(msg),
-            backgroundColor: AppColors.info,
-            duration: const Duration(seconds: 1),
-          ),
-        );
+      if (result.success) {
+        await _loadData();
+        widget.onWaterRecorded?.call();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('已添加 ${amountMl}ml 饮水'),
+              backgroundColor: AppColors.info,
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('添加失败: ${result.message}'),
+              backgroundColor: AppColors.error,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('添加失败: ${result.message}'),
-            backgroundColor: AppColors.error,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+    } finally {
+      _isOperating = false;
     }
   }
 
   void _showCustomAmountDialog() {
     final controller = TextEditingController(text: '250');
-    String selectedTimeSlot = _getCurrentTimeSlot();
-    String selectedDrinkType = '水';
-
-    const timeSlots = [
-      ('早餐时段', '6:00-9:00'),
-      ('上午', '9:00-11:30'),
-      ('午餐时段', '11:30-13:00'),
-      ('下午', '13:00-17:30'),
-      ('晚餐时段', '17:30-19:30'),
-      ('晚间', '19:30-23:00'),
-    ];
-
-    const drinkTypes = ['水', '茶', '咖啡', '果汁', '牛奶', '其他'];
 
     showDialog(
       context: context,
@@ -154,56 +142,6 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
                     );
                   }).toList(),
                 ),
-                const SizedBox(height: 16),
-                // 饮品类型
-                Text('饮品类型', style: AppTextStyles.labelLarge),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: drinkTypes.map((type) {
-                    final isSelected = selectedDrinkType == type;
-                    return ChoiceChip(
-                      label: Text(type),
-                      selected: isSelected,
-                      onSelected: (_) {
-                        setDialogState(() => selectedDrinkType = type);
-                      },
-                      selectedColor: AppColors.info,
-                      labelStyle: TextStyle(
-                        color: isSelected
-                            ? AppColors.textInverse
-                            : AppColors.textSecondary,
-                        fontSize: 13,
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 16),
-                // 时间段
-                Text('时间段', style: AppTextStyles.labelLarge),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: timeSlots.map((slot) {
-                    final isSelected = selectedTimeSlot == slot.$1;
-                    return ChoiceChip(
-                      label: Text('${slot.$1} ${slot.$2}'),
-                      selected: isSelected,
-                      onSelected: (_) {
-                        setDialogState(() => selectedTimeSlot = slot.$1);
-                      },
-                      selectedColor: AppColors.info,
-                      labelStyle: TextStyle(
-                        color: isSelected
-                            ? AppColors.textInverse
-                            : AppColors.textSecondary,
-                        fontSize: 12,
-                      ),
-                    );
-                  }).toList(),
-                ),
               ],
             ),
           ),
@@ -216,11 +154,7 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
                 final amount = int.tryParse(controller.text);
                 if (amount != null && amount > 0) {
                   Navigator.pop(context);
-                  _quickAdd(
-                    amountMl: amount,
-                    drinkType: selectedDrinkType,
-                    timeSlot: selectedTimeSlot,
-                  );
+                  _quickAdd(amountMl: amount);
                 }
               },
               style: ElevatedButton.styleFrom(
@@ -234,43 +168,38 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
     );
   }
 
-  String _getCurrentTimeSlot() {
-    final hour = DateTime.now().hour;
-    if (hour >= 6 && hour < 9) return '早餐时段';
-    if (hour >= 9 && hour < 11) return '上午';
-    if (hour >= 11 && hour < 13) return '午餐时段';
-    if (hour >= 13 && hour < 17) return '下午';
-    if (hour >= 17 && hour < 19) return '晚餐时段';
-    return '晚间';
-  }
-
   Future<void> _undoLastRecord() async {
-    if (_todayRecords.isEmpty) return;
-    // _todayRecords 按存储顺序排列（最新在前），第一条才是最近添加的
-    final lastRecord = _todayRecords.first;
-    final amountMl = lastRecord.amountMl;
-    final result = await _waterService.deleteWaterRecord(lastRecord.id);
-    if (result.success) {
-      await _loadData();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已撤回 ${amountMl}ml 饮水记录'),
-            backgroundColor: AppColors.info,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+    if (_todayRecords.isEmpty || _isOperating) return;
+    _isOperating = true;
+    try {
+      // 后端按 record_time DESC, id DESC 排序，first 即为最新记录
+      final lastRecord = _todayRecords.first;
+      final amountMl = lastRecord.amountMl;
+      final result = await _waterService.deleteWaterRecord(lastRecord.id);
+      if (result.success) {
+        await _loadData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('已撤回 ${amountMl}ml 饮水记录'),
+              backgroundColor: AppColors.info,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('撤回失败: ${result.message}'),
+              backgroundColor: AppColors.error,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
       }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('撤回失败: ${result.message}'),
-            backgroundColor: AppColors.error,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
+    } finally {
+      _isOperating = false;
     }
   }
 
@@ -510,11 +439,14 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
                     children: [
                       const Icon(LucideIcons.target,
                           color: AppColors.textInverse, size: 12),
-                      const SizedBox(width: 3),
-                      Text('${_formatWater(goalMl)}L',
-                          style: AppTextStyles.labelSmall.copyWith(
-                              color: AppColors.textInverse,
-                              fontWeight: FontWeight.w500)),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text('${_formatWater(goalMl)}L',
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyles.labelMedium.copyWith(
+                                color: AppColors.textInverse,
+                                fontWeight: FontWeight.w500)),
+                      ),
                     ],
                   ),
                 ),
@@ -584,7 +516,7 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
     return GestureDetector(
       onTap: () => _quickAdd(amountMl: amountMl),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: AppColors.whiteWithOpacity(0.2),
           borderRadius: BorderRadius.circular(20),
@@ -594,11 +526,15 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(LucideIcons.plus,
-                color: AppColors.textInverse, size: 16),
+                color: AppColors.textInverse, size: 14),
             const SizedBox(width: 4),
-            Text(label,
-                style: AppTextStyles.labelMedium.copyWith(
-                    color: AppColors.textInverse, fontWeight: FontWeight.w600)),
+            Flexible(
+              child: Text(label,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.labelMedium.copyWith(
+                      color: AppColors.textInverse,
+                      fontWeight: FontWeight.w600)),
+            ),
           ],
         ),
       ),
@@ -609,7 +545,7 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
     return GestureDetector(
       onTap: _showCustomAmountDialog,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: AppColors.whiteWithOpacity(0.15),
           borderRadius: BorderRadius.circular(20),
@@ -619,11 +555,15 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(LucideIcons.slidersHorizontal,
-                color: AppColors.textInverse, size: 16),
+                color: AppColors.textInverse, size: 14),
             const SizedBox(width: 4),
-            Text('自定义',
-                style: AppTextStyles.labelMedium.copyWith(
-                    color: AppColors.textInverse, fontWeight: FontWeight.w600)),
+            Flexible(
+              child: Text('自定义',
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.labelMedium.copyWith(
+                      color: AppColors.textInverse,
+                      fontWeight: FontWeight.w600)),
+            ),
           ],
         ),
       ),

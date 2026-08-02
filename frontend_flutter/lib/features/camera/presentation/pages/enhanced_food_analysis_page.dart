@@ -434,19 +434,33 @@ class _EnhancedFoodAnalysisPageState extends State<EnhancedFoodAnalysisPage>
       _imageDescription = analysisResult.imageDescription;
       _shortComment = analysisResult.shortComment ?? '';
 
-      _totalCalories = analysisResult.nutritionFacts.totalCalories;
-      _macronutrients = {
-        'protein': analysisResult.nutritionFacts.macronutrients.protein,
-        'fat': analysisResult.nutritionFacts.macronutrients.fat,
-        'carbohydrates':
-            analysisResult.nutritionFacts.macronutrients.carbohydrates,
-      };
-
-      _nutritionFacts = {
-        'total_calories': _totalCalories,
-        'macronutrients': _macronutrients,
-        'food_items': analysisResult.nutritionFacts.foodItems ?? [],
-      };
+      if (analysisResult.nutritionFacts != null) {
+        final nf = analysisResult.nutritionFacts!;
+        _totalCalories = nf.totalCalories;
+        _macronutrients = {
+          'protein': nf.macronutrients.protein,
+          'fat': nf.macronutrients.fat,
+          'carbohydrates': nf.macronutrients.carbohydrates,
+        };
+        _nutritionFacts = {
+          'total_calories': _totalCalories,
+          'macronutrients': _macronutrients,
+          'food_items': nf.foodItems ?? [],
+        };
+      } else if (record.nutritionDetail != null) {
+        final nd = record.nutritionDetail!;
+        _totalCalories = nd.calories;
+        _macronutrients = {
+          'protein': nd.protein,
+          'fat': nd.fat,
+          'carbohydrates': nd.carbohydrates,
+        };
+        _nutritionFacts = {
+          'total_calories': _totalCalories,
+          'macronutrients': _macronutrients,
+          'food_items': [],
+        };
+      }
 
       _recommendations = {
         'health_tips': analysisResult.recommendations.recommendations ?? [],

@@ -141,8 +141,9 @@ def calculate_daily_targets_node(state: GoalTrackingState) -> GoalTrackingState:
             goal = active_goals[0]  # Primary goal
             goal_type = goal.get("goal_type", GoalType.MAINTAIN)
 
-        # Calculate targets
-        targets = calculate_daily_targets(tdee, goal_type)
+        # Calculate targets (pass crowd_tag for personalized adjustment)
+        crowd_tag = state.get("user_profile", {}).get("crowd_tag") if state.get("user_profile") else None
+        targets = calculate_daily_targets(tdee, goal_type, crowd_tag)
 
         state["daily_calorie_target"] = targets["calories"]
         state["macro_targets"] = {

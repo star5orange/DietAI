@@ -440,7 +440,7 @@ class _HealthPageState extends ConsumerState<HealthPage> {
         data['goal_completion'] as Map<String, dynamic>? ?? {};
     final weightChange = data['weight_change'] as Map<String, dynamic>?;
     final summaryText = data['summary_text'] as String? ?? '';
-    final crowdTag = data['crowd_tag'] as String? ?? '普通';
+    final crowdTag = data['crowd_tag'] as String? ?? '均衡维持';
     final daysWithData = period['days_with_data'] as int? ?? 0;
 
     // 解析趋势数据
@@ -1032,7 +1032,7 @@ class _HealthPageState extends ConsumerState<HealthPage> {
     final waterRemaining = _waterGoal - _waterIntake;
 
     final userProfile = ref.watch(userProfileProvider).value;
-    final crowdTag = userProfile?.crowdTag ?? '普通';
+    final crowdTag = userProfile?.crowdTag ?? '均衡维持';
     final constitution = userProfile?.constitutionType ?? '平和质';
 
     // 动态生成贴士列表

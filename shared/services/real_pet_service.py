@@ -26,9 +26,6 @@ load_dotenv(".env.dev", override=True, encoding="utf-8")
 
 logger = logging.getLogger(__name__)
 
-# DashScope 通义万相 API 配置
-WANX_CREATE_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
-WANX_TASK_URL = "https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}"
 # 使用Settings类读取API Key
 _settings = get_settings()
 DASHSCOPE_API_KEY = _settings.dashscope_api_key or os.getenv("DASHSCOPE_API_KEY", "")
@@ -76,8 +73,20 @@ PRESET_AVATARS = {
 
 def create_pet(db: Session, user_id: int, data: dict) -> PetProfile:
     """创建宠物档案"""
+    # 提取 weight 字段（不属于 PetProfile 列，需单独处理）
+    init_weight = data.pop("weight", None)
     pet = PetProfile(user_id=user_id, **data)
     db.add(pet)
+    db.flush()  # 获取 pet.id
+    # 创建初始体重记录
+    if init_weight:
+        from shared.models.pet_models import PetWeightRecord
+        weight_record = PetWeightRecord(
+            pet_id=pet.id,
+            weight=init_weight,
+            measured_at=datetime.utcnow(),
+        )
+        db.add(weight_record)
     db.commit()
     db.refresh(pet)
     return pet
@@ -155,10 +164,13 @@ def get_weight_trend(db: Session, pet_id: int, user_id: int, days: int = 30) -> 
     chart = [{"date": r.measured_at.isoformat() if hasattr(r.measured_at, 'isoformat') else str(r.measured_at),
               "weight": float(r.weight)} for r in records]
 
-    # 品种标准体重
-    info = BREED_INFO.get(pet.breed or "", {})
-    ideal_min = float(info.get("avg_weight", 5)) * 0.85
-    ideal_max = float(info.get("avg_weight", 5)) * 1.15
+    # 品种标准体重（使用统一品种匹配）
+    from shared.services.pet_nutrition_calc import get_breed_info
+    breed_info = get_breed_info(pet.breed or "", pet.species or "cat")
+    gender = pet.gender or "male"
+    avg_weight = float(breed_info.get("avg_weight_kg", {}).get(gender, 5.0))
+    ideal_min = avg_weight * 0.85
+    ideal_max = avg_weight * 1.15
 
     return {
         "pet_id": pet_id,
@@ -180,6 +192,25 @@ def delete_weight_record(db: Session, record_id: int, pet_id: int, user_id: int)
         raise ValueError("体重记录不存在")
     db.delete(record)
     db.commit()
+
+
+def update_weight_record(db: Session, record_id: int, pet_id: int, user_id: int, data: dict) -> PetWeightRecord:
+    """更新体重记录"""
+    pet = get_pet(db, pet_id, user_id)
+    if not pet:
+        raise ValueError("宠物不存在")
+    record = db.query(PetWeightRecord).filter(
+        PetWeightRecord.id == record_id,
+        PetWeightRecord.pet_id == pet_id
+    ).first()
+    if not record:
+        raise ValueError("体重记录不存在")
+    for key, value in data.items():
+        if hasattr(record, key):
+            setattr(record, key, value)
+    db.commit()
+    db.refresh(record)
+    return record
 
 
 # ============================================================
@@ -375,6 +406,16 @@ def delete_feeding(db: Session, pet_id: int, record_id: int) -> bool:
 
 
 def get_pet_daily_summary(db: Session, pet_id: int, target_date: date) -> dict:
+    pet = db.query(PetProfile).filter(PetProfile.id == pet_id).first()
+    from shared.services.pet_nutrition_calc import calculate_daily_targets
+    if pet:
+        targets = calculate_daily_targets(pet)
+        target_cal = targets.get("daily_calories", 250)
+        target_protein = targets.get("daily_protein_g", 20)
+        target_fat = targets.get("daily_fat_g", 10)
+    else:
+        target_cal, target_protein, target_fat = 250, 20, 10
+
     summary = db.query(PetDailySummary).filter(
         PetDailySummary.pet_id == pet_id,
         PetDailySummary.summary_date == target_date
@@ -382,12 +423,16 @@ def get_pet_daily_summary(db: Session, pet_id: int, target_date: date) -> dict:
     if not summary:
         return {"pet_id": pet_id, "summary_date": target_date.isoformat(),
                 "total_calories": 0, "total_protein": 0, "total_fat": 0,
-                "total_carbs": 0, "total_water_ml": 0, "meal_count": 0}
+                "total_carbs": 0, "total_water_ml": 0, "meal_count": 0,
+                "target_calories": target_cal, "target_protein": target_protein,
+                "target_fat": target_fat}
     return {
         "pet_id": summary.pet_id, "summary_date": summary.summary_date.isoformat(),
         "total_calories": float(summary.total_calories), "total_protein": float(summary.total_protein),
         "total_fat": float(summary.total_fat), "total_carbs": float(summary.total_carbs),
         "total_water_ml": summary.total_water_ml, "meal_count": summary.meal_count,
+        "target_calories": target_cal, "target_protein": target_protein,
+        "target_fat": target_fat,
     }
 
 
@@ -395,19 +440,16 @@ def get_feeding_plan(db: Session, pet_id: int, user_id: int) -> dict:
     pet = get_pet(db, pet_id, user_id)
     if not pet:
         raise ValueError("宠物不存在")
-    info = BREED_INFO.get(pet.breed or "", {})
+    from shared.services.pet_nutrition_calc import calculate_daily_targets
+    targets = calculate_daily_targets(pet)
     species = pet.species or "cat"
-
-    avg_weight = float(info.get("avg_weight", 5.0)) if info else 5.0
-    cal_per_kg = float(info.get("daily_cal_per_kg", 50)) if info else 50
-
-    daily_cal = avg_weight * cal_per_kg
+    daily_cal = targets.get("daily_calories", 250)
     meals = 2 if species == "dog" else 3
 
     return {
         "pet_id": pet_id, "pet_name": pet.name, "species": species,
         "breed": pet.breed,
-        "daily_calories": round(daily_cal),
+        "daily_calories": daily_cal,
         "recommended_meals": meals,
         "grams_per_meal": round(daily_cal / meals / 3.8, 0),
         "suggestions": ["定时定量喂养", "保持新鲜饮水", "避免人类食物"],
@@ -431,7 +473,7 @@ def add_water(db: Session, pet_id: int, data: dict) -> PetWaterRecord:
 def get_water_records(db: Session, pet_id: int, skip: int = 0, limit: int = 50) -> List[PetWaterRecord]:
     return db.query(PetWaterRecord).filter(
         PetWaterRecord.pet_id == pet_id
-    ).order_by(PetWaterRecord.record_time.desc()).offset(skip).limit(limit).all()
+    ).order_by(PetWaterRecord.record_time.desc(), PetWaterRecord.id.desc()).offset(skip).limit(limit).all()
 
 
 def delete_water_record(db: Session, record_id: int, pet_id: int, user_id: int):
@@ -815,11 +857,21 @@ def calculate_health_score(db: Session, pet_id: int, user_id: int) -> dict:
 # AI 形象生成（DashScope 通义万相 API + 预设兜底）
 # ============================================================
 
+# 任务进度追踪（内存缓存，线程安全）
+_task_progress: dict[int, dict] = {}  # {pet_id: {"progress": int, "message": str}}
+_task_progress_lock = __import__("threading").Lock()
+
 # 风格 prompt 模板（基于需求文档 5.3.1 节，自然插画风，不过度夸张）
 _STYLE_TRAITS = {
     "cartoon": (
-        "可爱的Q版卡通形象，扁平化矢量插画风格，柔和圆润的线条，"
-        "温暖的配色，简洁干净，像手绘宠物肖像，自然比例不夸张变形"
+        "扁平平涂插画，无渐变、无软阴影、无环境泛光，"
+        "清晰手绘轮廓线，线条刻意保留轻微抖动和粗细变化，"
+        "去掉3D绒毛面片，用纯色块概括毛发，放弃雕塑质感，"
+        "降低色彩饱和度，删掉多余紫色蓝色环境反光，"
+        "打破绝对对称，微调眼睛四肢细微形态，"
+        "去除眼球玻璃珠强高光，简化五官仅用点线表示，"
+        "极简造型省略细节，不画纹理配饰，"
+        "柔和低饱和度配色，纯白色背景，画面干净"
     ),
     "anime": (
         "清新的日系动漫形象，赛璐璐上色风格，柔和的渐变光影，"
@@ -848,21 +900,30 @@ _COMMON_NEGATIVE = (
 )
 
 _STYLE_NEGATIVE = {
-    "cartoon": "真实照片，写实，3D渲染，暗黑风格，过于复杂夸张",
+    "cartoon": "黑色线条，深色轮廓，阴影，高光，渐变，地面投影，3D，立体，"
+               "毛发细节，装饰品，项圈，矢量风格，美式卡通，塑料感，"
+               "过饱和，油腻，厚重，CG，复杂细节，写实，照片质感",
     "anime": "真实照片，3D渲染，欧美卡通，粗线条，色调灰暗",
     "realistic": "Q版，卡通，动漫，3D渲染，过度锐化，HDR，照片质感",
 }
 
 
 def _build_avatar_prompt(description: str, style: str = "cartoon",
-                         emotion: str = "normal") -> str:
-    """构建通义万相图片生成 prompt（描述优先，风格为辅助）"""
+                         emotion: str = "normal", has_photo: bool = False) -> str:
+    """构建图片生成 prompt"""
     traits = _STYLE_TRAITS.get(style, _STYLE_TRAITS["cartoon"])
     emotion_text = _EMOTION_PROMPTS.get(emotion, _EMOTION_PROMPTS["normal"])
+    if has_photo:
+        # 图生图：明确告知模型参考输入图片中的宠物来生成
+        return (
+            f"根据参考图中的这只宠物生成一张极简淡彩简笔画，"
+            f"正面站立姿态，四肢清晰可见且数量正确，无多余肢体，无畸变，"
+            f"{traits}，{emotion_text}，纯白色背景，正面全身，居中构图"
+        )
+    # 文生图：需包含宠物文字描述
     return (
-        f"一只{description}，{traits}，"
-        f"纯白色背景，正面全身，居中构图，"
-        f"{emotion_text}，画面干净"
+        f"一只{description}的极简淡彩简笔画，{traits}，"
+        f"{emotion_text}，纯白色背景，正面全身，居中构图"
     )
 
 
@@ -921,146 +982,71 @@ def _upload_to_minio(pet_id: int, suffix: str, img_bytes: bytes) -> Optional[str
         return None
 
 
-def _call_wanx_api(prompt: str, style: str = "cartoon",
-                  reference_image: Optional[str] = None) -> Optional[str]:
-    """调用通义万相 API (wanx-v1，异步任务，带重试)
+def _call_seedream_api(prompt: str, style: str = "cartoon",
+                      reference_image: Optional[str] = None) -> Optional[str]:
+    """调用豆包 Seedream API（同步，3-5 秒返回）
 
-    reference_image: 可选，base64 编码的参考图片（图生图模式）
+    reference_image: 可选，参考图片 URL（图生图模式）
     """
-    if not DASHSCOPE_API_KEY:
-        logger.warning("DASHSCOPE_API_KEY 未配置，无法调用通义万相")
+    api_key = _settings.volc_ark_api_key or os.getenv("VOLC_ARK_API_KEY", "")
+    if not api_key:
+        logger.warning("VOLC_ARK_API_KEY 未配置，无法调用 Seedream")
         return None
 
-    model = _settings.dashscope_image_model or "wanx-v1"
+    model = _settings.ark_image_model or "doubao-seedream-4-0-250828"
 
-    # 整体重试 3 次，应对间歇性 SSL 错误（requests 库在此环境比 httpx 更稳定）
     for retry in range(3):
         try:
-            logger.info(f"[Wanx API] Submit attempt {retry+1}/3: model={model}, prompt={prompt}")
-            import requests as _requests
-            from requests.adapters import HTTPAdapter as _HTTPAdapter
-            from urllib3.util.retry import Retry as _Retry
-            import urllib3 as _urllib3
-            _urllib3.disable_warnings()
+            logger.info(f"[Seedream API] Request attempt {retry+1}/3: model={model}, prompt={prompt[:50]}...")
 
-            _session = _requests.Session()
-            _session.verify = False
-            _session.trust_env = False  # 禁用系统代理，避免 ProxyError
-            _session.mount("https://", _HTTPAdapter(max_retries=_Retry(total=1, backoff_factor=0.5)))
+            import requests as _req
+            _payload = {
+                "model": model,
+                "prompt": prompt,
+                "size": "2K",
+                "response_format": "url",
+            }
 
-            response = _session.post(
-                "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+            # 传参考图（拍照模式），实现图生图
+            # Seedream 4.0 的 image 参数支持 URL 或 data:image/<fmt>;base64,... 格式
+            if reference_image:
+                _img_value = reference_image
+                # 确保格式正确：纯 base64 需要加 data URI 前缀
+                if not str(_img_value).startswith("data:") and not str(_img_value).startswith("http"):
+                    _img_value = f"data:image/jpeg;base64,{_img_value}"
+                _payload["image"] = _img_value
+                logger.info(f"[Seedream API] Using reference image (len={len(str(_img_value))})")
+
+            _resp = _req.post(
+                "https://ark.cn-beijing.volces.com/api/v3/images/generations",
                 headers={
-                    "Authorization": f"Bearer {DASHSCOPE_API_KEY}",
+                    "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
-                    "X-DashScope-Async": "enable",
                 },
-                json={
-                    "model": model,
-                    "input": {
-                        "prompt": prompt,
-                        "negative_prompt": _get_negative_prompt(style),
-                        **({"ref_img": reference_image} if reference_image else {}),
-                    },
-                    "parameters": {
-                        "size": "1024*1024",
-                        "n": 1,
-                    },
-                },
+                json=_payload,
                 timeout=30,
             )
 
-            if response.status_code != 200:
-                logger.error(f"[Wanx API] Submit failed: {response.status_code} - {response.text[:200]}")
-                continue  # retry
-
-            data = response.json()
-            task_id = data.get("output", {}).get("task_id", "")
-            if not task_id:
-                logger.error(f"[Wanx API] No task_id in response: {str(data)[:200]}")
+            if _resp.status_code != 200:
+                logger.error(f"[Seedream API] Failed: {_resp.status_code} - {_resp.text[:200]}")
                 continue
 
-            logger.info(f"[Wanx API] Task created: {task_id}, polling...")
+            _data = _resp.json()
+            _url = _data.get("data", [{}])[0].get("url", "")
+            if _url:
+                logger.info(f"[Seedream API] Got image URL: {_url[:60]}...")
+                return _url
 
-            # 轮询等待任务完成（最多 2 分钟，共 40 次 * 3 秒）
-            task_url = f"https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}"
-            for attempt in range(40):
-                _time.sleep(3)
-                try:
-                    tr = _session.get(
-                        task_url,
-                        headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
-                        timeout=15,
-                    )
-                    if tr.status_code != 200:
-                        logger.warning(f"[Wanx API] Poll {attempt+1}: HTTP {tr.status_code}")
-                        continue
-
-                    td = tr.json()
-                    task_status = td.get("output", {}).get("task_status", "")
-                    logger.info(f"[Wanx API] Poll {attempt+1}: {task_status}")
-
-                    if task_status == "SUCCEEDED":
-                        results = td.get("output", {}).get("results", [])
-                        if results:
-                            img_url = results[0].get("url", "")
-                            if img_url:
-                                logger.info(f"[Wanx API] Got image URL: {img_url[:60]}...")
-                                return img_url
-                        logger.error(f"[Wanx API] No results in succeeded task")
-                        return None
-                    elif task_status == "FAILED":
-                        logger.error(f"[Wanx API] Task failed: {td.get('output', {}).get('message', '')}")
-                        return None
-                except Exception as e:
-                    logger.warning(f"[Wanx API] Poll error: {e}")
-
-            logger.error(f"[Wanx API] Task timed out: {task_id}")
-            return None
+            logger.error(f"[Seedream API] No URL in response: {str(_data)[:200]}")
+            continue
 
         except Exception as e:
-            logger.warning(f"[Wanx API] Attempt {retry+1}/3 failed: {e}")
+            logger.warning(f"[Seedream API] Attempt {retry+1}/3 failed: {e}")
             if retry < 2:
-                _time.sleep(2)  # 短暂等待后重试
+                _time.sleep(2)
 
-    logger.error(f"[Wanx API] All 3 attempts failed")
+    logger.error(f"[Seedream API] All 3 attempts failed")
     return None
-
-
-def _poll_wanx_task(dashscope_task_id: str) -> Optional[str]:
-    """轮询通义万相任务结果，返回图片 URL"""
-    if not DASHSCOPE_API_KEY:
-        return None
-
-    url = WANX_TASK_URL.format(task_id=dashscope_task_id)
-    try:
-        response = httpx.get(
-            url,
-            headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
-            timeout=15.0,
-        )
-
-        if response.status_code != 200:
-            logger.warning(f"通义万相任务查询失败: status={response.status_code}")
-            return None
-
-        result = response.json()
-        task_status = result.get("output", {}).get("task_status", "")
-
-        if task_status == "SUCCEEDED":
-            # 提取第一张图片 URL
-            results = result.get("output", {}).get("results", [])
-            if results:
-                img_url = results[0].get("url", "")
-                logger.info(f"通义万相任务完成: {dashscope_task_id}, url={img_url[:80]}...")
-                return img_url
-
-        logger.info(f"通义万相任务状态: {dashscope_task_id} -> {task_status}")
-        return None
-
-    except Exception as e:
-        logger.error(f"轮询通义万相任务失败: {e}")
-        return None
 
 
 def _get_preset_url(pet: PetProfile) -> str:
@@ -1123,15 +1109,29 @@ def generate_avatar(db: Session, pet_id: int, user_id: int,
 
     # 参考图（仅拍照模式且为 base64 时使用）
     _ref_img = None
+    _has_photo = False
     if _photo and (str(_photo).startswith("data:") or len(str(_photo)) > 500):
-        _ref_img = _photo
+        # 确保有 data: 前缀，方便后续识别 base64
+        if not str(_photo).startswith("data:"):
+            _ref_img = f"data:image/jpeg;base64,{_photo}"
+        else:
+            _ref_img = _photo
+        _has_photo = True
+
+    # 图生图模式下，prompt 不包含宠物描述，让模型直接参考照片
+    if _has_photo:
+        _emotion_prompts = {
+            "normal": _build_avatar_prompt(desc, style, "normal", has_photo=True),
+            "happy": _build_avatar_prompt(desc, style, "happy", has_photo=True),
+            "hungry": _build_avatar_prompt(desc, style, "hungry", has_photo=True),
+            "weak": _build_avatar_prompt(desc, style, "weak", has_photo=True),
+        }
 
     def _process_image(img_url: str, suffix: str) -> str:
-        """下载 → rembg 抠图 → 上传 MinIO，失败则返回原始 URL"""
+        """下载 → 上传 MinIO，直接使用原图不做抠图（抠图留给用户确认后触发）"""
         raw = _download_image(img_url)
         if raw:
-            nobg = _remove_background(raw)
-            minio_url = _upload_to_minio(_pet_id, suffix, nobg)
+            minio_url = _upload_to_minio(_pet_id, suffix, raw)
             if minio_url:
                 return minio_url
         return img_url
@@ -1153,7 +1153,8 @@ def generate_avatar(db: Session, pet_id: int, user_id: int,
             logger.info(f"[Avatar] Background generation started for pet_id={_pet_id}")
 
             # Step 1: 生成基础形象（normal 情绪）
-            base_img_url = _call_wanx_api(_emotion_prompts["normal"], style, _ref_img)
+            _update_task_progress(_pet_id, 10, "正在生成基础形象...")
+            base_img_url = _call_seedream_api(_emotion_prompts["normal"], style, _ref_img)
 
             bg_avatar = bg_db.query(PetAvatar).filter(PetAvatar.pet_id == _pet_id).first()
             if not bg_avatar:
@@ -1162,6 +1163,7 @@ def generate_avatar(db: Session, pet_id: int, user_id: int,
 
             if not base_img_url:
                 # 降级为预设占位图
+                _update_task_progress(_pet_id, 100, "")
                 preset = _fallback_to_preset()
                 bg_avatar.status = "done"
                 bg_avatar.base_image_url = preset
@@ -1177,23 +1179,25 @@ def generate_avatar(db: Session, pet_id: int, user_id: int,
                 return
 
             # 基础图下载 + 抠图 + 上传
+            _update_task_progress(_pet_id, 35, "基础形象已生成，正在处理图片...")
             final_base = _process_image(base_img_url, "normal")
             emotion_urls = {"normal": final_base}
 
             # Step 2: 并行生成 3 种情绪变体（最多等 60 秒）
+            _update_task_progress(_pet_id, 45, "基础形象处理完成，正在生成情绪变体...")
             logger.info(f"[Avatar] Generating emotion variants for pet_id={_pet_id}")
             import concurrent.futures as _cf
             with ThreadPoolExecutor(max_workers=3) as executor:
                 futures = {
                     executor.submit(
-                        _call_wanx_api,
+                        _call_seedream_api,
                         _emotion_prompts[emo], style, _ref_img
                     ): emo
                     for emo in ["happy", "hungry", "weak"]
                 }
                 done, not_done = _cf.wait(
                     futures.keys(),
-                    timeout=60,
+                    timeout=20,
                     return_when=_cf.ALL_COMPLETED,
                 )
                 for future in done:
@@ -1218,6 +1222,7 @@ def generate_avatar(db: Session, pet_id: int, user_id: int,
                     logger.warning(f"[Avatar] Emotion '{emo}' timed out, using base image")
 
             # Step 3: 写入数据库
+            _update_task_progress(_pet_id, 90, "情绪变体已全部生成，正在保存...")
             bg_avatar.status = "done"
             bg_avatar.base_image_url = final_base
             bg_avatar.emotion_normal_url = emotion_urls["normal"]
@@ -1225,7 +1230,7 @@ def generate_avatar(db: Session, pet_id: int, user_id: int,
             bg_avatar.emotion_hungry_url = emotion_urls.get("hungry", final_base)
             bg_avatar.emotion_weak_url = emotion_urls.get("weak", final_base)
             bg_avatar.generation_seed = _pet_id * 10000
-            bg_avatar.ai_model = _settings.dashscope_image_model or "wanx-v1"
+            bg_avatar.ai_model = _settings.ark_image_model or "doubao-seedream-5-0-260128"
             bg_avatar.prompt_used = _desc
             bg_avatar.error_message = None
             bg_db.commit()
@@ -1233,6 +1238,7 @@ def generate_avatar(db: Session, pet_id: int, user_id: int,
 
         except Exception as e:
             logger.error(f"[Avatar] Generation failed for pet_id={_pet_id}: {e}")
+            _update_task_progress(_pet_id, 100, "")
             try:
                 bg_avatar = bg_db.query(PetAvatar).filter(PetAvatar.pet_id == _pet_id).first()
                 if bg_avatar:
@@ -1250,6 +1256,16 @@ def generate_avatar(db: Session, pet_id: int, user_id: int,
     logger.info(f"[Avatar] Background task started: pet_id={_pet_id}, task_id={local_task_id}")
     return local_task_id
 
+
+def _update_task_progress(pet_id: int, progress: int, message: str):
+    """更新任务进度（线程安全）"""
+    with _task_progress_lock:
+        _task_progress[pet_id] = {"progress": progress, "message": message}
+
+def _get_task_progress(pet_id: int) -> dict:
+    """获取任务进度"""
+    with _task_progress_lock:
+        return _task_progress.get(pet_id, {"progress": 0, "message": ""})
 
 def get_generation_task(db: Session, task_id: str) -> dict:
     """查询生成任务状态
@@ -1269,19 +1285,29 @@ def get_generation_task(db: Session, task_id: str) -> dict:
     result = {
         "task_id": task_id,
         "status": avatar.status,
-        "base_image_url": avatar.base_image_url,
-        "ai_model": avatar.ai_model,
-        "emotions": {
-            "happy": avatar.emotion_happy_url,
-            "normal": avatar.emotion_normal_url,
-            "hungry": avatar.emotion_hungry_url,
-            "weak": avatar.emotion_weak_url,
-        },
-        "seed": avatar.generation_seed,
-        "has_gif": avatar.has_gif,
     }
-    if avatar.status == "failed" and avatar.error_message:
-        result["error"] = avatar.error_message
+
+    if avatar.status == "processing":
+        progress_data = _get_task_progress(pet_id)
+        result["progress"] = progress_data.get("progress", 0)
+        result["progress_message"] = progress_data.get("message", "")
+    elif avatar.status == "done":
+        result["result"] = {
+            "base_image_url": avatar.base_image_url,
+            "emotions": {
+                "happy": avatar.emotion_happy_url,
+                "normal": avatar.emotion_normal_url,
+                "hungry": avatar.emotion_hungry_url,
+                "weak": avatar.emotion_weak_url,
+            },
+            "seed": avatar.generation_seed,
+            "has_gif": avatar.has_gif,
+        }
+    elif avatar.status == "failed":
+        result["error_message"] = avatar.error_message
+    elif avatar.status == "not_found":
+        pass
+
     return result
 
 

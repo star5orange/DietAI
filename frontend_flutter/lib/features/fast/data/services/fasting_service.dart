@@ -11,10 +11,11 @@ class FastingPlan {
   final int? daysElapsed;
   final int? daysRemaining;
   final double? targetWeight;
+  final double? startWeight;
   final double? currentWeight;
   final String? eatingWindowStart;
   final String? eatingWindowEnd;
-  final List<int>? fastingDays; // 断食日(1-7表示周一到周日)
+  final List<int>? fastingDays;
 
   const FastingPlan({
     required this.planId,
@@ -24,6 +25,7 @@ class FastingPlan {
     this.daysElapsed,
     this.daysRemaining,
     this.targetWeight,
+    this.startWeight,
     this.currentWeight,
     this.eatingWindowStart,
     this.eatingWindowEnd,
@@ -39,6 +41,7 @@ class FastingPlan {
       daysElapsed: json['days_elapsed'],
       daysRemaining: json['days_remaining'],
       targetWeight: json['target_weight']?.toDouble(),
+      startWeight: json['start_weight']?.toDouble(),
       currentWeight: json['current_weight']?.toDouble(),
       eatingWindowStart: json['eating_window_start'],
       eatingWindowEnd: json['eating_window_end'],
@@ -100,9 +103,12 @@ class FastingCheckin {
 class FastingProgress {
   final int planId;
   final String? planType;
+  final bool isCompleted;
   final int daysElapsed;
   final int daysTotal;
   final double completionRate;
+  final int completedCount;
+  final int expectedFastingDays;
   final double? weightStart;
   final double? weightCurrent;
   final double? weightChange;
@@ -115,9 +121,12 @@ class FastingProgress {
   const FastingProgress({
     required this.planId,
     this.planType,
+    this.isCompleted = false,
     required this.daysElapsed,
     required this.daysTotal,
     required this.completionRate,
+    this.completedCount = 0,
+    this.expectedFastingDays = 0,
     this.weightStart,
     this.weightCurrent,
     this.weightChange,
@@ -132,9 +141,12 @@ class FastingProgress {
     return FastingProgress(
       planId: json['plan_id'] ?? 0,
       planType: json['plan_type'],
+      isCompleted: json['is_completed'] ?? false,
       daysElapsed: json['days_elapsed'] ?? 0,
       daysTotal: json['days_total'] ?? 30,
       completionRate: (json['completion_rate'] ?? 0).toDouble(),
+      completedCount: json['completed_count'] ?? 0,
+      expectedFastingDays: json['expected_fasting_days'] ?? 0,
       weightStart: json['weight_start']?.toDouble(),
       weightCurrent: json['weight_current']?.toDouble(),
       weightChange: json['weight_change']?.toDouble(),
@@ -210,8 +222,9 @@ class FastingService {
     String eatingWindowStart = '08:00',
     String eatingWindowEnd = '16:00',
     double? targetWeight,
+    double? startWeight,
     Map<String, dynamic>? healthAssessment,
-    bool disclaimerAccepted = false,
+    bool disclaimerAccepted = true,
     List<int>? fastingDays,
   }) async {
     try {
@@ -223,6 +236,7 @@ class FastingService {
           'eating_window_start': eatingWindowStart,
           'eating_window_end': eatingWindowEnd,
           if (targetWeight != null) 'target_weight': targetWeight,
+          if (startWeight != null) 'start_weight': startWeight,
           if (healthAssessment != null) 'health_assessment': healthAssessment,
           'disclaimer_accepted': disclaimerAccepted,
           if (fastingDays != null) 'fasting_days': fastingDays,

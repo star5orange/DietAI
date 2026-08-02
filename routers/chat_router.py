@@ -41,7 +41,7 @@ async def _resolve_chat_params(
     session_id: Optional[int],
     message: str,
     session_type: int,
-) -> tuple[Optional[int], str, int]:
+) -> tuple[Optional[int], str, int, Optional[int]]:
     """Accept chat params from query, JSON body, or form body."""
     body: dict[str, Any] = {}
     content_type = request.headers.get("content-type", "") if request else ""
@@ -60,8 +60,9 @@ async def _resolve_chat_params(
     resolved_session_id = _coerce_optional_int(body.get("session_id", session_id))
     resolved_message = str(body.get("message", message) or "")
     resolved_session_type = _coerce_int(body.get("session_type", session_type), 1)
+    resolved_pet_id = _coerce_optional_int(body.get("pet_id"))
 
-    return resolved_session_id, resolved_message, resolved_session_type
+    return resolved_session_id, resolved_message, resolved_session_type, resolved_pet_id
 
 
 async def _run_chat_agent(
@@ -71,12 +72,17 @@ async def _run_chat_agent(
     current_user: user_models.User,
     db: Session,
 ) -> tuple[str, dict[str, Any], list[str]]:
-    user_context, _ = await get_user_context(current_user.id, db, session_type)
-    recent_meals = await get_recent_meals(current_user.id, db)
-    health_goals = await get_health_goals(current_user.id, db)
-    weekly_trends = await get_weekly_trends(current_user.id, db)
-    diseases = await get_user_diseases(current_user.id, db)
-    allergies = await get_user_allergies(current_user.id, db)
+    # 宠物健康咨询时不加载人的数据，完全隔离
+    if session_type == 6:
+        user_context, recent_meals, health_goals, weekly_trends = {}, [], {}, {}
+        diseases, allergies = [], []
+    else:
+        user_context, _ = await get_user_context(current_user.id, db, session_type)
+        recent_meals = await get_recent_meals(current_user.id, db)
+        health_goals = await get_health_goals(current_user.id, db)
+        weekly_trends = await get_weekly_trends(current_user.id, db)
+        diseases = await get_user_diseases(current_user.id, db)
+        allergies = await get_user_allergies(current_user.id, db)
     conversation_history = await get_conversation_history(session_id, db)
     if (
         conversation_history
@@ -125,7 +131,7 @@ async def send_chat_message_stream(
     db: Session = Depends(get_db)
 ):
     """发送聊天消息并返回流式响应"""
-    session_id, message, session_type = await _resolve_chat_params(
+    session_id, message, session_type, pet_id = await _resolve_chat_params(
         request, session_id, message, session_type
     )
     logger.info(f"[CHAT-ROUTER] send-message-stream session_type={session_type}, pet_id={pet_id}, msg_len={len(message)}")
@@ -170,18 +176,94 @@ async def send_chat_message_stream(
             db.commit()
             db.refresh(user_message)
 
-            # 3. 获取用户上下文数据
-            user_context, advisor_system_prompt = await get_user_context(current_user.id, db, session_type)
-            recent_meals = await get_recent_meals(current_user.id, db)
-            health_goals = await get_health_goals(current_user.id, db)
-            weekly_trends = await get_weekly_trends(current_user.id, db)
-            diseases = await get_user_diseases(current_user.id, db)
-            allergies = await get_user_allergies(current_user.id, db)
+            # 3. 获取用户上下文数据（宠物咨询时跳过人的数据）
+            if session_type == 6:
+                user_context, advisor_system_prompt = {}, ''
+                recent_meals, health_goals, weekly_trends = [], {}, {}
+                diseases, allergies = [], []
+                crowd_tag = None
+                constitution_type = None
+            else:
+                user_context, advisor_system_prompt = await get_user_context(current_user.id, db, session_type)
+                recent_meals = await get_recent_meals(current_user.id, db)
+                health_goals = await get_health_goals(current_user.id, db)
+                weekly_trends = await get_weekly_trends(current_user.id, db)
+                diseases = await get_user_diseases(current_user.id, db)
+                allergies = await get_user_allergies(current_user.id, db)
+                # 提取人群标签和体质类型
+                crowd_tag = user_context.get('crowd_tag')
+                constitution_type = user_context.get('constitution_type')
             conversation_history = await get_conversation_history(session.id, db)
 
-            # 提取人群标签和体质类型
-            crowd_tag = user_context.get('crowd_tag')
-            constitution_type = user_context.get('constitution_type')
+            # M3: 宠物健康咨询时加载宠物上下文
+            pet_context = None
+            if session_type == 6 and pet_id:
+                try:
+                    from shared.models.pet_models import PetProfile
+                    from shared.services.pet_nutrition_calc import check_daily_completion, calculate_daily_targets
+                    pet = db.query(PetProfile).filter(
+                        PetProfile.id == pet_id,
+                        PetProfile.user_id == current_user.id
+                    ).first()
+                    if pet:
+                        today_summary = check_daily_completion(db, pet_id)
+                        nutrition_targets = calculate_daily_targets(pet)
+                        # 获取最新体重
+                        latest_weight = None
+                        try:
+                            from shared.models.pet_models import PetWeightRecord
+                            latest_w = db.query(PetWeightRecord).filter(
+                                PetWeightRecord.pet_id == pet_id
+                            ).order_by(PetWeightRecord.measured_at.desc()).first()
+                            if latest_w:
+                                latest_weight = float(latest_w.weight) if latest_w.weight else None
+                        except Exception:
+                            pass
+                        pet_context = {
+                            'pet_id': pet.id,
+                            'pet_name': pet.name,
+                            'species': pet.species,
+                            'breed': pet.breed,
+                            'gender': pet.gender,
+                            'birth_date': str(pet.birth_date) if pet.birth_date else None,
+                            'weight': latest_weight,
+                            'is_neutered': pet.is_neutered,
+                            'daily_calories': nutrition_targets.get('daily_calories'),
+                            'daily_protein': nutrition_targets.get('daily_protein_g'),
+                            'today_intake': today_summary,
+                        }
+                        # 加载疫苗记录
+                        try:
+                            from shared.models.pet_models import PetVaccineRecord
+                            vaccines = db.query(PetVaccineRecord).filter(
+                                PetVaccineRecord.pet_id == pet_id
+                            ).order_by(PetVaccineRecord.vaccinated_at.desc()).limit(10).all()
+                            pet_context['vaccines'] = [{
+                                'name': v.vaccine_name or '',
+                                'date': v.vaccinated_at.isoformat() if v.vaccinated_at else '',
+                                'next_date': v.next_vaccination_date.isoformat() if v.next_vaccination_date else '',
+                                'notes': v.notes or '',
+                            } for v in vaccines]
+                        except Exception:
+                            pet_context['vaccines'] = []
+                        # 加载驱虫记录
+                        try:
+                            from shared.models.pet_models import PetDewormingRecord
+                            dewormings = db.query(PetDewormingRecord).filter(
+                                PetDewormingRecord.pet_id == pet_id
+                            ).order_by(PetDewormingRecord.treated_at.desc()).limit(10).all()
+                            pet_context['dewormings'] = [{
+                                'type': d.deworming_type or '',
+                                'date': d.treated_at.isoformat() if d.treated_at else '',
+                                'next_date': d.next_treatment_date.isoformat() if d.next_treatment_date else '',
+                                'notes': d.notes or '',
+                            } for d in dewormings]
+                        except Exception:
+                            pet_context['dewormings'] = []
+                except ImportError:
+                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to load pet context: {e}")
 
             # 4. 调用 LangGraph Agent
             client = get_client(url="http://127.0.0.1:2024")
@@ -203,11 +285,8 @@ async def send_chat_message_stream(
                 }
             )
 
-            # 5. 流式运行聊天 Agent
-            yield f"data: {json.dumps({'type': 'status', 'message': '正在生成回复...'})}\n\n"
-
+            # 5. 流式运行聊天 Agent —— 逐 token 输出
             full_response = ""
-            last_response_len = 0
             metadata = {}
             suggestions = []
 
@@ -229,29 +308,36 @@ async def send_chat_message_stream(
                     "diseases": diseases,
                     "allergies": allergies,
                     "conversation_history": conversation_history,
-                    "advisor_system_prompt": advisor_system_prompt
+                    "advisor_system_prompt": advisor_system_prompt,
+                    "pet_context": pet_context,
                 },
-                stream_mode="values"
+                stream_mode=["custom", "values"]
             ):
-                if chunk.event != "values":
-                    continue
+                if chunk.event == "custom":
+                    # Token 级流式输出：逐字推送给前端
+                    content = chunk.data
+                    if isinstance(content, str) and content:
+                        full_response += content
+                        yield f"data: {json.dumps({'type': 'content', 'content': content}, ensure_ascii=False)}\n\n"
 
-                state_data = chunk.data
-                if not isinstance(state_data, dict):
-                    continue
+                elif chunk.event == "values":
+                    state_data = chunk.data
+                    if not isinstance(state_data, dict):
+                        continue
 
-                response_content = state_data.get("response_content", "")
-                error_msg = state_data.get("error_message")
+                    error_msg = state_data.get("error_message")
+                    if error_msg:
+                        yield f"data: {json.dumps({'type': 'error', 'message': error_msg}, ensure_ascii=False)}\n\n"
+                        return
 
-                if error_msg:
-                    yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
-                    return
+                    # 从最终状态提取元数据和推荐问题
+                    formatted = state_data.get("formatted_response") or {}
+                    metadata = state_data.get("response_metadata") or formatted.get("metadata") or {}
+                    suggestions = formatted.get("suggestions") or []
 
-                if response_content and len(response_content) > last_response_len:
-                    new_content = response_content[last_response_len:]
-                    full_response = response_content
-                    last_response_len = len(response_content)
-                    yield f"data: {json.dumps({'type': 'content', 'content': new_content})}\n\n"
+                    # 兜底：如果没有逐 token 流式输出，则用完整响应
+                    if not full_response:
+                        full_response = state_data.get("response_content") or formatted.get("response_content") or ""
 
             # 6. 合规检查：根据 session_type 使用对应的合规检查
             try:
@@ -296,6 +382,7 @@ async def send_chat_message_stream(
             return
             
         except Exception as e:
+            db.rollback()
             yield f"data: {json.dumps({'type': 'error', 'message': f'发送消息失败: {str(e)}'}, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'complete'}, ensure_ascii=False)}\n\n"
     
@@ -584,11 +671,20 @@ async def get_user_context(user_id: int, db: Session, session_type: int = 0):
     if not user:
         return {}, ""
 
-    # 获取用户档案信息
-    user_profile = db.query(user_models.UserProfile).filter(
-        user_models.UserProfile.user_id == user_id
-    ).first()
-    
+    # 获取用户档案信息（使用 savepoint 避免回滚影响外部事务）
+    user_profile = None
+    try:
+        nested = db.begin_nested()
+        user_profile = db.query(user_models.UserProfile).filter(
+            user_models.UserProfile.user_id == user_id
+        ).first()
+    except Exception as e:
+        logger.warning(f"查询UserProfile失败: {e}")
+        try:
+            nested.rollback()
+        except Exception:
+            pass
+
     context = {
         "username": user.username,
         "age": (date.today().year - user_profile.birth_date.year - ((date.today().month, date.today().day) < (user_profile.birth_date.month, user_profile.birth_date.day))) if user_profile and user_profile.birth_date else None,
@@ -707,8 +803,9 @@ async def get_recent_meals(user_id: int, db: Session, limit: int = 5) -> List[Di
 
         return result
     except Exception as e:
-        # 如果表不存在或其他错误，返回空列表
+        # 如果表不存在或其他错误，返回空列表，并回滚避免事务污染
         print(f"Error getting recent meals: {e}")
+        db.rollback()
         return []
 
 
@@ -746,8 +843,9 @@ async def get_health_goals(user_id: int, db: Session) -> Dict[str, Any]:
         return result
         
     except Exception as e:
-        # 如果表不存在或其他错误，返回空字典
+        # 如果表不存在或其他错误，返回空字典，并回滚避免事务污染
         print(f"Error getting health goals: {e}")
+        db.rollback()
         return {}
 
 
@@ -809,6 +907,7 @@ async def get_weekly_trends(user_id: int, db: Session) -> Dict[str, Any]:
         }
     except Exception as e:
         print(f"Error getting weekly trends: {e}")
+        db.rollback()
         return {}
 
 
@@ -841,11 +940,13 @@ async def get_user_diseases(user_id: int, db: Session) -> List[Dict[str, Any]]:
                 "disease_name": d.disease_name,
                 "severity_level": d.severity_level,
                 "is_current": d.is_current,
+                "notes": d.notes or "",
             }
             for d in diseases
         ]
     except Exception as e:
         logger.warning(f"获取用户疾病信息失败: {e}")
+        db.rollback()
         return []
 
 
@@ -870,6 +971,7 @@ async def get_user_allergies(user_id: int, db: Session) -> List[Dict[str, Any]]:
         ]
     except Exception as e:
         logger.warning(f"获取用户过敏信息失败: {e}")
+        db.rollback()
         return []
 
 

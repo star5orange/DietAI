@@ -5,6 +5,7 @@ import '../../../../core/themes/app_colors.dart';
 
 /// 宠物体重趋势图组件
 /// 使用 fl_chart 绘制折线图
+/// records 应为按时间升序排列（最早→最新），组件会自动反转降序数据
 class PetWeightChart extends StatelessWidget {
   final List<Map<String, dynamic>> records;
   final double? idealWeightMin;
@@ -17,21 +18,29 @@ class PetWeightChart extends StatelessWidget {
     this.idealWeightMax,
   });
 
+  /// 获取按时间升序排列的记录（最早→最新），确保趋势图左→右为旧→新
+  List<Map<String, dynamic>> get _sortedRecords {
+    final list = List<Map<String, dynamic>>.from(records);
+    // 后端返回降序（最新在前），反转为升序
+    return list.reversed.toList();
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (records.isEmpty) {
+    final sorted = _sortedRecords;
+    if (sorted.isEmpty) {
       return _buildEmptyState();
     }
 
     // 解析数据
-    final spots = _parseRecordsToSpots();
+    final spots = _parseRecordsToSpots(sorted);
     if (spots.isEmpty) {
       return _buildEmptyState();
     }
 
     // 计算Y轴范围
     final weights =
-        records.map((r) => (r['weight'] as num?)?.toDouble() ?? 0).toList();
+        sorted.map((r) => (r['weight'] as num?)?.toDouble() ?? 0).toList();
     final minWeight = weights.reduce((a, b) => a < b ? a : b);
     final maxWeight = weights.reduce((a, b) => a > b ? a : b);
     final yMin = (minWeight - 0.5).floorToDouble();
@@ -79,11 +88,11 @@ class PetWeightChart extends StatelessWidget {
                 reservedSize: 30,
                 getTitlesWidget: (value, meta) {
                   final index = value.toInt();
-                  if (index < 0 || index >= records.length) {
+                  if (index < 0 || index >= sorted.length) {
                     return const SizedBox();
                   }
-                  final date = records[index]['date'] as String? ?? '';
-                  final day = date.split('-').last;
+                  final date = sorted[index]['measured_at'] as String? ?? '';
+                  final day = date.length >= 10 ? date.substring(8, 10) : date;
                   return Text(
                     day,
                     style: const TextStyle(
@@ -97,7 +106,7 @@ class PetWeightChart extends StatelessWidget {
           ),
           borderData: FlBorderData(show: false),
           minX: 0,
-          maxX: (records.length - 1).toDouble(),
+          maxX: (sorted.length - 1).toDouble(),
           minY: yMin,
           maxY: yMax,
           lineBarsData: [
@@ -160,8 +169,8 @@ class PetWeightChart extends StatelessWidget {
     );
   }
 
-  List<FlSpot> _parseRecordsToSpots() {
-    return records.asMap().entries.map((entry) {
+  List<FlSpot> _parseRecordsToSpots(List<Map<String, dynamic>> sorted) {
+    return sorted.asMap().entries.map((entry) {
       final index = entry.key.toDouble();
       final weight = (entry.value['weight'] as num?)?.toDouble() ?? 0;
       return FlSpot(index, weight);

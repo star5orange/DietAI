@@ -6,6 +6,7 @@ import '../../../../core/services/api_service.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../data/services/fasting_service.dart';
+import '../../../profile/presentation/providers/profile_provider.dart';
 import 'fasting_checkin_page.dart';
 import 'fasting_progress_page.dart';
 import 'fasting_refeed_page.dart';
@@ -21,6 +22,8 @@ class FastingPlanPage extends ConsumerStatefulWidget {
 class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
   FastingPlan? _activePlan;
   FastingProgress? _progress;
+  List<FastingPlan> _completedPlans = [];
+  bool _checkedInToday = false;
   int _streakDays = 0;
   int _checkinCount = 0;
   int _weekCount = 0;
@@ -37,30 +40,42 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
   Future<void> _loadPlans() async {
     try {
       final service = ref.read(fastingServiceProvider);
-      // 并行加载活动计划和断食计划类型
+      // 并行加载活动计划、已完成计划和断食计划类型
       final results = await Future.wait([
         service.getPlans(status: 'active'),
+        service.getPlans(status: 'completed'),
         _fetchPlanTypes(),
       ]);
       final plans = results[0] as List<FastingPlan>;
+      final completedPlans = results[1] as List<FastingPlan>;
       if (plans.isNotEmpty) {
         final plan = plans.first;
         // Parallel load progress and checkins
         FastingProgress? progress;
         int checkinCount = 0;
+        bool checkedInToday = false;
         try {
           final results = await Future.wait([
             service.getProgress(plan.planId),
             service.getCheckins(plan.planId),
           ]);
           progress = results[0] as FastingProgress;
-          checkinCount = (results[1] as List<FastingCheckin>).length;
+          final checkins = results[1] as List<FastingCheckin>;
+          checkinCount = checkins.length;
+          // 检查今日是否已打卡
+          final today = DateTime.now();
+          final todayStr =
+              '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+          checkedInToday =
+              checkins.any((c) => c.checkinDate == todayStr && c.completed);
         } catch (_) {}
 
         if (mounted) {
           setState(() {
             _activePlan = plan;
             _progress = progress;
+            _completedPlans = completedPlans;
+            _checkedInToday = checkedInToday;
             _streakDays = progress?.streakDays ?? 0;
             _checkinCount = checkinCount;
             _weekCount = progress != null
@@ -70,6 +85,8 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
             _weeklyTarget = progress?.weeklyTarget ?? 0;
           });
         }
+      } else {
+        if (mounted) setState(() => _completedPlans = completedPlans);
       }
     } catch (_) {
       // 后端不可用，使用空状态
@@ -184,6 +201,8 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
               Text('选择计划类型', style: AppTextStyles.h6),
               const SizedBox(height: 12),
               ..._planTypes.map((plan) => _buildPlanCard(plan)),
+              const SizedBox(height: 18),
+              _buildRefeedInfoCard(),
               const SizedBox(height: 24),
             ],
 
@@ -197,6 +216,11 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
                 _buildStreakCard()
               else
                 _buildWeeklyProgressCard(),
+            ],
+            // 已完成计划记录
+            if (_completedPlans.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              _buildCompletedPlansSection(),
             ],
           ],
         ),
@@ -240,10 +264,24 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
                             color: Colors.white, fontWeight: FontWeight.w700)),
                     if (plan.eatingWindowStart != null &&
                         plan.eatingWindowEnd != null)
-                      Text(
-                        '进食窗口 ${plan.eatingWindowStart} - ${plan.eatingWindowEnd}',
-                        style: AppTextStyles.caption.copyWith(
-                            color: Colors.white.withValues(alpha: 0.7)),
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            '进食窗口 ${plan.eatingWindowStart} - ${plan.eatingWindowEnd}',
+                            style: AppTextStyles.caption.copyWith(
+                                color: Colors.white.withValues(alpha: 0.7)),
+                          ),
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () => _editEatingWindow(plan),
+                            child: Icon(
+                              LucideIcons.pencil,
+                              size: 14,
+                              color: Colors.white.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
                       ),
                   ],
                 ),
@@ -304,11 +342,17 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
       children: [
         Expanded(
           child: _buildActionButton(
-            icon: LucideIcons.clipboardCheck,
-            label: isFastingDay ? '今日打卡' : '今日非断食日',
-            color: isFastingDay ? AppColors.primary : AppColors.textTertiary,
-            onTap: isFastingDay
-                ? () {
+            icon: _checkedInToday
+                ? LucideIcons.checkCircle
+                : LucideIcons.clipboardCheck,
+            label:
+                _checkedInToday ? '今日已打卡' : (isFastingDay ? '今日打卡' : '今日非断食日'),
+            color: _checkedInToday
+                ? AppColors.success
+                : (isFastingDay ? AppColors.primary : AppColors.textTertiary),
+            onTap: (_checkedInToday || !isFastingDay)
+                ? () {} // 已打卡或非断食日不可点
+                : () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -316,8 +360,7 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
                             planId: plan.planId, planType: plan.planType),
                       ),
                     ).then((_) => _loadPlans());
-                  }
-                : () {}, // 空回调，按钮不可用时
+                  },
           ),
         ),
         const SizedBox(width: 10),
@@ -425,6 +468,16 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
             ),
           ),
           const SizedBox(height: 12),
+          // 5:2/基础断食：显示已完成断食日数量
+          if (_activePlan!.planType != '16_8' && p.expectedFastingDays > 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '已完成 ${p.completedCount}/${p.expectedFastingDays} 个断食日',
+                style: AppTextStyles.bodyMedium.copyWith(
+                    color: AppColors.primary, fontWeight: FontWeight.w600),
+              ),
+            ),
           Row(
             children: [
               _buildMiniStat('${p.daysElapsed}/${p.daysTotal}天', '已坚持'),
@@ -626,9 +679,197 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
     );
   }
 
-  // ==================== 业务逻辑 ====================
+  // ==================== 已完成计划 ====================
+
+  Widget _buildRefeedInfoCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: Icon(LucideIcons.info, color: AppColors.warning, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '断食结束后需要逐步恢复饮食（复食阶段），'
+              '创建计划后可查看分阶段的复食指导方案，'
+              '帮助您的身体平稳过渡。',
+              style: AppTextStyles.caption.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompletedPlansSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('已完成计划', style: AppTextStyles.h6),
+        const SizedBox(height: 12),
+        ..._completedPlans.map((plan) => _buildCompletedPlanCard(plan)),
+      ],
+    );
+  }
+
+  Widget _buildCompletedPlanCard(FastingPlan plan) {
+    final daysText = plan.daysElapsed != null ? '${plan.daysElapsed}天' : '--';
+    final typeName = _planTypeName(plan);
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FastingRefeedPage(planId: plan.planId),
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(LucideIcons.checkCircle,
+                  color: AppColors.success, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(typeName,
+                      style: AppTextStyles.bodyLarge
+                          .copyWith(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${plan.startDate.substring(0, 10)} 起 · $daysText',
+                    style: AppTextStyles.caption
+                        .copyWith(color: AppColors.textTertiary),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(LucideIcons.chevronRight,
+                color: AppColors.textTertiary, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _showDisclaimer() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(LucideIcons.alertTriangle, color: AppColors.warning, size: 24),
+            SizedBox(width: 8),
+            Text('免责声明',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '轻断食并非适用于所有人。在开始任何断食计划之前，请确认以下事项：',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              _disclaimerItem('您已年满18周岁，且身体发育成熟'),
+              _disclaimerItem('您目前没有处于怀孕、备孕或哺乳期'),
+              _disclaimerItem('您没有严重的慢性疾病（如糖尿病、低血糖、心脏病、肝肾疾病等）'),
+              _disclaimerItem('您没有进食障碍病史（如厌食症、暴食症）'),
+              _disclaimerItem('您知晓断食期间可能出现头晕、乏力、注意力不集中等反应'),
+              _disclaimerItem('您愿意在身体出现严重不适时立即停止断食并咨询医生'),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: AppColors.warning.withValues(alpha: 0.3)),
+                ),
+                child: const Text(
+                  '本应用提供的断食建议仅供参考，不构成医疗建议。'
+                  '如有任何健康疑虑，请先咨询专业医生。',
+                  style:
+                      TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('我已了解，继续'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  Widget _disclaimerItem(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('• ',
+              style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+          Expanded(
+            child: Text(text,
+                style: const TextStyle(
+                    fontSize: 14, color: AppColors.textPrimary)),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _startPlan(String planId) async {
+    // 首次使用需确认免责声明
+    final accepted = await _showDisclaimer();
+    if (!accepted) return;
+
     // 5:2 和基础断食需要先选择断食日
     if (planId == '5_2' || planId == 'basic_fasting') {
       final requiredDays = planId == '5_2' ? 2 : null; // null 表示 1-2 天
@@ -757,30 +998,20 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
       String planType, List<int>? fastingDays) async {
     try {
       final service = ref.read(fastingServiceProvider);
-      final result = await service.createPlan(
+      final profile = ref.read(userProfileProvider).value;
+      await service.createPlan(
         planType: planType,
         startDate: DateTime.now().toIso8601String().split('T')[0],
         fastingDays: fastingDays,
+        startWeight: profile?.weight,
       );
-      final planIdCreated = result['plan_id'] ?? 0;
-      setState(() {
-        _activePlan = FastingPlan(
-          planId: planIdCreated,
-          planType: planType,
-          status: 'active',
-          startDate: DateTime.now().toIso8601String().split('T')[0],
-        );
-        _streakDays = 1;
-        _checkinCount = 0;
-        _weekCount = 1;
-        _progress = null;
-      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('计划已创建，快去打卡吧！')),
         );
-        // 重新加载完整进度数据
-        _loadPlans();
+        // 重新加载，由 _loadPlans 统一设置 _activePlan
+        setState(() => _isLoading = true);
+        await _loadPlans();
       }
     } catch (e) {
       if (mounted) {
@@ -817,6 +1048,159 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
     );
   }
 
+  /// 修改进食窗口
+  Future<void> _editEatingWindow(FastingPlan plan) async {
+    TimeOfDay startTime = _parseTime(plan.eatingWindowStart ?? '08:00');
+    TimeOfDay endTime = _parseTime(plan.eatingWindowEnd ?? '16:00');
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (ctx) {
+        TimeOfDay localStart = startTime;
+        TimeOfDay localEnd = endTime;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final formatTime = (TimeOfDay t) =>
+                '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+            return AlertDialog(
+              title: const Text('修改进食窗口'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('调整每日进食时间段',
+                      style: AppTextStyles.bodySmall
+                          .copyWith(color: AppColors.textTertiary)),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      Column(
+                        children: [
+                          Text('开始时间',
+                              style: AppTextStyles.caption
+                                  .copyWith(color: AppColors.textTertiary)),
+                          const SizedBox(height: 8),
+                          GestureDetector(
+                            onTap: () async {
+                              final picked = await showTimePicker(
+                                context: ctx,
+                                initialTime: localStart,
+                              );
+                              if (picked != null) {
+                                setDialogState(() => localStart = picked);
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 20, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: AppColors.primarySurface,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: AppColors.primary),
+                              ),
+                              child: Text(formatTime(localStart),
+                                  style: AppTextStyles.h6.copyWith(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w700)),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Icon(LucideIcons.arrowRight,
+                            color: AppColors.textTertiary, size: 20),
+                      ),
+                      Column(
+                        children: [
+                          Text('结束时间',
+                              style: AppTextStyles.caption
+                                  .copyWith(color: AppColors.textTertiary)),
+                          const SizedBox(height: 8),
+                          GestureDetector(
+                            onTap: () async {
+                              final picked = await showTimePicker(
+                                context: ctx,
+                                initialTime: localEnd,
+                              );
+                              if (picked != null) {
+                                setDialogState(() => localEnd = picked);
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 20, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: AppColors.primarySurface,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: AppColors.primary),
+                              ),
+                              child: Text(formatTime(localEnd),
+                                  style: AppTextStyles.h6.copyWith(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w700)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, {
+                    'start': formatTime(localStart),
+                    'end': formatTime(localEnd),
+                  }),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white),
+                  child: const Text('保存'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null) return;
+
+    try {
+      final service = ref.read(fastingServiceProvider);
+      await service.updatePlan(
+        plan.planId,
+        eatingWindowStart: result['start'],
+        eatingWindowEnd: result['end'],
+      );
+      if (mounted) {
+        // 刷新状态
+        setState(() => _isLoading = true);
+        await _loadPlans();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('进食窗口已更新')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showErrorDialog(e.toString().replaceFirst('Exception: ', ''));
+      }
+    }
+  }
+
+  TimeOfDay _parseTime(String timeStr) {
+    final parts = timeStr.split(':');
+    return TimeOfDay(
+      hour: int.tryParse(parts[0]) ?? 8,
+      minute: int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0,
+    );
+  }
+
   Future<void> _stopPlan() async {
     if (_activePlan == null) return;
 
@@ -845,6 +1229,7 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
     try {
       final service = ref.read(fastingServiceProvider);
       await service.stopPlan(_activePlan!.planId);
+      final stoppedPlanId = _activePlan!.planId;
       setState(() {
         _activePlan = null;
         _progress = null;
@@ -855,6 +1240,13 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('计划已停止')),
+        );
+        // 停止后直接跳转复食指导
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FastingRefeedPage(planId: stoppedPlanId),
+          ),
         );
       }
     } catch (e) {

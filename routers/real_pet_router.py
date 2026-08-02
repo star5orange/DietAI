@@ -19,7 +19,7 @@ from shared.models.schemas.real_pet import (
 )
 from shared.services.real_pet_service import (
     create_pet, get_pets, get_pet, update_pet, delete_pet,
-    add_weight, get_weight_records, get_weight_trend, delete_weight_record,
+    add_weight, get_weight_records, get_weight_trend, delete_weight_record, update_weight_record,
     add_vaccine, update_vaccine, delete_vaccine, get_vaccine_records, get_due_vaccines,
     add_deworming, update_deworming, delete_deworming, get_deworming_records,
     add_feeding, get_feeding_records, get_pet_daily_summary, get_feeding_plan,
@@ -273,6 +273,19 @@ async def api_delete_weight(pet_id: int, record_id: int, current_user: User = De
     try:
         delete_weight_record(db, record_id, pet_id, current_user.id)
         return BaseResponse(success=True, message="体重记录已删除")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.put("/{pet_id}/weight-records/{record_id}", response_model=BaseResponse)
+async def api_update_weight(pet_id: int, record_id: int, data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """更新体重记录"""
+    try:
+        r = update_weight_record(db, record_id, pet_id, current_user.id, data)
+        return BaseResponse(success=True, message="体重记录已更新", data={
+            "id": r.id, "weight": float(r.weight), "measured_at": r.measured_at.isoformat() if r.measured_at else None,
+            "notes": r.notes,
+        })
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

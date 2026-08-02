@@ -1,4 +1,5 @@
 """轻断食模块路由"""
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any, List
@@ -16,6 +17,7 @@ from shared.services.fasting_service import (
 )
 
 router = APIRouter(prefix="/fasting", tags=["轻断食"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/plan-types", response_model=BaseResponse)
@@ -63,9 +65,11 @@ class HealthAssessment(BaseModel):
 class CreateFastingPlanRequest(BaseModel):
     plan_type: str = Field(..., description="计划类型: 16_8/5_2/basic_fasting")
     target_weight: Optional[float] = Field(None, ge=20, le=300, description="目标体重(kg)")
+    start_weight: Optional[float] = Field(None, ge=20, le=300, description="起始体重(kg)")
     start_date: date = Field(..., description="开始日期")
     eating_window_start: str = Field("08:00", description="进食窗口开始 HH:MM")
     eating_window_end: str = Field("16:00", description="进食窗口结束 HH:MM")
+    fasting_days: Optional[List[int]] = Field(None, description="断食日列表，5:2需要2天，basic_fasting需要1-2天 (1=周一)")
     health_assessment: Optional[HealthAssessment] = Field(None, description="健康评估数据")
     disclaimer_accepted: bool = Field(False, description="是否已接受免责声明")
 
@@ -119,8 +123,10 @@ async def create_plan(
             health_assessment=health_data,
             disclaimer_accepted=request.disclaimer_accepted,
             target_weight=request.target_weight,
+            start_weight=request.start_weight,
             eating_window_start=request.eating_window_start,
             eating_window_end=request.eating_window_end,
+            fasting_days=request.fasting_days,
         )
         return BaseResponse(
             success=True,

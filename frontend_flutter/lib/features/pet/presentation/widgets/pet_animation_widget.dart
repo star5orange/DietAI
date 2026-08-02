@@ -9,7 +9,7 @@ import '../../domain/pet_state_calculator.dart';
 import '../../domain/pet_skin_config.dart';
 
 /// 宠物心情枚举
-enum PetMood { normal, happy, hungry, anxious, weak }
+enum PetMood { normal, happy, hungry, anxious, weak, satisfied }
 
 /// 心情配置
 class MoodConfig {
@@ -88,6 +88,16 @@ final Map<PetMood, MoodConfig> kMoodConfigs = {
     getGifAsset: (skin) =>
         kPetSkinConfigs[skin]?.weakGif ?? 'assets/pet/weak.gif',
   ),
+  PetMood.satisfied: MoodConfig(
+    name: '饱腹',
+    emoji: '😋',
+    color: AppColors.accent,
+    bgColor: const Color(0xFFFFF8E1),
+    dialogues: ['吃得好饱~摸摸肚子~', '今天的饭真好吃！', '好满足~'],
+    icon: LucideIcons.heart,
+    getGifAsset: (skin) =>
+        kPetSkinConfigs[skin]?.fatGif ?? 'assets/pet/satisfied.gif',
+  ),
 };
 
 /// 宠物动画组件
@@ -164,6 +174,7 @@ class _PetAnimationWidgetState extends ConsumerState<PetAnimationWidget>
     final expression = petState.expression;
     switch (expression) {
       case PetExpression.satisfied:
+        return PetMood.satisfied;
       case PetExpression.happy:
         return PetMood.happy;
       case PetExpression.hungry:
@@ -199,9 +210,11 @@ class _PetAnimationWidgetState extends ConsumerState<PetAnimationWidget>
       case PetMood.hungry:
         return 'hungry';
       case PetMood.anxious:
-        return 'normal'; // 焦虑时用 normal 兜底
+        return 'normal';
       case PetMood.weak:
         return 'weak';
+      case PetMood.satisfied:
+        return 'happy'; // 饱腹用 happy 的 AI 表情
     }
   }
 

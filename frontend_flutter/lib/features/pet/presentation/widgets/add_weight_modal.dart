@@ -2,18 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/themes/app_colors.dart';
+import '../../../../shared/domain/models/api_response.dart';
 import '../../data/real_pet_api_service.dart';
 
-/// 添加体重记录弹窗
+/// 添加/编辑体重记录弹窗
 class AddWeightModal extends StatefulWidget {
   final int petId;
   final VoidCallback onSaved;
+  final int? recordId;
+  final Map<String, dynamic>? existingData;
 
   const AddWeightModal({
     super.key,
     required this.petId,
     required this.onSaved,
+    this.recordId,
+    this.existingData,
   });
+
+  bool get isEdit => recordId != null;
 
   @override
   State<AddWeightModal> createState() => _AddWeightModalState();
@@ -24,6 +31,20 @@ class _AddWeightModalState extends State<AddWeightModal> {
   final _notesController = TextEditingController();
   DateTime _selectedDate = DateTime.now();
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.existingData != null) {
+      _weightController.text =
+          (widget.existingData!['weight'] ?? '').toString();
+      _notesController.text = (widget.existingData!['notes'] ?? '').toString();
+      final dateStr = widget.existingData!['measured_at'] as String?;
+      if (dateStr != null) {
+        _selectedDate = DateTime.tryParse(dateStr) ?? DateTime.now();
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -55,8 +76,8 @@ class _AddWeightModalState extends State<AddWeightModal> {
                   const Icon(LucideIcons.scale,
                       color: AppColors.primary, size: 22),
                   const SizedBox(width: 10),
-                  const Text(
-                    '记录体重',
+                  Text(
+                    widget.isEdit ? '编辑体重' : '记录体重',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -248,11 +269,20 @@ class _AddWeightModalState extends State<AddWeightModal> {
     });
 
     final api = RealPetApiService();
-    final result = await api.addWeight(widget.petId, {
-      'weight': weight,
-      'record_time': _selectedDate.toIso8601String(),
-      'notes': _notesController.text.trim(),
-    });
+    ApiResponse<dynamic> result;
+    if (widget.isEdit) {
+      result = await api.updateWeightRecord(widget.petId, widget.recordId!, {
+        'weight': weight,
+        'measured_at': _selectedDate.toIso8601String(),
+        'notes': _notesController.text.trim(),
+      });
+    } else {
+      result = await api.addWeight(widget.petId, {
+        'weight': weight,
+        'record_time': _selectedDate.toIso8601String(),
+        'notes': _notesController.text.trim(),
+      });
+    }
 
     setState(() {
       _isLoading = false;
@@ -262,8 +292,8 @@ class _AddWeightModalState extends State<AddWeightModal> {
 
     if (result.isSuccess) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('体重记录已保存'),
+        SnackBar(
+          content: Text(widget.isEdit ? '体重记录已更新' : '体重记录已保存'),
           backgroundColor: AppColors.success,
         ),
       );

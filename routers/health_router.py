@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional, Dict, Any, List
 from datetime import datetime, date, timedelta
 import math
 import logging
+import json
+import os
 
 from shared.models.database import get_db
 from shared.models.schemas import (
@@ -272,6 +275,219 @@ async def get_weight_trend(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"体重趋势分析失败: {str(e)}"
+        )
+
+
+# ==================== AI 健康分析 ====================
+
+_METRIC_PROMPTS = {
+    "bmr": """你是一位专业的营养师和健康顾问。请用通俗易懂的语言解读以下基础代谢率(BMR)数据：
+
+- BMR：{bmr} {unit}
+- 计算方法：{method}
+- 用户信息：{gender}，{age}岁，体重{weight}kg，身高{height}cm
+
+请分析：
+1. 这个BMR值处于什么水平，是否正常
+2. BMR高低对日常能量消耗意味着什么
+3. 结合用户情况给出2-3条改善或维持BMR的具体建议
+4. 最后对整体情况给出一个简短评价（1句话）
+
+请用亲切、专业的语气回答，控制在200字以内，使用自然的分段落格式。""",
+
+    "tdee": """你是一位专业的营养师和健康顾问。请用通俗易懂的语言解读以下每日总能量消耗(TDEE)数据：
+
+- TDEE：{tdee} {unit}
+- 基础代谢BMR：{bmr} {unit}
+- 活动水平：{activity_description}
+- 活动系数：{activity_factor}
+
+请分析：
+1. 这个TDEE值对应的日常能量消耗水平
+2. 结合活动水平给出评价
+3. 针对不同目标（减脂/维持/增肌）分别给出建议的热量摄入范围
+4. 最后给出一条最核心的建议
+
+请用亲切、专业的语气回答，控制在200字以内，使用自然的分段落格式。""",
+
+    "health-score": """你是一位专业的健康管理师。请用通俗易懂的语言解读以下健康评分数据：
+
+- 总评分：{total_score}分
+- 等级：{grade}
+- 各项得分：{components_text}
+- 现存建议：{suggestions_text}
+
+请分析：
+1. 这个健康评分反映了用户目前处于什么状态
+2. 哪些方面做得好，哪些方面需要改进
+3. 给出2-3条具体可行的改善建议
+4. 最后给出一句鼓励性总结
+
+请用亲切、专业的语气回答，控制在200字以内，使用自然的分段落格式。""",
+
+    "nutrition-balance": """你是一位专业的营养师。请用通俗易懂的语言解读以下营养平衡数据：
+
+- 分析周期：{period}
+- 日均热量：{calories}kcal（推荐：{recommended}kcal，达标率：{calorie_ratio}%）
+- 营养素比例：蛋白质{protein_pct}%，脂肪{fat_pct}%，碳水{carb_pct}%
+- 膳食纤维日均：{fiber}g
+- 钠日均：{sodium}mg
+- 现存建议：{recommendations_text}
+
+请分析：
+1. 用户的营养结构是否合理
+2. 具体的优势和不足之处
+3. 给出2-3条针对性的饮食调整建议
+4. 最后给出一个简短的整体评价
+
+请用亲切、专业的语气回答，控制在200字以内，使用自然的分段落格式。""",
+
+    "weight-trend": """你是一位专业的健康管理师。请用通俗易懂的语言解读以下体重趋势数据：
+
+- 趋势方向：{trend}
+- 体重变化：{weight_change}kg
+- 变化率：{change_pct}%
+- 分析结论：{analysis}
+
+请分析：
+1. 用户的体重变化趋势意味着什么
+2. 这个变化速率是否健康合理
+3. 给出2-3条针对性的体重管理建议
+4. 最后给出一句鼓励性总结
+
+请用亲切、专业的语气回答，控制在200字以内，使用自然的分段落格式。""",
+}
+
+
+def _build_ai_prompt(metric_type: str, metric_data: Dict, profile) -> str:
+    """根据指标类型构建 AI 分析 prompt"""
+    template = _METRIC_PROMPTS.get(metric_type, "")
+    if not template:
+        return "请对以下健康数据进行专业分析。"
+
+    if metric_type == "bmr":
+        user_data = metric_data.get("user_data", {})
+        return template.format(
+            bmr=metric_data.get("bmr", ""),
+            unit=metric_data.get("unit", ""),
+            method=metric_data.get("method", ""),
+            gender=user_data.get("gender", ""),
+            age=user_data.get("age", ""),
+            weight=user_data.get("weight", ""),
+            height=user_data.get("height", ""),
+        )
+    elif metric_type == "tdee":
+        return template.format(
+            tdee=metric_data.get("tdee", ""),
+            unit=metric_data.get("unit", ""),
+            bmr=metric_data.get("bmr", ""),
+            activity_description=metric_data.get("activity_description", ""),
+            activity_factor=metric_data.get("activity_factor", ""),
+        )
+    elif metric_type == "health-score":
+        components = metric_data.get("components", {})
+        components_text = "\n".join(
+            f"  - {k}：{v.get('score')}/{v.get('max_score')}分（{v.get('description')}）"
+            for k, v in components.items()
+        ) if components else "无评分明细"
+        suggestions = metric_data.get("suggestions", [])
+        suggestions_text = "；".join(suggestions) if suggestions else "无"
+        return template.format(
+            total_score=metric_data.get("total_score", ""),
+            grade=metric_data.get("grade", ""),
+            components_text=components_text,
+            suggestions_text=suggestions_text,
+        )
+    elif metric_type == "nutrition-balance":
+        averages = metric_data.get("averages", {})
+        percentages = metric_data.get("percentages", {})
+        reference = metric_data.get("reference", {})
+        period = metric_data.get("period", {})
+        recommendations = metric_data.get("recommendations", [])
+        return template.format(
+            period=f"{period.get('start_date', '')} ~ {period.get('end_date', '')}",
+            calories=averages.get("calories", ""),
+            recommended=reference.get("recommended_calories", ""),
+            calorie_ratio=round(reference.get("calorie_ratio", 0) * 100, 1),
+            protein_pct=percentages.get("protein", ""),
+            fat_pct=percentages.get("fat", ""),
+            carb_pct=percentages.get("carbohydrates", ""),
+            fiber=averages.get("fiber", ""),
+            sodium=averages.get("sodium", ""),
+            recommendations_text="；".join(recommendations) if recommendations else "无",
+        )
+    elif metric_type == "weight-trend":
+        return template.format(
+            trend=metric_data.get("trend", ""),
+            weight_change=metric_data.get("weight_change", ""),
+            change_pct=metric_data.get("change_percentage", ""),
+            analysis=metric_data.get("analysis", ""),
+        )
+    return ""
+
+
+@router.post("/ai-analysis")
+async def ai_health_analysis(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """AI 健康数据解读（流式输出）
+
+    接收健康指标数据，调用大模型进行专业解读，逐 token 流式返回。
+    """
+    try:
+        body = await request.json()
+        metric_type = body.get("metric_type", "")
+        metric_data = body.get("metric_data", {})
+
+        if not metric_type or metric_type not in _METRIC_PROMPTS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"不支持的指标类型: {metric_type}"
+            )
+
+        prompt = _build_ai_prompt(metric_type, metric_data, None)
+
+        # 使用 ChatOpenAI 直接创建模型（确保 streaming=True）
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import HumanMessage
+
+        model = ChatOpenAI(
+            model="deepseek-v4-flash",
+            base_url="https://api.deepseek.com",
+            api_key=os.getenv("DEEPSEEK_API_KEY", ""),
+            streaming=True,
+        )
+
+        async def generate():
+            full_response = ""
+            try:
+                async for chunk in model.astream([HumanMessage(content=prompt)]):
+                    content = chunk.content
+                    if isinstance(content, str) and content:
+                        full_response += content
+                        yield f"data: {json.dumps({'type': 'token', 'content': content}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'full': full_response}, ensure_ascii=False)}\n\n"
+            except Exception as e:
+                logger.error(f"AI分析流式生成失败: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'message': f'生成失败: {str(e)}'}, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"AI健康分析失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AI健康分析失败: {str(e)}"
         )
 
 
@@ -705,7 +921,7 @@ def calculate_exercise_score(exercise_calories: float) -> float:
 async def crowd_statistics(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    crowd_tag: Optional[str] = Query(None, description="人群标签筛选 (减脂/健身/普通日常)"),
+    crowd_tag: Optional[str] = Query(None, description="人群标签筛选 (减脂/健身/均衡维持)"),
     days: int = Query(30, ge=7, le=365, description="统计天数"),
 ):
     """人群维度统计接口：按人群标签返回差异化统计数据。
@@ -715,7 +931,7 @@ async def crowd_statistics(
     """
     try:
         profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
-        tag = crowd_tag or (profile.crowd_tag if profile else None) or "普通日常"
+        tag = crowd_tag or (profile.crowd_tag if profile else None) or "均衡维持"
 
         end_date = date.today()
         start_date = end_date - timedelta(days=days)

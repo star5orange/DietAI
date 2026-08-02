@@ -1,4 +1,4 @@
-"""宠物相关 ORM 模型（M2 虚拟宠物 + M3 真实宠物 + 硬件）"""
+﻿"""宠物相关 ORM 模型（M2 虚拟宠物 + M3 真实宠物 + 硬件）"""
 from sqlalchemy import Column, Integer, String, DateTime, Date, Boolean, Text, Numeric, ForeignKey, Index, Time
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship

@@ -296,7 +296,7 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
       ),
       child: SafeArea(
         child: SizedBox(
-          height: 80,
+          height: 62,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
@@ -352,32 +352,32 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
           borderRadius: BorderRadius.circular(8),
           child: Padding(
             padding: const EdgeInsets.symmetric(
-              horizontal: 8,
-              vertical: 10,
+              horizontal: 6,
+              vertical: 6,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.all(4),
+                  padding: const EdgeInsets.all(3),
                   decoration: BoxDecoration(
                     color: isActive
                         ? AppColors.primaryWithOpacity(0.1)
                         : Colors.transparent,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                   child: Icon(
                     icon,
-                    size: 24,
+                    size: 20,
                     color: color,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   label,
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 10,
                     fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
                     color: color,
                   ),

@@ -557,6 +557,21 @@ class UserService {
       return ApiResponse.failure(message: '提交体质自测失败: $e');
     }
   }
+
+  /// 注销账户 - 删除当前用户及其所有数据
+  Future<ApiResponse<void>> deleteAccount() async {
+    try {
+      final response = await _apiService.delete('/users/me');
+      
+      if (response.isSuccess) {
+        return ApiResponse.success(message: response.message);
+      }
+      
+      return ApiResponse.failure(message: response.message);
+    } catch (e) {
+      return ApiResponse.failure(message: '注销账户失败: $e');
+    }
+  }
 }
 
 /// 用户统计数据模型

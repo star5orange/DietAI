@@ -35,7 +35,7 @@ def initialize_chat_session(state: ChatState, config: RunnableConfig) -> ChatSta
     if state['session_type'] == 6 and state.get('pet_id') and not pet_context:
         try:
             from shared.models.database import SessionLocal
-            from shared.services.real_pet_service import get_pet
+            from shared.services.real_pet_service import get_pet, get_feeding_records, get_water_records, get_weight_records
             db = SessionLocal()
             pet = get_pet(db, state['pet_id'], state['user_id'])
             if pet:
@@ -48,6 +48,72 @@ def initialize_chat_session(state: ChatState, config: RunnableConfig) -> ChatSta
                     'birth_date': pet.birth_date.isoformat() if pet.birth_date else None,
                     'is_neutered': pet.is_neutered,
                 }
+                # 加载近7天饮食记录
+                try:
+                    from datetime import timedelta as _timedelta
+                    feedings = get_feeding_records(db, pet.id, limit=50)
+                    recent_feedings = [f for f in feedings
+                        if f.record_time and f.record_time.date() >= (datetime.now() - _timedelta(days=7)).date()]
+                    pet_context['recent_feedings'] = [{
+                        'food_name': f.food_name,
+                        'amount_g': float(f.amount_grams) if f.amount_grams else 0,
+                        'calories': float(f.calories) if f.calories else 0,
+                        'protein': float(f.protein) if f.protein else 0,
+                        'fat': float(f.fat) if f.fat else 0,
+                        'carbs': float(f.carbs) if f.carbs else 0,
+                        'time': f.record_time.isoformat() if f.record_time else None,
+                    } for f in recent_feedings]
+                except Exception:
+                    pet_context['recent_feedings'] = []
+                # 加载近7天饮水记录
+                try:
+                    from datetime import timedelta as _td
+                    waters = get_water_records(db, pet.id, limit=50)
+                    recent_waters = [w for w in waters
+                        if w.record_time and w.record_time.date() >= (datetime.now() - _td(days=7)).date()]
+                    pet_context['recent_waters'] = [{
+                        'amount_ml': w.amount_ml,
+                        'time': w.record_time.isoformat() if w.record_time else None,
+                    } for w in recent_waters]
+                except Exception:
+                    pet_context['recent_waters'] = []
+                # 加载最新体重
+                try:
+                    weights = get_weight_records(db, pet.id, state['user_id'])
+                    recent_weight = weights[0] if weights else None
+                    if recent_weight:
+                        pet_context['latest_weight_kg'] = float(recent_weight.weight) if recent_weight.weight else None
+                        pet_context['weight_date'] = recent_weight.measured_at.isoformat() if recent_weight.measured_at else None
+                except Exception:
+                    pet_context['latest_weight_kg'] = None
+                # 加载疫苗记录
+                try:
+                    from shared.models.pet_models import PetVaccineRecord
+                    vaccines = db.query(PetVaccineRecord).filter(
+                        PetVaccineRecord.pet_id == pet.id
+                    ).order_by(PetVaccineRecord.vaccinated_at.desc()).limit(10).all()
+                    pet_context['vaccines'] = [{
+                        'name': v.vaccine_name or '',
+                        'date': v.vaccinated_at.isoformat() if v.vaccinated_at else '',
+                        'next_date': v.next_vaccination_date.isoformat() if v.next_vaccination_date else '',
+                        'notes': v.notes or '',
+                    } for v in vaccines]
+                except Exception:
+                    pet_context['vaccines'] = []
+                # 加载驱虫记录
+                try:
+                    from shared.models.pet_models import PetDewormingRecord
+                    dewormings = db.query(PetDewormingRecord).filter(
+                        PetDewormingRecord.pet_id == pet.id
+                    ).order_by(PetDewormingRecord.treated_at.desc()).limit(10).all()
+                    pet_context['dewormings'] = [{
+                        'type': d.deworming_type or '',
+                        'date': d.treated_at.isoformat() if d.treated_at else '',
+                        'next_date': d.next_treatment_date.isoformat() if d.next_treatment_date else '',
+                        'notes': d.notes or '',
+                    } for d in dewormings]
+                except Exception:
+                    pet_context['dewormings'] = []
             db.close()
         except Exception as e:
             pass  # 如果加载失败，继续使用空上下文
@@ -58,27 +124,51 @@ def initialize_chat_session(state: ChatState, config: RunnableConfig) -> ChatSta
     else:
         conversation_history = state['conversation_history']
 
-    updated_state = ChatState(
-        user_message=state['user_message'],
-        session_id=state.get('session_id'),
-        session_type=state['session_type'],
-        user_id=state['user_id'],
-        pet_id=state.get('pet_id'),
-        conversation_history=conversation_history,
-        user_context=state.get('user_context', {}),
-        recent_meals=state.get('recent_meals', []),
-        health_goals=state.get('health_goals', {}),
-        pet_context=pet_context,
-        context_analysis=None,
-        response_content="",
-        response_metadata={},
-        current_step="initialized",
-        error_message=None,
-        chat_model=get_model(
-            model_provider=configurable.analysis_model_provider,
-            model_name=configurable.analysis_model
+    # 宠物健康咨询时清空人的数据，确保完全隔离
+    if state['session_type'] == 6:
+        updated_state = ChatState(
+            user_message=state['user_message'],
+            session_id=state.get('session_id'),
+            session_type=state['session_type'],
+            user_id=state['user_id'],
+            pet_id=state.get('pet_id'),
+            conversation_history=conversation_history,
+            user_context={},
+            recent_meals=[],
+            health_goals={},
+            pet_context=pet_context,
+            context_analysis=None,
+            response_content="",
+            response_metadata={},
+            current_step="initialized",
+            error_message=None,
+            chat_model=get_model(
+                model_provider=configurable.analysis_model_provider,
+                model_name=configurable.analysis_model
+            )
         )
-    )
+    else:
+        updated_state = ChatState(
+            user_message=state['user_message'],
+            session_id=state.get('session_id'),
+            session_type=state['session_type'],
+            user_id=state['user_id'],
+            pet_id=state.get('pet_id'),
+            conversation_history=conversation_history,
+            user_context=state.get('user_context', {}),
+            recent_meals=state.get('recent_meals', []),
+            health_goals=state.get('health_goals', {}),
+            pet_context=pet_context,
+            context_analysis=None,
+            response_content="",
+            response_metadata={},
+            current_step="initialized",
+            error_message=None,
+            chat_model=get_model(
+                model_provider=configurable.analysis_model_provider,
+                model_name=configurable.analysis_model
+            )
+        )
 
     return updated_state
 
@@ -89,70 +179,71 @@ def analyze_conversation_context(state: ChatState) -> ChatState:
         # 分析用户消息内容和意图
         context_info = []
         
-        # 添加用户上下文信息（结构化格式）
-        if state.get('user_context'):
-            uc = state['user_context']
-            if isinstance(uc, dict):
-                profile_lines = []
-                label_map = {
-                    'username': '用户名',
-                    'age': '年龄',
-                    'gender': '性别',
-                    'height': '身高(cm)',
-                    'weight': '体重(kg)',
-                    'activity_level': '活动水平',
-                    'crowd_tag': '人群标签',
-                    'constitution_type': '体质类型',
-                }
-                for k, v in uc.items():
-                    label = label_map.get(k, k)
-                    profile_lines.append(f"{label}: {v}")
-                context_info.append("【用户档案】\n" + "\n".join(profile_lines))
-            else:
-                context_info.append(f"用户档案: {uc}")
-        
-        # 添加健康目标信息
-        if state.get('health_goals'):
-            context_info.append(f"健康目标: {state['health_goals']}")
-        
-        # 添加最近饮食记录（结构化格式，便于AI理解）
-        if state.get('recent_meals'):
-            meals_data = state['recent_meals']
-            if isinstance(meals_data, dict):
-                # 今日饮食汇总
-                if meals_data.get('today_summary'):
-                    ts = meals_data['today_summary']
-                    context_info.append(
-                        f"【今日饮食汇总】日期: {ts.get('date', '今天')}, "
-                        f"总热量: {ts.get('total_calories', 0)}kcal, "
-                        f"蛋白质: {ts.get('total_protein', 0)}g, "
-                        f"脂肪: {ts.get('total_fat', 0)}g, "
-                        f"碳水: {ts.get('total_carbohydrates', 0)}g"
-                    )
-                # 最近饮食记录详情
-                recent_list = meals_data.get('recent_meals', [])
-                if recent_list and isinstance(recent_list, list):
-                    meal_details = []
-                    for m in recent_list[-5:]:
-                        detail = f"{m.get('meal_type_name', m.get('meal_type', ''))} - {m.get('food_name', '未知食物')}"
-                        if m.get('description'):
-                            detail += f"({m['description']})"
-                        nutrients = []
-                        if m.get('calories'):
-                            nutrients.append(f"{m['calories']}kcal")
-                        if m.get('protein'):
-                            nutrients.append(f"蛋白质{m['protein']}g")
-                        if m.get('fat'):
-                            nutrients.append(f"脂肪{m['fat']}g")
-                        if m.get('carbohydrates'):
-                            nutrients.append(f"碳水{m['carbohydrates']}g")
-                        if nutrients:
-                            detail += f" [{', '.join(nutrients)}]"
-                        detail += f" ({m.get('record_date', '')})"
-                        meal_details.append(detail)
-                    context_info.append("【最近饮食记录】\n" + "\n".join(meal_details))
-            elif isinstance(meals_data, list):
-                context_info.append(f"最近饮食: {meals_data[-3:]}")
+        # 添加用户上下文信息（结构化格式）—— 宠物咨询时跳过
+        if state['session_type'] != 6:
+            if state.get('user_context'):
+                uc = state['user_context']
+                if isinstance(uc, dict):
+                    profile_lines = []
+                    label_map = {
+                        'username': '用户名',
+                        'age': '年龄',
+                        'gender': '性别',
+                        'height': '身高(cm)',
+                        'weight': '体重(kg)',
+                        'activity_level': '活动水平',
+                        'crowd_tag': '人群标签',
+                        'constitution_type': '体质类型',
+                    }
+                    for k, v in uc.items():
+                        label = label_map.get(k, k)
+                        profile_lines.append(f"{label}: {v}")
+                    context_info.append("【用户档案】\n" + "\n".join(profile_lines))
+                else:
+                    context_info.append(f"用户档案: {uc}")
+            
+            # 添加健康目标信息
+            if state.get('health_goals'):
+                context_info.append(f"健康目标: {state['health_goals']}")
+            
+            # 添加最近饮食记录（结构化格式，便于AI理解）
+            if state.get('recent_meals'):
+                meals_data = state['recent_meals']
+                if isinstance(meals_data, dict):
+                    # 今日饮食汇总
+                    if meals_data.get('today_summary'):
+                        ts = meals_data['today_summary']
+                        context_info.append(
+                            f"【今日饮食汇总】日期: {ts.get('date', '今天')}, "
+                            f"总热量: {ts.get('total_calories', 0)}kcal, "
+                            f"蛋白质: {ts.get('total_protein', 0)}g, "
+                            f"脂肪: {ts.get('total_fat', 0)}g, "
+                            f"碳水: {ts.get('total_carbohydrates', 0)}g"
+                        )
+                    # 最近饮食记录详情
+                    recent_list = meals_data.get('recent_meals', [])
+                    if recent_list and isinstance(recent_list, list):
+                        meal_details = []
+                        for m in recent_list[-5:]:
+                            detail = f"{m.get('meal_type_name', m.get('meal_type', ''))} - {m.get('food_name', '未知食物')}"
+                            if m.get('description'):
+                                detail += f"({m['description']})"
+                            nutrients = []
+                            if m.get('calories'):
+                                nutrients.append(f"{m['calories']}kcal")
+                            if m.get('protein'):
+                                nutrients.append(f"蛋白质{m['protein']}g")
+                            if m.get('fat'):
+                                nutrients.append(f"脂肪{m['fat']}g")
+                            if m.get('carbohydrates'):
+                                nutrients.append(f"碳水{m['carbohydrates']}g")
+                            if nutrients:
+                                detail += f" [{', '.join(nutrients)}]"
+                            detail += f" ({m.get('record_date', '')})"
+                            meal_details.append(detail)
+                        context_info.append("【最近饮食记录】\n" + "\n".join(meal_details))
+                elif isinstance(meals_data, list):
+                    context_info.append(f"最近饮食: {meals_data[-3:]}")
         
         # 分析会话类型和用户意图
         session_type_context = {
@@ -168,39 +259,42 @@ def analyze_conversation_context(state: ChatState) -> ChatState:
         if context_info:
             context_analysis += "\n" + "\n".join(context_info)
         
-        # 注入体质/人群标签
-        if state.get('crowd_tag'):
-            context_analysis += f"\n人群标签: {state['crowd_tag']}"
-        if state.get('constitution_type'):
-            context_analysis += f"\n体质类型: {state['constitution_type']}"
+        # 注入体质/人群标签（宠物咨询时跳过）
+        if state['session_type'] != 6:
+            if state.get('crowd_tag'):
+                context_analysis += f"\n人群标签: {state['crowd_tag']}"
+            if state.get('constitution_type'):
+                context_analysis += f"\n体质类型: {state['constitution_type']}"
 
-        # 注入疾病信息
-        diseases = state.get('diseases')
-        if diseases and isinstance(diseases, list) and len(diseases) > 0:
-            disease_lines = ["【用户疾病/健康状况 - 必须参考】"]
-            for d in diseases:
-                name = d.get('disease_name', '未知')
-                severity = d.get('severity_level', '')
-                is_current = d.get('is_current', False)
-                status = "当前患病" if is_current else "既往病史"
-                severity_label = {1: "轻度", 2: "中度", 3: "重度"}.get(severity, "")
-                disease_lines.append(f"- {name} ({status}, {severity_label})")
-            disease_lines.append("请务必在饮食建议中考虑以上疾病状况，给出针对性的饮食禁忌和推荐。")
-            context_analysis += "\n" + "\n".join(disease_lines)
+            # 注入疾病信息
+            diseases = state.get('diseases')
+            if diseases and isinstance(diseases, list) and len(diseases) > 0:
+                disease_lines = ["【用户疾病/健康状况 - 必须参考】"]
+                for d in diseases:
+                    name = d.get('disease_name', '未知')
+                    severity = d.get('severity_level', '')
+                    is_current = d.get('is_current', False)
+                    status = "当前患病" if is_current else "既往病史"
+                    severity_label = {1: "轻度", 2: "中度", 3: "重度"}.get(severity, "")
+                    notes = d.get('notes', '')
+                    notes_str = f", 备注: {notes}" if notes else ""
+                    disease_lines.append(f"- {name} ({status}, {severity_label}{notes_str})")
+                disease_lines.append("请务必在饮食建议中考虑以上疾病状况，给出针对性的饮食禁忌和推荐。")
+                context_analysis += "\n" + "\n".join(disease_lines)
 
-        # 注入过敏信息
-        allergies = state.get('allergies')
-        if allergies and isinstance(allergies, list) and len(allergies) > 0:
-            allergy_lines = ["【用户过敏原 - 必须遵守，严禁推荐含以下过敏原的食物】"]
-            for a in allergies:
-                name = a.get('allergen_name', '未知')
-                atype = a.get('allergen_type_name', a.get('allergen_type', ''))
-                severity = a.get('severity_level', '')
-                reaction = a.get('reaction_description', '')
-                severity_label = {1: "轻度", 2: "中度", 3: "重度"}.get(severity, "")
-                allergy_lines.append(f"- {name} ({atype}过敏, {severity_label}{', 反应: ' + reaction if reaction else ''})")
-            allergy_lines.append("请严格遵守：所有饮食建议中必须排除以上过敏原及其交叉反应食物。")
-            context_analysis += "\n" + "\n".join(allergy_lines)
+            # 注入过敏信息
+            allergies = state.get('allergies')
+            if allergies and isinstance(allergies, list) and len(allergies) > 0:
+                allergy_lines = ["【用户过敏原 - 必须遵守，严禁推荐含以下过敏原的食物】"]
+                for a in allergies:
+                    name = a.get('allergen_name', '未知')
+                    atype = a.get('allergen_type_name', a.get('allergen_type', ''))
+                    severity = a.get('severity_level', '')
+                    reaction = a.get('reaction_description', '')
+                    severity_label = {1: "轻度", 2: "中度", 3: "重度"}.get(severity, "")
+                    allergy_lines.append(f"- {name} ({atype}过敏, {severity_label}{', 反应: ' + reaction if reaction else ''})")
+                allergy_lines.append("请严格遵守：所有饮食建议中必须排除以上过敏原及其交叉反应食物。")
+                context_analysis += "\n" + "\n".join(allergy_lines)
 
         # 宠物健康咨询：注入宠物档案、安全守则和免责声明
         if state['session_type'] == 6:
@@ -221,7 +315,57 @@ def analyze_conversation_context(state: ChatState) -> ChatState:
                     pet_info.append(f"年龄: {age}岁")
                 if pet.get('is_neutered') is not None:
                     pet_info.append(f"绝育状态: {'已绝育' if pet['is_neutered'] else '未绝育'}")
+                if pet.get('latest_weight_kg'):
+                    pet_info.append(f"最新体重: {pet['latest_weight_kg']}kg")
                 context_analysis += "\n" + "\n".join(pet_info)
+
+                # 注入近7天饮食记录
+                recent_feedings = pet.get('recent_feedings', [])
+                if recent_feedings:
+                    context_analysis += "\n【近7天饮食记录】"
+                    for f in recent_feedings[:10]:  # 最多10条，避免上下文过长
+                        time_str = f.get('time', '')[:10] if f.get('time') else ''
+                        context_analysis += (
+                            f"\n- {time_str} | {f.get('food_name', '未知食物')} "
+                            f"{f.get('amount_g', 0)}g | "
+                            f"热量:{f.get('calories', 0)}kcal "
+                            f"蛋白质:{f.get('protein', 0)}g "
+                            f"脂肪:{f.get('fat', 0)}g "
+                            f"碳水:{f.get('carbs', 0)}g"
+                        )
+
+                # 注入近7天饮水记录
+                recent_waters = pet.get('recent_waters', [])
+                if recent_waters:
+                    # 计算日均饮水量
+                    total_ml = sum(w.get('amount_ml', 0) for w in recent_waters)
+                    unique_days = len(set(
+                        w.get('time', '')[:10] for w in recent_waters if w.get('time')
+                    )) or 1
+                    avg_ml = round(total_ml / unique_days)
+                    context_analysis += (
+                        f"\n【近7天饮水统计】日均饮水 {avg_ml}ml，"
+                        f"共 {len(recent_waters)} 条记录"
+                    )
+
+                # 注入疫苗记录
+                vaccines = pet.get('vaccines', [])
+                if vaccines:
+                    context_analysis += "\n【疫苗记录】"
+                    for v in vaccines:
+                        notes_str = f", 备注: {v.get('notes')}" if v.get('notes') else ""
+                        next_str = f", 下次: {v.get('next_date')}" if v.get('next_date') else ""
+                        context_analysis += f"\n- {v.get('name', '未知')} ({v.get('date', '')}{next_str}{notes_str})"
+
+                # 注入驱虫记录
+                dewormings = pet.get('dewormings', [])
+                if dewormings:
+                    context_analysis += "\n【驱虫记录】"
+                    for d in dewormings:
+                        dtype = '体内' if 'internal' in (d.get('type') or '') else '体外' if 'external' in (d.get('type') or '') else d.get('type') or '驱虫'
+                        notes_str = f", 备注: {d.get('notes')}" if d.get('notes') else ""
+                        next_str = f", 下次: {d.get('next_date')}" if d.get('next_date') else ""
+                        context_analysis += f"\n- {dtype}驱虫 ({d.get('date', '')}{next_str}{notes_str})"
 
             # 注入安全守则
             context_analysis += (
@@ -269,8 +413,11 @@ def analyze_conversation_context(state: ChatState) -> ChatState:
 
 
 def generate_chat_response(state: ChatState) -> ChatState:
-    """生成聊天回复"""
+    """生成聊天回复（逐 token 流式输出）"""
     try:
+        from langgraph.config import get_stream_writer
+        writer = get_stream_writer()
+
         # 构建消息历史
         messages = list(state['conversation_history'])
         
@@ -285,15 +432,23 @@ def generate_chat_response(state: ChatState) -> ChatState:
         user_message = HumanMessage(content=state['user_message'])
         messages.append(user_message)
         
-        # 调用模型生成回复
-        response = state['chat_model'].invoke(messages)
+        # 逐 token 流式调用模型
+        full_content = ""
+        for chunk in state['chat_model'].stream(messages):
+            content = chunk.content
+            if content:
+                full_content += content
+                writer(content)  # 实时推送每个 token 到前端
+        
+        # 构建完整的 AI 回复消息
+        response = AIMessage(content=full_content)
         
         # 更新对话历史
         updated_history = messages + [response]
         
         updated_state = state.copy()
         updated_state['conversation_history'] = updated_history
-        updated_state['response_content'] = response.content
+        updated_state['response_content'] = full_content
         updated_state['response_metadata'] = {
             "model": state['chat_model'].model_name,
             "session_type": state['session_type'],

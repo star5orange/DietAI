@@ -694,35 +694,10 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
   void _startPolling() {
     _pollTimer?.cancel();
     int elapsed = 0;
-    const maxTicks = 90; // 3 分钟 (基础图 ~120s + 情绪 ~60s)
+    const maxTicks = 150; // 5 分钟 (2s * 150)
 
     _pollTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
       elapsed++;
-
-      // 根据时间显示具体步骤
-      String stepMsg;
-      if (elapsed <= 6) {
-        stepMsg = '正在提交生成任务...';
-      } else if (elapsed <= 20) {
-        stepMsg = '正在分析特征并生成基础形象...';
-      } else if (elapsed <= 35) {
-        stepMsg = '正在生成开心表情...';
-      } else if (elapsed <= 50) {
-        stepMsg = '正在生成饥饿表情...';
-      } else if (elapsed <= 65) {
-        stepMsg = '正在生成虚弱表情...';
-      } else if (elapsed <= 80) {
-        stepMsg = '正在优化细节...';
-      } else {
-        stepMsg = '即将完成...';
-      }
-
-      setState(() {
-        // 平滑曲线：从 5% 递增到 ~93%（留余量避免 100% 假象）
-        final t = elapsed / maxTicks;
-        _progressValue = 0.05 + (1 - exp(-3 * t)) * 0.88;
-        _progressMessage = stepMsg;
-      });
 
       if (_currentTaskId == null) {
         timer.cancel();
@@ -740,12 +715,41 @@ class _GeneratePetAvatarPageState extends ConsumerState<GeneratePetAvatarPage> {
 
       if (taskRes.isSuccess && taskRes.data != null) {
         final status = taskRes.data!['status'] as String?;
+        final apiProgress = (taskRes.data!['progress'] as num?)?.toDouble() ?? 0;
+        final apiMessage = taskRes.data!['progress_message'] as String? ?? '';
+
+        // 使用 API 返回的真实进度，如果没有则用时间估算兜底
+        if (apiProgress > 0 && apiMessage.isNotEmpty) {
+          setState(() {
+            _progressValue = apiProgress / 100;
+            _progressMessage = apiMessage;
+          });
+        } else {
+          // 兜底：时间估算
+          String stepMsg;
+          if (elapsed <= 6) {
+            stepMsg = '正在提交生成任务...';
+          } else if (elapsed <= 30) {
+            stepMsg = '正在生成基础形象...';
+          } else if (elapsed <= 80) {
+            stepMsg = '正在生成情绪变体...';
+          } else {
+            stepMsg = '即将完成...';
+          }
+          setState(() {
+            final t = elapsed / maxTicks;
+            _progressValue = 0.05 + (1 - exp(-3 * t)) * 0.88;
+            _progressMessage = stepMsg;
+          });
+        }
         if (status == 'done') {
           timer.cancel();
-          final avatarUrl = taskRes.data!['base_image_url'] as String? ?? '';
+          // 后端返回结构: data.result.base_image_url / data.result.emotions
+          final result = taskRes.data!['result'] as Map<String, dynamic>?;
+          final avatarUrl = result?['base_image_url'] as String? ?? '';
           _finishGeneration({
             'image_url': avatarUrl,
-            'emotions': taskRes.data!['emotions'] ?? {},
+            'emotions': result?['emotions'] ?? {},
           });
         } else if (status == 'failed') {
           timer.cancel();

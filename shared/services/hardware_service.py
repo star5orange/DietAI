@@ -261,3 +261,4 @@ def get_pet_feeding_plan_for_hardware(db: Session, pet_id: int) -> dict:
     if not pet:
         return {"error": "宠物不存在"}
     return get_feeding_plan(db, pet_id, pet.user_id)
+>>>>>>> origin/frontend

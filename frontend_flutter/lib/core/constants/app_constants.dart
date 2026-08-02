@@ -27,7 +27,7 @@ class AppConstants {
   static const String savedMealsRoute = '/saved-meals';
 
   // 时间配置
-  static const int requestTimeout = 120000; // 120秒 (AI分析需要更长时间)
+  static const int requestTimeout = 300000; // 300秒 (AI形象生成需要更长时间)
   static const int connectTimeout = 15000; // 15秒
 
   // 分页配置

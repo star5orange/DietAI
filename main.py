@@ -36,6 +36,9 @@ _deep_router = None
 # Milestone 2 新增路由器
 _cost_router = None
 _pet_router = None
+# Milestone 3 真实宠物路由器
+_real_pet_router = None
+_pet_avatar_router = None
 _fasting_router = None
 _advisor_router = None
 
@@ -86,6 +89,18 @@ except ImportError:
     pass
 
 try:
+    from routers.real_pet_router import router as real_pet_router
+    _real_pet_router = real_pet_router
+except ImportError:
+    pass
+
+try:
+    from routers.pet_avatar_router import router as pet_avatar_router
+    _pet_avatar_router = pet_avatar_router
+except ImportError:
+    pass
+
+try:
     from routers.fasting_router import router as fasting_router
     _fasting_router = fasting_router
 except ImportError:
@@ -94,6 +109,14 @@ except ImportError:
 try:
     from routers.advisor_router import router as advisor_router
     _advisor_router = advisor_router
+except ImportError:
+    pass
+
+# 语音识别路由器
+_voice_router = None
+try:
+    from routers.voice_router import router as voice_router
+    _voice_router = voice_router
 except ImportError:
     pass
 
@@ -354,15 +377,21 @@ if _cost_router is not None:
     app.include_router(_cost_router, prefix="/api", tags=["消费统计"])
 if _pet_router is not None:
     app.include_router(_pet_router, prefix="/api", tags=["虚拟宠物"])
+
+# Milestone 3: 真实宠物管理路由（含AI形象生成）
+if _real_pet_router is not None:
+    app.include_router(_real_pet_router, prefix="/api", tags=["真实宠物"])
+# pet_avatar_router 已合并到 real_pet_router，避免路由冲突
+# if _pet_avatar_router is not None:
+#     app.include_router(_pet_avatar_router, prefix="/api", tags=["AI宠物形象"])
 if _fasting_router is not None:
     app.include_router(_fasting_router, prefix="/api", tags=["轻断食"])
 if _advisor_router is not None:
     app.include_router(_advisor_router, prefix="/api", tags=["AI顾问设置"])
 
-# Milestone 3: 真实宠物管理路由
-if _real_pet_router is not None:
-    app.include_router(_real_pet_router, prefix="/api", tags=["真实宠物"])
-# pet_avatar_router 已合并到 real_pet_router，避免路由冲突
+# 语音识别路由
+if _voice_router is not None:
+    app.include_router(_voice_router, prefix="/api", tags=["语音识别"])
 
 # 启动服务器
 if __name__ == "__main__":

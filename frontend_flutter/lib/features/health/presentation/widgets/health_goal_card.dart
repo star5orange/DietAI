@@ -8,12 +8,14 @@ class HealthGoalCard extends StatelessWidget {
   final HealthGoal goal;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final VoidCallback? onViewProgress;
 
   const HealthGoalCard({
     super.key,
     required this.goal,
     this.onEdit,
     this.onDelete,
+    this.onViewProgress,
   });
 
   @override
@@ -166,25 +168,27 @@ class HealthGoalCard extends StatelessWidget {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: onEdit,
-                    icon: const Icon(LucideIcons.edit2, size: 16),
-                    label: const Text('编辑目标'),
+                    icon: const Icon(LucideIcons.edit2, size: 14),
+                    label: const Text('编辑目标',
+                        style: TextStyle(fontSize: 12)),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.primary,
                       side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () {
-                      // TODO: 查看详细进度
-                    },
-                    icon: const Icon(LucideIcons.trendingUp, size: 16),
-                    label: const Text('查看进度'),
+                    onPressed: onViewProgress,
+                    icon: const Icon(LucideIcons.trendingUp, size: 14),
+                    label: const Text('查看进度',
+                        style: TextStyle(fontSize: 12)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _getStatusColor(),
                       foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
                   ),
                 ),

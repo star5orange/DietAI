@@ -74,19 +74,22 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
 
   // 分析进度
   double _analysisProgress = 0.0;
-  List<String> _analysisSteps = [
-    '上传图片',
-    '创建记录',
-    '识别食物',
-    '提取营养',
-    '生成建议',
-    '保存数据'
-  ];
+  late List<String> _analysisSteps;
+  late bool _isTextAnalysis;
   int _currentStepIndex = 0;
+
+  /// 文字分析比图片分析少"上传图片"和"上传完成"两步，索引偏移-2
+  int _stepIndex(int imageBaseIndex) =>
+      _isTextAnalysis ? imageBaseIndex - 2 : imageBaseIndex;
 
   @override
   void initState() {
     super.initState();
+    // 根据是否有图片决定分析步骤
+    _isTextAnalysis = widget.imageFile == null && widget.foodRecord == null;
+    _analysisSteps = _isTextAnalysis
+        ? ['创建记录', '分析食物', '提取营养', '生成建议', '保存数据']
+        : ['上传图片', '创建记录', '识别食物', '提取营养', '生成建议', '保存数据'];
     _initializeAnimations();
     _initializeAnalysis();
   }
@@ -160,14 +163,14 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
               }
               _currentStep = 'record_created';
               _currentMessage = data['message'] ?? '记录创建成功';
-              _currentStepIndex = 2;
+              _currentStepIndex = _stepIndex(2);
               _analysisProgress = 0.48;
               _updateProgressAnimation();
               break;
             case 'analysis_started':
               _currentStep = 'analysis_started';
               _currentMessage = data['message'] ?? '开始AI分析...';
-              _currentStepIndex = 2;
+              _currentStepIndex = _stepIndex(2);
               _analysisProgress = 0.48;
               _updateProgressAnimation();
               break;
@@ -180,14 +183,14 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
               _parseAnalysisDataFromResponse(data);
               _currentStep = 'analysis_complete';
               _currentMessage = '分析完成';
-              _currentStepIndex = 4;
+              _currentStepIndex = _stepIndex(4);
               _analysisProgress = 0.85;
               _updateProgressAnimation();
               break;
             case 'nutrition_saved':
               _currentStep = 'nutrition_saved';
               _currentMessage = data['message'] ?? '营养数据保存完成';
-              _currentStepIndex = 5;
+              _currentStepIndex = _stepIndex(5);
               _analysisProgress = 1.0;
               _updateProgressAnimation();
               break;
@@ -195,6 +198,10 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
               _currentStep = 'completed';
               _currentMessage = '分析完成';
               _analysisProgress = 1.0;
+              // 用后端返回的最终食物名更新（兜底确保不空白）
+              if (data['food_name'] != null && data['food_name'].toString().isNotEmpty) {
+                _foodName = data['food_name'].toString();
+              }
               _updateProgressAnimation();
               setState(() {
                 _isLoading = false;
@@ -232,23 +239,25 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
   void _updateAnalysisProgress(String step) {
     switch (step) {
       case 'state_init':
-        _currentStepIndex = 2;
+        _currentStepIndex = _stepIndex(2);
         _analysisProgress = 0.50;
         break;
       case 'analyze_image':
-        _currentStepIndex = 3;
+      case 'analyze_text':
+      case 'text_analyzed':
+        _currentStepIndex = _stepIndex(3);
         _analysisProgress = 0.65;
         break;
       case 'extract_nutrition':
-        _currentStepIndex = 3;
+        _currentStepIndex = _stepIndex(3);
         _analysisProgress = 0.75;
         break;
       case 'generate_advice':
-        _currentStepIndex = 4;
+        _currentStepIndex = _stepIndex(4);
         _analysisProgress = 0.80;
         break;
       case 'format_response':
-        _currentStepIndex = 4;
+        _currentStepIndex = _stepIndex(4);
         _analysisProgress = 0.85;
         break;
     }
@@ -265,6 +274,9 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
         return '初始化AI分析系统...';
       case 'analyze_image':
         return '🔍 AI正在识别食物种类...';
+      case 'analyze_text':
+      case 'text_analyzed':
+        return '📝 AI正在分析食物描述...';
       case 'extract_nutrition':
         return '🧮 计算营养成分和卡路里...';
       case 'generate_advice':
@@ -300,11 +312,19 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
         };
       }
 
+      final foodItems = nutritionFacts['food_items'] as List? ?? [];
       _nutritionFacts = {
         'total_calories': _totalCalories,
         'macronutrients': _macronutrients,
-        'food_items': nutritionFacts['food_items'] ?? [],
+        'food_items': foodItems,
       };
+
+      // 用AI识别的食物名称更新标题
+      if (foodItems.isNotEmpty) {
+        _foodName = foodItems.length == 1
+            ? foodItems[0].toString()
+            : foodItems.take(3).join('、');
+      }
     }
 
     if (data['recommendations'] != null) {
@@ -473,21 +493,34 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
       _imageDescription = analysisResult.imageDescription;
       _shortComment = analysisResult.shortComment ?? '';
 
-      // 解析营养成分
-      _totalCalories = analysisResult.nutritionFacts.totalCalories;
-      _macronutrients = {
-        'protein': analysisResult.nutritionFacts.macronutrients.protein,
-        'fat': analysisResult.nutritionFacts.macronutrients.fat,
-        'carbohydrates':
-            analysisResult.nutritionFacts.macronutrients.carbohydrates,
-      };
-
-      // 转换营养成分为Map格式以兼容现有UI
-      _nutritionFacts = {
-        'total_calories': _totalCalories,
-        'macronutrients': _macronutrients,
-        'food_items': analysisResult.nutritionFacts.foodItems ?? [],
-      };
+      // 解析营养成分（优先nutritionDetail，其次analysisResult.nutritionFacts）
+      if (analysisResult.nutritionFacts != null) {
+        final nf = analysisResult.nutritionFacts!;
+        _totalCalories = nf.totalCalories;
+        _macronutrients = {
+          'protein': nf.macronutrients.protein,
+          'fat': nf.macronutrients.fat,
+          'carbohydrates': nf.macronutrients.carbohydrates,
+        };
+        _nutritionFacts = {
+          'total_calories': _totalCalories,
+          'macronutrients': _macronutrients,
+          'food_items': nf.foodItems ?? [],
+        };
+      } else if (record.nutritionDetail != null) {
+        final nd = record.nutritionDetail!;
+        _totalCalories = nd.calories;
+        _macronutrients = {
+          'protein': nd.protein,
+          'fat': nd.fat,
+          'carbohydrates': nd.carbohydrates,
+        };
+        _nutritionFacts = {
+          'total_calories': _totalCalories,
+          'macronutrients': _macronutrients,
+          'food_items': [],
+        };
+      }
 
       // 转换推荐建议为Map格式以兼容现有UI
       _recommendations = {
@@ -629,8 +662,8 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                         borderRadius: BorderRadius.circular(50),
                       ),
                     ),
-                    child: const Text(
-                      '重新拍摄',
+                    child: Text(
+                      _isTextAnalysis ? '重试' : '重新拍摄',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -840,8 +873,12 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
       );
     }
 
-    // 默认占位符
-    return const Icon(LucideIcons.image, size: 60, color: Colors.grey);
+    // 文字分析显示文字描述图标
+    return Icon(
+      _isTextAnalysis ? LucideIcons.fileText : LucideIcons.image,
+      size: 60,
+      color: Colors.grey,
+    );
   }
 
   Widget _buildAnalysisProgressCard() {
@@ -1185,7 +1222,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          _isLoading ? '分析中...' : _foodName,
+          _isLoading ? '分析中...' : (_foodName.isNotEmpty ? _foodName : 'AI分析结果'),
           style: const TextStyle(
             color: Color(0xFF222222),
             fontSize: 18,
@@ -1284,7 +1321,7 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                 // 卡路里信息
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
                     color: const Color(0xFF2BAF74),
                     borderRadius: BorderRadius.circular(50),
@@ -1295,15 +1332,15 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                       const Icon(
                         LucideIcons.flame,
                         color: Colors.white,
-                        size: 20,
+                        size: 16,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       Text(
-                        '$actualCalories 卡路里',
+                        '$actualCalories 千卡',
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
-                          fontSize: 16,
+                          fontSize: 14,
                         ),
                       ),
                     ],
@@ -1316,12 +1353,12 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                     const Text(
                       '份量',
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w500,
                         color: Color(0xFF222222),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 8),
                     Container(
                       decoration: BoxDecoration(
                         color: const Color(0xFFE6FAF0),
@@ -1335,16 +1372,19 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                                     setState(() => _servingCount--);
                                   }
                                 : null,
-                            icon: const Icon(LucideIcons.minus, size: 16),
+                            icon: const Icon(LucideIcons.minus, size: 14),
                             color: const Color(0xFF2BAF74),
+                            constraints: const BoxConstraints(
+                                minWidth: 32, minHeight: 32),
+                            padding: EdgeInsets.zero,
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
+                                horizontal: 10, vertical: 8),
                             child: Text(
                               '$_servingCount',
                               style: const TextStyle(
-                                fontSize: 16,
+                                fontSize: 14,
                                 fontWeight: FontWeight.w600,
                                 color: Color(0xFF222222),
                               ),
@@ -1354,8 +1394,11 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                             onPressed: () {
                               setState(() => _servingCount++);
                             },
-                            icon: const Icon(LucideIcons.plus, size: 16),
+                            icon: const Icon(LucideIcons.plus, size: 14),
                             color: const Color(0xFF2BAF74),
+                            constraints: const BoxConstraints(
+                                minWidth: 32, minHeight: 32),
+                            padding: EdgeInsets.zero,
                           ),
                         ],
                       ),
@@ -1934,8 +1977,9 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                       await _updateRecordCost();
                     }
 
-                    Navigator.pop(context);
-                    Navigator.pop(context); // 返回到主页
+                    if (mounted) {
+                      Navigator.of(context).pop(true);
+                    }
                   },
             style: ElevatedButton.styleFrom(
               backgroundColor: _isLoading

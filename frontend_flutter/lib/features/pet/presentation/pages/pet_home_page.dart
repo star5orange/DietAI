@@ -67,10 +67,6 @@ class _PetHomePageState extends ConsumerState<PetHomePage> {
             _buildStatusPanel(petState),
             const SizedBox(height: 24),
 
-            // 快速操作按钮
-            _buildQuickActions(),
-            const SizedBox(height: 24),
-
             // 导航到详情页按钮
             _buildNavigationButton(),
           ],
@@ -324,89 +320,6 @@ class _PetHomePageState extends ConsumerState<PetHomePage> {
     );
   }
 
-  /// 快速操作按钮
-  Widget _buildQuickActions() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundCard,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppColors.lightShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(LucideIcons.gamepad2,
-                  color: AppColors.primary, size: 18),
-              const SizedBox(width: 8),
-              Text('快速互动', style: AppTextStyles.h6),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildActionButton('喂食', LucideIcons.cookie, AppColors.warning,
-                  () {
-                _doInteract('feed', '喂食成功！+10经验值', 10);
-              }),
-              _buildActionButton('玩耍', LucideIcons.gamepad2, AppColors.info,
-                  () {
-                _doInteract('play', '玩耍成功！+8经验值', 8);
-              }),
-              _buildActionButton(
-                  '抚摸', LucideIcons.heartHandshake, AppColors.success, () {
-                _doInteract('pet', '抚摸成功！+5经验值', 5);
-              }),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _doInteract(String action, String message, int exp) {
-    _petService.petInteract(action: action);
-    ref.read(petProvider.notifier).addExp(exp);
-    _showSnackBar(message);
-  }
-
-  Widget _buildActionButton(
-    String label,
-    IconData icon,
-    Color color,
-    VoidCallback onTap,
-  ) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 80,
-        height: 80,
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 32),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: AppTextStyles.bodySmall.copyWith(
-                color: color,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   /// 导航到详情页按钮
   Widget _buildNavigationButton() {
     return GestureDetector(
@@ -440,21 +353,4 @@ class _PetHomePageState extends ConsumerState<PetHomePage> {
     );
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(LucideIcons.sparkles, color: Colors.white),
-            const SizedBox(width: 12),
-            Text(message),
-          ],
-        ),
-        backgroundColor: AppColors.success,
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
 }

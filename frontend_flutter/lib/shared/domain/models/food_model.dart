@@ -129,14 +129,14 @@ class AgentAnalysisData {
   @JsonKey(name: 'image_description')
   final String imageDescription;
   @JsonKey(name: 'nutrition_facts')
-  final NutritionFacts nutritionFacts;
+  final NutritionFacts? nutritionFacts;
   final Recommendations recommendations;
   @JsonKey(name: 'short_comment')
   final String? shortComment;
 
   const AgentAnalysisData({
     required this.imageDescription,
-    required this.nutritionFacts,
+    this.nutritionFacts,
     required this.recommendations,
     this.shortComment,
   });
@@ -518,10 +518,13 @@ class PaginationInfo {
 class FoodRecordsResponse {
   final List<FoodRecord> records;
   final PaginationInfo pagination;
+  @JsonKey(name: 'summary')
+  final DailyNutritionSummary? summary;
 
   const FoodRecordsResponse({
     required this.records,
     required this.pagination,
+    this.summary,
   });
 
   factory FoodRecordsResponse.fromJson(Map<String, dynamic> json) =>

@@ -14,6 +14,7 @@ workflow = StateGraph(
 workflow.add_node("state_init", state_init)
 # 添加节点
 workflow.add_node("analyze_image", analyze_image)
+workflow.add_node("analyze_text", analyze_text)
 workflow.add_node("extract_nutrition", extract_nutrition_info)
 workflow.add_node("retrieve_nutrition_knowledge", retrieve_nutrition_knowledge)
 workflow.add_node("generate_advice", generate_nutrition_advice)
@@ -21,9 +22,19 @@ workflow.add_node("check_allergy", check_allergy_cross_contamination)
 workflow.add_node("format_response", format_final_response)
 workflow.add_node("generate_dependencies", generate_dependencies)
 
+# 定义路由函数：如果有文字描述且无图片，走文字分析；否则走图片分析
+def route_after_init(state: AgentState) -> str:
+    if state.get("text_description") and not state.get("image_data"):
+        return "analyze_text"
+    return "analyze_image"
+
 # 定义工作流
 workflow.set_entry_point("state_init")
-workflow.add_edge("state_init", "analyze_image")
+workflow.add_conditional_edges("state_init", route_after_init, {
+    "analyze_text": "analyze_text",
+    "analyze_image": "analyze_image",
+})
+workflow.add_edge("analyze_text", "extract_nutrition")
 workflow.add_edge("analyze_image", "extract_nutrition")
 workflow.add_edge("extract_nutrition", "retrieve_nutrition_knowledge")
 workflow.add_edge("retrieve_nutrition_knowledge", "generate_dependencies")

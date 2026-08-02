@@ -11,7 +11,7 @@ class ConversationSession(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    session_type = Column(Integer, default=1)  # 1:营养咨询 2:健康评估 3:食物识别 4:运动建议
+    session_type = Column(Integer, default=1)  # 1:营养咨询 2:健康评估 3:食物识别 4:运动建议 5:养生咨询 6:宠物健康咨询
     langgraph_thread_id = Column(String(100), nullable=True)  # LangGraph线程ID
     title = Column(String(200), nullable=True)
     status = Column(Integer, default=1)  # 1:进行中 2:已结束 3:已暂停

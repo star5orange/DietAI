@@ -10,8 +10,9 @@ import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/presentation/widgets/food_image_preview.dart';
 import '../../../home/presentation/widgets/food_record_modal.dart';
 import '../../../camera/presentation/pages/camera_page.dart';
-import '../../../home/presentation/pages/meal_selection_page.dart';
 import '../../../home/presentation/pages/text_describe_page.dart';
+import '../../../saved_meals/presentation/pages/saved_meals_page.dart';
+import '../../../../shared/domain/models/saved_meal_model.dart';
 
 class HistoryPage extends ConsumerStatefulWidget {
   const HistoryPage({super.key});
@@ -130,6 +131,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     try {
       final dateString =
           '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+      // 先清除缓存，确保与首页数据同步
+      await _foodService.invalidateRecordsCache(dateString);
       print('📋 历史页面加载记录: date=$dateString');
       final result = await _foodService.getFoodRecordsByDay(dateString);
 
@@ -213,12 +216,6 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     color: _activeMealFilter != null ? AppColors.primary : null,
                   ),
                   onPressed: () => _showFilterSheet(),
-                ),
-                IconButton(
-                  icon: const Icon(LucideIcons.testTube),
-                  onPressed: () {
-                    Navigator.pushNamed(context, '/history/test');
-                  },
                 ),
               ],
             ),
@@ -523,16 +520,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         );
         break;
       case 'saved_meals':
-        Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (context) =>
-                    MealSelectionPage(recordMethod: method))).then((result) {
-          if (result != null) {
-            // TODO: 处理从常用餐食选择的记录
-            _loadRecords();
-          }
-        });
+        _navigateToSavedMeals(mealName, mealType, recordTime);
         break;
     }
   }
@@ -549,6 +537,94 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         return 4;
       default:
         return 4;
+    }
+  }
+
+  Future<void> _navigateToSavedMeals(String mealName, int mealType,
+      [String? recordTime]) async {
+    final meal =
+        await Navigator.of(context, rootNavigator: true).push<SavedMeal>(
+      MaterialPageRoute(builder: (_) => const SavedMealsPage()),
+    );
+    if (meal != null && mounted) {
+      _createFoodRecordFromSavedMeal(meal, mealName, mealType, recordTime);
+    }
+  }
+
+  Future<void> _createFoodRecordFromSavedMeal(
+      SavedMeal meal, String mealName, int mealType,
+      [String? recordTime]) async {
+    try {
+      final dateStr =
+          '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+
+      final record = FoodRecordCreate(
+        recordDate: dateStr,
+        recordTime: recordTime ?? DateTime.now().toIso8601String(),
+        mealType: mealType,
+        foodName: meal.mealName,
+        description: meal.description,
+        imageUrl: meal.imageUrl,
+        recordingMethod: 4,
+        cost: _pendingCostAmount,
+        sourceTag: _pendingCostSource,
+      );
+
+      final result = await _foodService.createFoodRecord(record);
+      if (result.success && result.data != null) {
+        if (meal.nutrition != null) {
+          try {
+            await _foodService.addNutritionDetail(
+              result.data!.id,
+              NutritionDetailCreate(
+                calories: meal.nutrition!.calories,
+                protein: meal.nutrition!.protein,
+                fat: meal.nutrition!.fat,
+                carbohydrates: meal.nutrition!.carbohydrates,
+                dietaryFiber: meal.nutrition!.dietaryFiber,
+                sugar: meal.nutrition!.sugar,
+                sodium: meal.nutrition!.sodium,
+                cholesterol: meal.nutrition!.cholesterol,
+                analysisMethod: 'saved_meal',
+              ),
+            );
+          } catch (_) {
+            // 营养详情添加失败不影响主流程
+          }
+        }
+
+        _pendingCostAmount = null;
+        _pendingCostSource = null;
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${meal.mealName} 已记录到$mealName'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        }
+        await _foodService.invalidateRecordsCache(dateStr);
+        _loadRecords();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('记录失败: ${result.message}'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('记录失败: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 
@@ -579,7 +655,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     }
 
     final List<Widget> sections = [];
-    final mealTypes = [1, 2, 3, 4]; // 早餐、午餐、晚餐、零食
+    final mealTypes = [1, 2, 3, 4]; // 早餐、午餐、晚餐、加餐
 
     for (final mealType in mealTypes) {
       if (mealGroups.containsKey(mealType)) {
@@ -627,9 +703,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   }
 
   Widget _buildFoodItemFromRecord(FoodRecord record) {
-    // 优先使用 analysisResult 中的卡路里数据，如果没有则使用 nutritionDetail
-    final calories = record.analysisResult?.nutritionFacts.totalCalories ??
-        record.nutritionDetail?.calories ??
+    // 优先使用 nutritionDetail（数据库真实营养数据），其次 analysisResult
+    final calories = record.nutritionDetail?.calories ??
+        record.analysisResult?.nutritionFacts?.totalCalories ??
         0.0;
     final shortComment = record.analysisResult?.shortComment ?? '';
     String time = '';
@@ -684,7 +760,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         children: [
           // 餐次标题
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
@@ -702,8 +778,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
             child: Row(
               children: [
                 Container(
-                  width: 16,
-                  height: 16,
+                  width: 10,
+                  height: 10,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [color, color.withValues(alpha: 0.7)],
@@ -720,10 +796,10 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     ],
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 10),
                 Text(
                   title,
-                  style: AppTextStyles.h5.copyWith(
+                  style: AppTextStyles.bodyLarge.copyWith(
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
                   ),
@@ -732,15 +808,15 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                 GestureDetector(
                   onTap: () => _showFoodRecordModal(title),
                   child: Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Icon(
                       LucideIcons.plus,
                       color: color,
-                      size: 18,
+                      size: 16,
                     ),
                   ),
                 ),
@@ -1317,8 +1393,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         final confidence = (data['confidence_score'] as num) * 100;
         nutritionRows.add(_buildDetailRow('置信度', '${confidence.round()}%'));
       }
-    } else if (analysisResult != null) {
-      final nutrition = analysisResult.nutritionFacts;
+    } else if (analysisResult != null && analysisResult.nutritionFacts != null) {
+      final nutrition = analysisResult.nutritionFacts!;
       final macros = nutrition.macronutrients;
       final vitamins = nutrition.vitaminsMinerals;
 
@@ -1654,16 +1730,17 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     double fat = 0;
     double carbs = 0;
 
-    if (analysisResult != null) {
-      calories = analysisResult.nutritionFacts.totalCalories;
-      protein = analysisResult.nutritionFacts.macronutrients.protein;
-      fat = analysisResult.nutritionFacts.macronutrients.fat;
-      carbs = analysisResult.nutritionFacts.macronutrients.carbohydrates;
-    } else if (nutritionDetail != null) {
+    // 优先使用 nutritionDetail（数据库真实营养数据），其次 analysisResult.nutritionFacts
+    if (nutritionDetail != null) {
       calories = nutritionDetail.calories;
       protein = nutritionDetail.protein;
       fat = nutritionDetail.fat;
       carbs = nutritionDetail.carbohydrates;
+    } else if (analysisResult != null && analysisResult.nutritionFacts != null) {
+      calories = analysisResult.nutritionFacts!.totalCalories;
+      protein = analysisResult.nutritionFacts!.macronutrients.protein;
+      fat = analysisResult.nutritionFacts!.macronutrients.fat;
+      carbs = analysisResult.nutritionFacts!.macronutrients.carbohydrates;
     }
 
     return Row(

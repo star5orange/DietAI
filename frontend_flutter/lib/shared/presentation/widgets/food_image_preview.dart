@@ -40,11 +40,22 @@ class _FoodImagePreviewState extends State<FoodImagePreview> {
   String? _imageBase64;
   String? _contentType;
   String? _errorMessage;
+  int _retryCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadImageData();
+  }
+
+  @override
+  void didUpdateWidget(FoodImagePreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 父组件刷新时，如果图片还未加载成功且未在加载中，自动重试加载
+    if (_imageBase64 == null && !_isLoading) {
+      _retryCount = 0; // 重置重试计数
+      _loadImageData();
+    }
   }
 
   /// 加载图片数据（带缓存）
@@ -58,7 +69,7 @@ class _FoodImagePreviewState extends State<FoodImagePreview> {
     }
 
     final cacheKey = 'food_image_${widget.foodRecord.id}';
-    
+
     // 1. 检查图片字节缓存
     final cachedImageBytes = _cacheManager.getImageCache(cacheKey);
     if (cachedImageBytes != null) {
@@ -84,7 +95,8 @@ class _FoodImagePreviewState extends State<FoodImagePreview> {
       return;
     }
 
-    print('🔄 开始加载图片数据：记录ID=${widget.foodRecord.id}, URL=${widget.foodRecord.imageUrl}');
+    print(
+        '🔄 开始加载图片数据：记录ID=${widget.foodRecord.id}, URL=${widget.foodRecord.imageUrl}');
 
     setState(() {
       _isLoading = true;
@@ -92,19 +104,23 @@ class _FoodImagePreviewState extends State<FoodImagePreview> {
     });
 
     try {
-      final response = await _foodService.getFoodImageData(widget.foodRecord.id);
-      
+      final response =
+          await _foodService.getFoodImageData(widget.foodRecord.id);
+
       if (response.success && response.data != null) {
         final data = response.data!;
         final imageBase64 = data['image_base64'] as String?;
         final contentType = data['content_type'] as String?;
-        
+
         print('✅ 图片数据加载成功：记录ID=${widget.foodRecord.id}');
-        print('📊 图片信息：contentType=$contentType, base64长度=${imageBase64?.length ?? 0}');
-        
+        print(
+            '📊 图片信息：contentType=$contentType, base64长度=${imageBase64?.length ?? 0}');
+
         setState(() {
           _imageBase64 = imageBase64;
-          _contentType = contentType;
+          // 后端未返回 content_type，有 base64 数据时默认为 image/jpeg
+          _contentType =
+              contentType ?? (imageBase64 != null ? 'image/jpeg' : null);
           _isLoading = false;
         });
       } else {
@@ -137,11 +153,11 @@ class _FoodImagePreviewState extends State<FoodImagePreview> {
     }
 
     print('🔍 显示全屏预览：图片大小=${_imageBase64!.length} 字符');
-    
+
     try {
       final imageBytes = base64Decode(_imageBase64!);
       print('✅ 图片解码成功：字节大小=${imageBytes.length}');
-      
+
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => Scaffold(
@@ -346,9 +362,8 @@ class FoodImageGridPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final recordsWithImages = foodRecords
-        .where((record) => record.imageUrl != null)
-        .toList();
+    final recordsWithImages =
+        foodRecords.where((record) => record.imageUrl != null).toList();
 
     if (recordsWithImages.isEmpty) {
       return const Center(
@@ -381,4 +396,4 @@ class FoodImageGridPreview extends StatelessWidget {
       },
     );
   }
-} 
+}

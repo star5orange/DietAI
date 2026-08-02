@@ -3,6 +3,16 @@ from functools import lru_cache
 from typing import Optional, List
 from pydantic import Field, validator
 from pydantic_settings import BaseSettings
+from dotenv import load_dotenv
+
+# 先于 Pydantic Settings 加载 .env，确保环境变量可用
+_project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_env_file = os.path.join(_project_root, ".env")
+_env_dev = os.path.join(_project_root, ".env.dev")
+if os.path.exists(_env_dev):
+    load_dotenv(_env_dev, override=True, encoding="utf-8")
+if os.path.exists(_env_file):
+    load_dotenv(_env_file, override=False, encoding="utf-8")
 
 
 class Settings(BaseSettings):
@@ -50,6 +60,10 @@ class Settings(BaseSettings):
     # DashScope AI配置 (通义万相)
     dashscope_api_key: str = Field(default="", description="DashScope API密钥")
     dashscope_image_model: str = Field(default="wanx-v1", description="DashScope图像生成模型")
+
+    # 火山引擎配置 (豆包 Seedream 图像生成)
+    volc_ark_api_key: str = Field(default="", description="火山引擎Ark API密钥")
+    ark_image_model: str = Field(default="doubao-seedream-4-0-250828", description="Seedream图像生成模型ID")
 
     # JWT配置
     jwt_secret_key: str = Field(
@@ -157,6 +171,18 @@ class Settings(BaseSettings):
     ai_service_enabled: bool = Field(default=False, description="是否启用AI服务")
     ai_service_url: str = Field(default="http://127.0.0.1:2024", description="AI服务URL")
     ai_service_timeout: int = Field(default=30, description="AI服务超时时间(秒)")
+
+    # DashScope AI配置（通义万相）
+    dashscope_api_key: str = Field(default="", description="DashScope API密钥")
+    dashscope_image_model: str = Field(default="wanx-v1", description="DashScope图像生成模型")
+
+    # 火山引擎配置 (豆包 Seedream 图像生成)
+    volc_ark_api_key: str = Field(default="", description="火山引擎Ark API密钥")
+    ark_image_model: str = Field(default="doubao-seedream-4-0-250828", description="Seedream图像生成模型ID")
+
+    # 火山引擎语音识别配置 (豆包 Seed-ASR)
+    volc_asr_api_key: str = Field(default="", description="火山引擎语音识别API密钥")
+    volc_asr_resource_id: str = Field(default="volc.seedasr.auc", description="语音识别资源ID(2.0版)")
 
     # 健康检查配置
     health_check_enabled: bool = Field(default=True, description="是否启用健康检查")

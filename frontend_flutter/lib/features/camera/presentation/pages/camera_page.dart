@@ -148,7 +148,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         imageFile: imageFile,
         recordDate: recordDate,
         mealType: widget.mealType ?? 1,
-        foodName: widget.mealName ?? '未知食物',
+        foodName: '',
         description: '通过AI扫描识别',
         recordTime: widget.recordTime,
         cost: widget.costAmount,
@@ -181,7 +181,12 @@ class _CameraPageState extends ConsumerState<CameraPage> {
           imageFile: imageFile,
         ),
       ),
-    );
+    ).then((result) {
+      // 分析页返回后，自动关闭相机页回到首页
+      if (result == true && mounted) {
+        Navigator.of(context).pop(true);
+      }
+    });
   }
 
   void _navigateToAnalysisPage(dynamic foodRecord) {
@@ -190,7 +195,11 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       MaterialPageRoute(
         builder: (context) => FoodAnalysisPage(foodRecord: foodRecord),
       ),
-    );
+    ).then((result) {
+      if (result == true && mounted) {
+        Navigator.of(context).pop(true);
+      }
+    });
   }
 
   @override
@@ -372,7 +381,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
             left: 0,
             right: 0,
             child: Container(
-              height: 200,
+              height: 130,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
@@ -386,18 +395,6 @@ class _CameraPageState extends ConsumerState<CameraPage> {
               child: SafeArea(
                 child: Column(
                   children: [
-                    const SizedBox(height: 20),
-
-                    // AI扫描器按钮
-                    _buildBottomButton(
-                      LucideIcons.scanLine,
-                      'AI扫描器',
-                      () => _takePicture(),
-                      isActive: true,
-                    ),
-
-                    const SizedBox(height: 30),
-
                     // 拍照和相册按钮
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -467,43 +464,6 @@ class _CameraPageState extends ConsumerState<CameraPage> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildBottomButton(
-    IconData icon,
-    String label,
-    VoidCallback onTap, {
-    required bool isActive,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        decoration: BoxDecoration(
-          color: isActive ? Colors.white : Colors.white.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(25),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: isActive ? Colors.black : Colors.white,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: isActive ? Colors.black : Colors.white,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

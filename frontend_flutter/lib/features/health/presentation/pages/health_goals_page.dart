@@ -8,6 +8,7 @@ import '../providers/health_goals_provider.dart';
 import '../widgets/health_goal_card.dart';
 import '../widgets/create_goal_modal.dart';
 import '../widgets/goal_progress_card.dart';
+import 'goal_progress_detail_page.dart';
 
 class HealthGoalsPage extends ConsumerStatefulWidget {
   const HealthGoalsPage({super.key});
@@ -190,6 +191,18 @@ class _HealthGoalsPageState extends ConsumerState<HealthGoalsPage> {
                           goal: goal,
                           onEdit: () => _showEditGoalModal(goal),
                           onDelete: () => _showDeleteConfirmation(goal),
+                          onViewProgress: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => GoalProgressDetailPage(
+                                  goalId: goal.id,
+                                  goalTypeText: goal.goalTypeText,
+                                  targetWeight: goal.targetWeight,
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ))
                   .toList(),

@@ -7,7 +7,7 @@ part 'user_model.g.dart';
 class User {
   final int id;
   final String username;
-  final String email;
+  final String? email;
   final String? phone;
   @JsonKey(name: 'avatar_url')
   final String? avatarUrl;
@@ -20,7 +20,7 @@ class User {
   const User({
     required this.id,
     required this.username,
-    required this.email,
+    this.email,
     this.phone,
     this.avatarUrl,
     required this.status,
@@ -834,4 +834,55 @@ class OnboardingStatus {
   factory OnboardingStatus.fromJson(Map<String, dynamic> json) =>
       _$OnboardingStatusFromJson(json);
   Map<String, dynamic> toJson() => _$OnboardingStatusToJson(this);
+}
+
+// ==================== 密码重置相关模型 ====================
+
+/// 忘记密码请求模型
+@JsonSerializable()
+class ForgotPasswordRequest {
+  final String phone;
+
+  const ForgotPasswordRequest({
+    required this.phone,
+  });
+
+  factory ForgotPasswordRequest.fromJson(Map<String, dynamic> json) =>
+      _$ForgotPasswordRequestFromJson(json);
+  Map<String, dynamic> toJson() => _$ForgotPasswordRequestToJson(this);
+}
+
+/// 验证重置验证码请求模型
+@JsonSerializable()
+class VerifyResetCodeRequest {
+  final String phone;
+  final String code;
+
+  const VerifyResetCodeRequest({
+    required this.phone,
+    required this.code,
+  });
+
+  factory VerifyResetCodeRequest.fromJson(Map<String, dynamic> json) =>
+      _$VerifyResetCodeRequestFromJson(json);
+  Map<String, dynamic> toJson() => _$VerifyResetCodeRequestToJson(this);
+}
+
+/// 重置密码请求模型
+@JsonSerializable()
+class ResetPasswordRequest {
+  final String phone;
+  final String code;
+  @JsonKey(name: 'new_password')
+  final String newPassword;
+
+  const ResetPasswordRequest({
+    required this.phone,
+    required this.code,
+    required this.newPassword,
+  });
+
+  factory ResetPasswordRequest.fromJson(Map<String, dynamic> json) =>
+      _$ResetPasswordRequestFromJson(json);
+  Map<String, dynamic> toJson() => _$ResetPasswordRequestToJson(this);
 }

@@ -101,7 +101,8 @@ def render_shared_memory(data: SharedMemoryData) -> str:
         severity_map = {1: "轻度", 2: "中度", 3: "重度"}
         for allergy in data.allergies:
             severity = severity_map.get(allergy.severity, "未知")
-            lines.append(f"- {allergy.name} (严重度: {allergy.severity}-{severity})")
+            reaction = f", 反应: {allergy.reaction}" if allergy.reaction else ""
+            lines.append(f"- {allergy.name} (严重度: {allergy.severity}-{severity}{reaction})")
     else:
         lines.append("- 无已知过敏原")
     lines.append("")
@@ -111,7 +112,8 @@ def render_shared_memory(data: SharedMemoryData) -> str:
     if data.diseases:
         for disease in data.diseases:
             icd = f" (ICD-10: {disease.icd_code})" if disease.icd_code else ""
-            lines.append(f"- {disease.name}{icd}, {disease.status}")
+            notes = f", 备注: {disease.notes}" if disease.notes else ""
+            lines.append(f"- {disease.name}{icd}, {disease.status}{notes}")
     else:
         lines.append("- 无已知疾病")
     lines.append("")
@@ -237,7 +239,7 @@ def render_goal_tracking(data: GoalTrackingData) -> str:
     lines.append("### 每日营养配额")
     if data.daily_targets:
         targets = data.daily_targets
-        adj_str = f"赤字 {abs(targets.calorie_adjustment)}" if targets.calorie_adjustment < 0 else f"盈余 {targets.calorie_adjustment}" if targets.calorie_adjustment > 0 else "无调整"
+        adj_str = f"系数 {targets.calorie_multiplier:.2f}" if targets.calorie_multiplier != 1.0 else "基准"
         lines.append(f"- 卡路里预算: {targets.calories} kcal ({adj_str})")
         lines.append(f"- 蛋白质: {targets.protein}g")
         lines.append(f"- 碳水: {targets.carbs}g")

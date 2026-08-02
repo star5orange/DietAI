@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'core/themes/app_theme.dart';
 import 'core/router/app_router.dart';
@@ -10,7 +9,7 @@ import 'core/constants/app_constants.dart';
 import 'core/constants/api_config.dart';
 import 'core/services/api_service.dart';
 import 'core/services/notification_service.dart';
-import 'core/services/firebase_service.dart';
+// import 'core/services/firebase_service.dart';  // 本地调试暂时注释
 import 'services/notification_response_service.dart';
 
 void main() async {
@@ -23,12 +22,12 @@ void main() async {
 
   await NotificationService().initialize();
 
-  // 初始化 Firebase FCM 推送（需要 Firebase 项目配置）
-  try {
-    await FirebaseService().initialize();
-  } catch (e) {
-    debugPrint('Firebase 初始化失败（如未配置 Firebase 项目可忽略）: $e');
-  }
+  // 初始化 Firebase FCM 推送 - 本地调试暂时注释
+  // try {
+  //   await FirebaseService().initialize();
+  // } catch (e) {
+  //   debugPrint('Firebase 初始化失败（如未配置 Firebase 项目可忽略）: $e');
+  // }
 
   // 设置通知点击回调：记录提醒响应
   NotificationService.onNotificationTapped = _handleNotificationTap;
@@ -66,7 +65,7 @@ class DietAIApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.light,
+      themeMode: ThemeMode.system,
       locale: const Locale('zh', 'CN'),
       supportedLocales: const [
         Locale('zh', 'CN'),

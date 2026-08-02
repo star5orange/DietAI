@@ -7,7 +7,6 @@ import '../../../../core/themes/app_text_styles.dart';
 import '../../../../shared/presentation/widgets/app_button.dart';
 import '../../../../shared/presentation/widgets/app_input.dart';
 import '../providers/auth_provider.dart';
-import '../../../onboarding/presentation/providers/onboarding_provider.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});
@@ -56,23 +55,10 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
 
       if (mounted) {
         if (success) {
-          print('✅ 注册成功，直接跳转到引导流程...');
+          print('✅ 注册成功，立即跳转到引导页...');
           
-          // 新用户直接跳转到引导流程，跳过API检查（临时解决方案）
-          print('✅ 新用户，跳转到引导流程');
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('注册成功！让我们设置您的个人资料'),
-              backgroundColor: AppColors.primary,
-            ),
-          );
-          
-          // 等待短暂的时间让用户看到消息
-          await Future.delayed(const Duration(milliseconds: 1000));
-          
-          if (mounted) {
-            context.go('/onboarding');
-          }
+          // 立即导航，不等路由守卫介入（路由守卫在下一帧才会触发）
+          context.go('/onboarding');
         } else {
           print('❌ 注册失败');
           ScaffoldMessenger.of(context).showSnackBar(
@@ -152,11 +138,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
               ),
             ],
           ),
-          child: const Center(
-            child: Text(
-              '🍳',
-              style: TextStyle(fontSize: 32),
-            ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Image.asset('assets/images/logo_welcome.png'),
           ),
         ),
         
@@ -206,37 +190,37 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
             },
           ),
           const SizedBox(height: 16),
-          
-          // 邮箱输入框
+
+          // 手机号输入框（必填）
           AppInput(
-            controller: _emailController,
-            label: '邮箱',
-            placeholder: '请输入您的邮箱',
-            prefixIcon: Icons.email_outlined,
-            type: AppInputType.email,
+            controller: _phoneController,
+            label: '手机号',
+            placeholder: '请输入手机号',
+            prefixIcon: Icons.phone_outlined,
+            type: AppInputType.number,
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
-                return '请输入邮箱';
+                return '请输入手机号';
               }
-              if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value.trim())) {
-                return '请输入有效的邮箱地址';
+              if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(value.trim())) {
+                return '请输入有效的手机号';
               }
               return null;
             },
           ),
           const SizedBox(height: 16),
-          
-          // 手机号输入框（可选）
+
+          // 邮箱输入框（可选）
           AppInput(
-            controller: _phoneController,
-            label: '手机号（可选）',
-            placeholder: '请输入手机号',
-            prefixIcon: Icons.phone_outlined,
-            type: AppInputType.number,
+            controller: _emailController,
+            label: '邮箱（可选）',
+            placeholder: '请输入邮箱（选填）',
+            prefixIcon: Icons.email_outlined,
+            type: AppInputType.email,
             validator: (value) {
               if (value != null && value.trim().isNotEmpty) {
-                if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(value.trim())) {
-                  return '请输入有效的手机号';
+                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value.trim())) {
+                  return '请输入有效的邮箱地址';
                 }
               }
               return null;

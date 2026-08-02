@@ -237,7 +237,7 @@ class SyncService:
                 protein=targets_dict["protein"],
                 carbs=targets_dict["carbs"],
                 fat=targets_dict["fat"],
-                calorie_adjustment=targets_dict["calorie_adjustment"]
+                calorie_multiplier=targets_dict["calorie_multiplier"]
             )
 
             # Get weight progress

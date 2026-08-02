@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 from typing import List, Optional
@@ -8,25 +8,48 @@ import json
 from langgraph_sdk import get_client
 from fastapi.responses import StreamingResponse, Response
 
-from shared.models.database import get_db
+from shared.models.database import get_db, SessionLocal
 from shared.models.schemas import (
     BaseResponse, FoodRecordCreate, FoodRecordResponse,
     NutritionDetailCreate, NutritionDetailResponse,
     DailyNutritionSummaryResponse, DateRangeParams,
     PaginationParams, FileUploadResponse, AgentAnalysisData, NutritionFacts, Recommendations
 )
-from shared.utils.auth import get_current_user
+from shared.utils.auth import get_current_user, AuthService
 from shared.models.user_models import User
 from shared.models.food_models import FoodRecord, NutritionDetail, DailyNutritionSummary, FoodDatabase
 from shared.config.redis_config import cache_service
 from shared.config.minio_config import minio_client
 from shared.config.settings import get_settings
-from fastapi.responses import StreamingResponse
 
 from agent.common_utils.configuration import get_agent_model_config
 from shared.utils.model import decimal_to_float
 
 settings = get_settings()
+
+
+def _sanitize_analysis_result(result):
+    """清理 analysis_result 中的 null 值，防止前端 JSON 解析崩溃
+    注意：不补 nutrition_facts 默认值（避免覆盖 nutrition_detail 真实数据）"""
+    if not isinstance(result, dict):
+        return None
+    clean = dict(result)
+    for key in ("short_comment", "image_description"):
+        if clean.get(key) is None:
+            clean[key] = ""
+    if clean.get("recommendations") is None:
+        clean["recommendations"] = {}
+    if clean.get("food_items") is None:
+        clean["food_items"] = []
+
+    # 处理 recommendations 子字段为 null 的情况
+    rec = clean.get("recommendations")
+    if isinstance(rec, dict):
+        for sub_key in ("recommendations", "dietary_tips", "warnings", "alternative_foods", "action_items"):
+            if rec.get(sub_key) is None:
+                rec[sub_key] = []
+
+    return clean
 
 # 食物营养成分数据库（每100g）
 # 从前端 _foodNutritionDB 迁移至后端统一管理
@@ -118,16 +141,14 @@ router = APIRouter(prefix="/foods", tags=["食物记录"])
 
 async def generate_sse_stream(
         food_data: FoodRecordCreate,
-        current_user: User,
-        db: Session
+        user_id: int
 , record_data=None):
+    """SSE 流式生成器 — 自行管理 db session，不依赖 FastAPI DI"""
+    db = SessionLocal()
     try:
-        # 1. 首先发送创建记录的状态
-        yield f"data: {json.dumps({'type': 'record_created', 'data': {'status': 'creating', 'message': '正在创建食物记录...'}, 'success': True}, ensure_ascii=False)}\n\n"
-
         # 创建食物记录
         food_record = FoodRecord(
-            user_id=current_user.id,
+            user_id=user_id,
             record_date=food_data.record_date,
             record_time=food_data.record_time or datetime.now(),
             meal_type=food_data.meal_type,
@@ -145,12 +166,12 @@ async def generate_sse_stream(
         db.refresh(food_record)
 
         # 如果有图片URL，使用流式Agent分析（在下方处理）
-        if not food_data.image_url:
+        if not food_data.image_url and not food_data.description:
             # 清除相关缓存
-            cache_key = f"nutrition:daily:{current_user.id}:{food_data.record_date}"
+            cache_key = f"nutrition:daily:{user_id}:{food_data.record_date}"
             cache_service.redis.delete(cache_key)
 
-        # 构建响应数据
+        # 构建响应数据（直接返回完整数据）
         response_data = {
             "id": food_record.id,
             "user_id": food_record.user_id,
@@ -167,42 +188,69 @@ async def generate_sse_stream(
             "created_at": food_record.created_at.isoformat(),
         }
 
+        # 直接返回完整数据（移除中间状态）
         yield f"data: {json.dumps({'type': 'record_created', 'data': {'record': response_data, 'status': 'created', 'message': '食物记录创建成功'}, 'success': True}, ensure_ascii=False)}\n\n"
 
-        # 3. 如果有图片URL，则使用Agent进行分析
-        if food_data.image_url:
+        # 3. 如果有图片URL或文字描述，则使用Agent进行分析
+        if food_data.image_url or food_data.description:
             try:
                 # 设置分析状态为处理中
                 food_record.analysis_status = 2  # 分析中
                 db.commit()
 
-                yield f"data: {json.dumps({'type': 'analysis_started', 'data': {'status': 'analyzing', 'message': '开始分析图片...'}, 'success': True}, ensure_ascii=False)}\n\n"
+                is_text_analysis = not food_data.image_url and bool(food_data.description)
+                analysis_type = "文字" if is_text_analysis else "图片"
 
-                # 使用Agent分析图片（流式输出）
+                yield f"data: {json.dumps({'type': 'analysis_started', 'data': {'status': 'analyzing', 'message': f'开始分析{analysis_type}...'}, 'success': True}, ensure_ascii=False)}\n\n"
+
+                # 使用Agent分析（流式输出）
                 analysis_complete_data = None
-                print(f"[SSE] 开始调用Agent分析图片: {food_data.image_url}")
-                async for chunk in analyze_food_image_with_agent(food_data.image_url, current_user.id, db):
-                    chunk_type = chunk.get("type")
-                    print(f"[SSE] 收到Agent chunk: type={chunk_type}")
-                    if chunk_type == "analysis_progress":
-                        yield f"data: {json.dumps({'type': 'analysis_progress', 'data': chunk['data'], 'success': True}, ensure_ascii=False)}\n\n"
-                    elif chunk_type == "analysis_complete":
-                        analysis_complete_data = chunk["data"]
-                        # 确保数据可序列化（Pydantic对象转dict）
-                        serializable_data = {}
-                        for k, v in analysis_complete_data.items():
-                            if hasattr(v, 'model_dump'):
-                                serializable_data[k] = v.model_dump()
-                            elif hasattr(v, 'dict'):
-                                serializable_data[k] = v.dict()
-                            else:
-                                serializable_data[k] = v
-                        print(f"[SSE] Agent分析完成，数据: {list(serializable_data.keys())}")
-                        yield f"data: {json.dumps({'type': 'analysis_complete', 'data': serializable_data, 'success': True}, ensure_ascii=False)}\n\n"
-                    elif chunk_type == "error":
-                        print(f"[SSE] Agent返回错误: {chunk['data']}")
-                        yield f"data: {json.dumps({'type': 'error', 'data': chunk['data'], 'success': False}, ensure_ascii=False)}\n\n"
-                        break
+                print(f"[SSE] 开始调用Agent分析{food_data.image_url or food_data.description}")
+                if is_text_analysis:
+                    async for chunk in analyze_food_text_with_agent(food_data.description, user_id, db):
+                        chunk_type = chunk.get("type")
+                        print(f"[SSE] 收到Agent chunk: type={chunk_type}")
+                        if chunk_type == "analysis_progress":
+                            yield f"data: {json.dumps({'type': 'analysis_progress', 'data': chunk['data'], 'success': True}, ensure_ascii=False)}\n\n"
+                        elif chunk_type == "analysis_complete":
+                            analysis_complete_data = chunk["data"]
+                            serializable_data = {}
+                            for k, v in analysis_complete_data.items():
+                                if hasattr(v, 'model_dump'):
+                                    serializable_data[k] = v.model_dump()
+                                elif hasattr(v, 'dict'):
+                                    serializable_data[k] = v.dict()
+                                else:
+                                    serializable_data[k] = v
+                            print(f"[SSE] Agent文字分析完成，数据: {list(serializable_data.keys())}")
+                            yield f"data: {json.dumps({'type': 'analysis_complete', 'data': serializable_data, 'success': True}, ensure_ascii=False)}\n\n"
+                        elif chunk_type == "error":
+                            print(f"[SSE] Agent返回错误: {chunk['data']}")
+                            yield f"data: {json.dumps({'type': 'error', 'data': chunk['data'], 'success': False}, ensure_ascii=False)}\n\n"
+                            break
+                else:
+                    async for chunk in analyze_food_image_with_agent(food_data.image_url, user_id, db):
+                        chunk_type = chunk.get("type")
+                        print(f"[SSE] 收到Agent chunk: type={chunk_type}")
+                        if chunk_type == "analysis_progress":
+                            yield f"data: {json.dumps({'type': 'analysis_progress', 'data': chunk['data'], 'success': True}, ensure_ascii=False)}\n\n"
+                        elif chunk_type == "analysis_complete":
+                            analysis_complete_data = chunk["data"]
+                            # 确保数据可序列化（Pydantic对象转dict）
+                            serializable_data = {}
+                            for k, v in analysis_complete_data.items():
+                                if hasattr(v, 'model_dump'):
+                                    serializable_data[k] = v.model_dump()
+                                elif hasattr(v, 'dict'):
+                                    serializable_data[k] = v.dict()
+                                else:
+                                    serializable_data[k] = v
+                            print(f"[SSE] Agent分析完成，数据: {list(serializable_data.keys())}")
+                            yield f"data: {json.dumps({'type': 'analysis_complete', 'data': serializable_data, 'success': True}, ensure_ascii=False)}\n\n"
+                        elif chunk_type == "error":
+                            print(f"[SSE] Agent返回错误: {chunk['data']}")
+                            yield f"data: {json.dumps({'type': 'error', 'data': chunk['data'], 'success': False}, ensure_ascii=False)}\n\n"
+                            break
 
                 print(f"[SSE] Agent分析结束, analysis_complete_data={'有数据' if analysis_complete_data else 'None'}")
 
@@ -215,6 +263,21 @@ async def generate_sse_stream(
                             nf_data = nf_data.model_dump()
                         elif hasattr(nf_data, 'dict'):
                             nf_data = nf_data.dict()
+
+                        # ⚠️ 优先用AI识别结果更新食物名称（放在最前面，确保不被后续异常跳过）
+                        food_items = nf_data.get("food_items") or []
+                        if food_items:
+                            food_record.food_name = food_items[0] if len(food_items) == 1 else "、".join(food_items[:3])
+                            db.commit()  # 先提交食物名称更新
+
+                        # 持久化AI分析结果
+                        food_record.analysis_result = {
+                            "short_comment": analysis_complete_data.get("short_comment") or "",
+                            "image_description": analysis_complete_data.get("image_description") or "",
+                            "food_items": food_items,
+                            "recommendations": analysis_complete_data.get("recommendations") or {},
+                        }
+
                         nutrition_facts = NutritionFacts(**nf_data)
                         await create_nutrition_detail_from_analysis(
                             food_record.id,
@@ -222,20 +285,12 @@ async def generate_sse_stream(
                             db
                         )
 
-                        # 持久化AI分析结果
-                        food_record.analysis_result = {
-                            "short_comment": analysis_complete_data.get("short_comment", ""),
-                            "image_description": analysis_complete_data.get("image_description", ""),
-                            "food_items": nf_data.get("food_items", []),
-                            "recommendations": analysis_complete_data.get("recommendations"),
-                        }
-
                         # 更新分析状态为完成
                         food_record.analysis_status = 3  # 已完成
                         db.commit()
 
                         # 触发每日营养汇总更新
-                        await update_daily_nutrition_summary(current_user.id, food_data.record_date, db)
+                        await update_daily_nutrition_summary(user_id, food_data.record_date, db)
 
                         yield f"data: {json.dumps({'type': 'nutrition_saved', 'data': {'status': 'completed', 'message': '营养分析完成并已保存'}, 'success': True}, ensure_ascii=False)}\n\n"
                     except Exception as save_err:
@@ -260,30 +315,49 @@ async def generate_sse_stream(
                 yield f"data: {json.dumps({'type': 'analysis_failed', 'data': {'status': 'failed', 'message': f'分析失败: {str(e)}'}, 'success': False}, ensure_ascii=False)}\n\n"
 
         # 清除相关缓存
-        cache_key = f"nutrition:daily:{current_user.id}:{food_data.record_date}"
+        cache_key = f"nutrition:daily:{user_id}:{food_data.record_date}"
         cache_service.redis.delete(cache_key)
 
-        # 5. 发送完成信号
-        yield f"data: {json.dumps({'type': 'stream_complete', 'data': {'status': 'completed', 'message': '流程完成'}, 'success': True}, ensure_ascii=False)}\n\n"
+        # 5. 发送完成信号（携带最终食物名称供前端刷新）
+        completion_data = {
+            'status': 'completed',
+            'message': '流程完成',
+            'food_name': food_record.food_name,
+            'record_id': food_record.id,
+        }
+        yield f"data: {json.dumps({'type': 'stream_complete', 'data': completion_data, 'success': True}, ensure_ascii=False)}\n\n"
 
     except Exception as e:
         db.rollback()
         yield f"data: {json.dumps({'type': 'error', 'data': {'error': str(e), 'message': f'创建食物记录失败: {str(e)}'}, 'success': False}, ensure_ascii=False)}\n\n"
         yield f"data: {json.dumps({'type': 'stream_complete', 'data': {'status': 'completed'}, 'success': True}, ensure_ascii=False)}\n\n"
+    finally:
+        db.close()
 
 
 @router.post("/records")
 async def create_food_record(
         food_data: FoodRecordCreate,
-        current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        request: Request
 ):
-    """创建食物记录并使用Agent分析图片（流式输出）"""
+    """创建食物记录并使用Agent分析图片（流式输出）
+
+    StreamingResponse 不能使用 Depends(get_db)，因为 FastAPI 会在返回
+    StreamingResponse 后立即关闭 DI 注入的 session，而 SSE 生成器还在运行。
+    改为手动解析 token，生成器内部自行管理 db session 生命周期。
+    """
+    # 手动解析 Authorization header，获取 user_id
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="未提供有效的认证令牌")
+    token = auth_header[7:]  # 去掉 "Bearer " 前缀
+    payload = AuthService.verify_token(token)
+    user_id = int(payload.get("sub"))
+
     return StreamingResponse(
         generate_sse_stream(
             food_data=food_data,
-            current_user=current_user,
-            db=db
+            user_id=user_id
         ),
         media_type="text/event-stream",
         headers={
@@ -296,16 +370,40 @@ async def create_food_record(
 
 
 #
-@router.post("/records/traditional", response_model=BaseResponse)
+@router.post("/records/traditional")
 async def create_food_record_traditional(
         food_data: FoodRecordCreate,
-        current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        request: Request,
 ):
-    """创建食物记录（传统接口，不使用流式输出）"""
+    """创建食物记录（传统接口，不使用流式输出）
+
+    完全不使用 FastAPI DI (Depends)，改为手动解析 token + 管理 session，
+    彻底避免 threadpool 跨线程 session 冲突。
+    """
+    import sys
+    import traceback
+
+    db = None
     try:
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="未提供有效的认证令牌")
+        token = auth_header[7:]
+        payload = AuthService.verify_token(token)
+        user_id = int(payload.get("sub"))
+
+        sys.stderr.write(f"[TRACE-v3] user_id={user_id}\n")
+        sys.stderr.flush()
+
+        db = SessionLocal()
+        sys.stderr.write("[TRACE-v3] SessionLocal created\n")
+        sys.stderr.flush()
+
+        # 直接记录：待分析状态（营养详情通过 /nutrition 接口单独添加后会变为3）
+        analysis_status = 1
+
         food_record = FoodRecord(
-            user_id=current_user.id,
+            user_id=user_id,
             record_date=food_data.record_date,
             record_time=food_data.record_time or datetime.now(),
             meal_type=food_data.meal_type,
@@ -313,33 +411,23 @@ async def create_food_record_traditional(
             description=food_data.description,
             image_url=food_data.image_url,
             recording_method=food_data.recording_method or 1,
-            analysis_status=1,
+            analysis_status=analysis_status,
             cost=food_data.cost,
             source_tag=food_data.source_tag,
         )
 
+        sys.stderr.write(f"[TRACE-v3] FoodRecord object created, calling db.add...\n")
+        sys.stderr.flush()
         db.add(food_record)
+
+        sys.stderr.write(f"[TRACE-v3] db.add done, calling db.commit...\n")
+        sys.stderr.flush()
         db.commit()
-        db.refresh(food_record)
 
-        if food_data.image_url:
-            try:
-                food_record.analysis_status = 2
-                db.commit()
+        sys.stderr.write(f"[TRACE-v3] commit done, record id={food_record.id}\n")
+        sys.stderr.flush()
 
-                import asyncio
-                from concurrent.futures import ThreadPoolExecutor
-
-                def background_analysis():
-                    asyncio.run(_run_background_analysis(food_data.image_url, current_user.id, food_record.id))
-
-                executor = ThreadPoolExecutor(max_workers=1)
-                executor.submit(background_analysis)
-
-            except Exception as e:
-                print(f"启动后台分析失败: {str(e)}")
-
-        cache_key = f"nutrition:daily:{current_user.id}:{food_data.record_date}"
+        cache_key = f"nutrition:daily:{user_id}:{food_data.record_date}"
         cache_service.redis.delete(cache_key)
 
         response_data = {
@@ -364,12 +452,29 @@ async def create_food_record_traditional(
             data=response_data
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
-        db.rollback()
+        sys.stderr.write(f"[TRACE-v3] EXCEPTION: {type(e).__name__}: {e}\n")
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
+        if db is not None:
+            try:
+                db.rollback()
+            except Exception as rb_err:
+                sys.stderr.write(f"[TRACE-v3] rollback failed: {rb_err}\n")
+                sys.stderr.flush()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"创建食物记录失败: {str(e)}"
         )
+    finally:
+        if db is not None:
+            try:
+                db.close()
+            except Exception as close_err:
+                sys.stderr.write(f"[TRACE-v3] close failed: {close_err}\n")
+                sys.stderr.flush()
 
 
 @router.put("/records/{record_id}", response_model=BaseResponse)
@@ -377,13 +482,14 @@ async def update_food_record(
         record_id: int,
         food_data: FoodRecordCreate,
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
 ):
     """更新食物记录"""
+    user_id = current_user.id
+    db = SessionLocal()
     try:
         food_record = db.query(FoodRecord).filter(
             FoodRecord.id == record_id,
-            FoodRecord.user_id == current_user.id
+            FoodRecord.user_id == user_id
         ).first()
 
         if not food_record:
@@ -404,7 +510,7 @@ async def update_food_record(
         db.commit()
         db.refresh(food_record)
 
-        cache_key = f"nutrition:daily:{current_user.id}:{food_data.record_date}"
+        cache_key = f"nutrition:daily:{user_id}:{food_data.record_date}"
         cache_service.redis.delete(cache_key)
 
         response_data = {
@@ -436,19 +542,22 @@ async def update_food_record(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"更新食物记录失败: {str(e)}"
         )
+    finally:
+        db.close()
 
 
 @router.delete("/records/{record_id}", response_model=BaseResponse)
 async def delete_food_record(
         record_id: int,
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
 ):
     """删除食物记录"""
+    user_id = current_user.id
+    db = SessionLocal()
     try:
         food_record = db.query(FoodRecord).filter(
             FoodRecord.id == record_id,
-            FoodRecord.user_id == current_user.id
+            FoodRecord.user_id == user_id
         ).first()
 
         if not food_record:
@@ -466,9 +575,9 @@ async def delete_food_record(
         db.commit()
 
         # 重新计算当日营养汇总
-        await update_daily_nutrition_summary(current_user.id, record_date, db)
+        await update_daily_nutrition_summary(user_id, record_date, db)
 
-        cache_key = f"nutrition:daily:{current_user.id}:{record_date.isoformat() if hasattr(record_date, 'isoformat') else str(record_date)}"
+        cache_key = f"nutrition:daily:{user_id}:{record_date.isoformat() if hasattr(record_date, 'isoformat') else str(record_date)}"
         cache_service.redis.delete(cache_key)
 
         return BaseResponse(
@@ -484,6 +593,8 @@ async def delete_food_record(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"删除食物记录失败: {str(e)}"
         )
+    finally:
+        db.close()
 
 
 async def _run_background_analysis(image_url: str, user_id: int, food_record_id: int):
@@ -521,11 +632,22 @@ async def _run_background_analysis(image_url: str, user_id: int, food_record_id:
                     db
                 )
 
-                # 持久化AI分析结果（short_comment, food_items, image_description, recommendations）
+                # ⚠️ 优先用AI识别结果更新食物名称
+                nf_raw = analysis_complete_data.get("nutrition_facts", {})
+                if hasattr(nf_raw, 'model_dump'):
+                    nf_raw = nf_raw.model_dump()
+                elif hasattr(nf_raw, 'dict'):
+                    nf_raw = nf_raw.dict()
+                food_items_list = (nf_raw.get("food_items") if isinstance(nf_raw, dict) else nf_raw.food_items) or []
+                if food_items_list:
+                    food_record.food_name = food_items_list[0] if len(food_items_list) == 1 else "、".join(food_items_list[:3])
+                    db.commit()
+
+                # 持久化AI分析结果
                 food_record.analysis_result = {
                     "short_comment": analysis_complete_data.get("short_comment", ""),
                     "image_description": analysis_complete_data.get("image_description", ""),
-                    "food_items": analysis_complete_data.get("nutrition_facts", {}).get("food_items", []),
+                    "food_items": food_items_list,
                     "recommendations": analysis_complete_data.get("recommendations"),
                 }
 
@@ -551,14 +673,14 @@ async def _run_background_analysis(image_url: str, user_id: int, food_record_id:
 async def confirm_food_record(
         record_id: int,
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
 ):
     """确认食物记录创建完成"""
+    user_id = current_user.id
+    db = SessionLocal()
     try:
-        # 验证记录是否存在且属于当前用户
         record = db.query(FoodRecord).filter(
             FoodRecord.id == record_id,
-            FoodRecord.user_id == current_user.id
+            FoodRecord.user_id == user_id
         ).first()
 
         if not record:
@@ -567,7 +689,6 @@ async def confirm_food_record(
                 detail="食物记录不存在"
             )
 
-        # 获取营养详情
         nutrition_detail = db.query(NutritionDetail).filter(
             NutritionDetail.food_record_id == record_id
         ).first()
@@ -617,6 +738,8 @@ async def confirm_food_record(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"确认食物记录失败: {str(e)}"
         )
+    finally:
+        db.close()
 
 
 async def analyze_food_image_with_agent(image_url: str, user_id: int, db: Session):
@@ -680,6 +803,71 @@ async def analyze_food_image_with_agent(image_url: str, user_id: int, db: Sessio
                     }
     except Exception as e:
         print(f"Agent分析失败: {str(e)}")
+        yield {
+            "type": "error",
+            "data": {
+                "error": str(e)
+            }
+        }
+        raise e
+
+
+async def analyze_food_text_with_agent(text_description: str, user_id: int, db: Session):
+    """使用Langgraph Agent分析文字食物描述（流式输出）"""
+
+    try:
+        # 在进入异步流之前，先提取用户偏好数据，避免session并发问题
+        user_prefs = await get_user_preferences(db, user_id)
+
+        # 初始化Langgraph客户端
+        client = get_client(url=settings.ai_service_url)
+
+        # 创建营养师Agent
+        assistant = await client.assistants.create(
+            graph_id="nutrition_agent",
+            config={"configurable": get_agent_model_config()}
+        )
+
+        # 创建线程
+        thread = await client.threads.create()
+        async for chunk in client.runs.stream(
+                assistant_id=assistant["assistant_id"],
+                thread_id=thread['thread_id'],
+                input={
+                    "text_description": text_description,
+                    "user_preferences": user_prefs
+                },
+                stream_mode="values"
+        ):
+            if chunk.data is not None:
+                if chunk.data.get("current_step") == "completed":
+                    print("Agent文字分析完成")
+                    na = chunk.data.get("nutrition_analysis")
+                    short_comment = ""
+                    if na is not None:
+                        if isinstance(na, dict):
+                            short_comment = na.get("short_comment", "") or ""
+                        elif hasattr(na, "short_comment"):
+                            short_comment = na.short_comment or ""
+                    yield {
+                        "type": "analysis_complete",
+                        "data": {
+                            "image_description": chunk.data.get("image_analysis"),
+                            "nutrition_facts": na,
+                            "short_comment": short_comment,
+                            "recommendations": chunk.data.get("nutrition_advice")
+                        }
+                    }
+                else:
+                    print(f"Agent正在文字分析: {chunk.data}")
+                    yield {
+                        "type": "analysis_progress",
+                        "data": {
+                            "current_step": chunk.data.get("current_step")
+                        }
+                    }
+    except Exception as e:
+        print(f"Agent文字分析失败: {str(e)}")
         yield {
             "type": "error",
             "data": {
@@ -871,44 +1059,38 @@ async def create_nutrition_detail_from_analysis(food_record_id: int, nutrition_f
             return  # 如果已存在，则不创建
 
         # 从分析结果中提取营养信息
+        vm = nutrition_facts.vitamins_minerals
         nutrition_detail = NutritionDetail(
             food_record_id=food_record_id,
             calories=nutrition_facts.total_calories or 0,
             protein=nutrition_facts.macronutrients.protein or 0,
             fat=nutrition_facts.macronutrients.fat or 0,
             carbohydrates=nutrition_facts.macronutrients.carbohydrates or 0,
-            # dietary_fiber=0,
-            # sugar=0,
-            # sodium=0,
-            # cholesterol=0,
             dietary_fiber=nutrition_facts.macronutrients.dietary_fiber or 0,
             sugar=nutrition_facts.macronutrients.sugar or 0,
-            # 微量营养素
-            sodium=nutrition_facts.vitamins_minerals.sodium or 0,
-            cholesterol=nutrition_facts.vitamins_minerals.cholesterol or 0,
-
+            # 微量营养素（处理 vitamins_minerals 为 None 的情况）
+            sodium=vm.sodium or 0 if vm else 0,
+            cholesterol=vm.cholesterol or 0 if vm else 0,
             # 维生素
-            vitamin_a=nutrition_facts.vitamins_minerals.vitamin_a or 0,
-            vitamin_c=nutrition_facts.vitamins_minerals.vitamin_c or 0,
-            vitamin_d=nutrition_facts.vitamins_minerals.vitamin_d or 0,
-
+            vitamin_a=vm.vitamin_a or 0 if vm else 0,
+            vitamin_c=vm.vitamin_c or 0 if vm else 0,
+            vitamin_d=vm.vitamin_d or 0 if vm else 0,
             # 矿物质
-            calcium=nutrition_facts.vitamins_minerals.calcium or 0,
-            iron=nutrition_facts.vitamins_minerals.iron or 0,
-            potassium=nutrition_facts.vitamins_minerals.potassium or 0,
-            # vitamin_a=nutrition_facts.vitamins_minerals.vitamin_a or 0,
-            # vitamin_c=nutrition_facts.vitamins_minerals.vitamin_c or 0,
-            # vitamin_d=0,
-            # calcium=nutrition_facts.vitamins_minerals.calcium or 0,
-            # iron=0,
-            # potassium=0,
-            # confidence_score=0,#TODO:confidence_score还未实现
+            calcium=vm.calcium or 0 if vm else 0,
+            iron=vm.iron or 0 if vm else 0,
+            potassium=vm.potassium or 0 if vm else 0,
             analysis_method="agent_analysis"
         )
 
         try:
             db.add(nutrition_detail)
             db.commit()
+
+            # 同步更新 FoodRecord 的热量值（首页展示用）
+            food_record = db.query(FoodRecord).filter(FoodRecord.id == food_record_id).first()
+            if food_record and food_record.total_calories == 0:
+                food_record.total_calories = nutrition_facts.total_calories or 0
+                db.commit()
         except Exception as e:
             db.rollback()
             print(f"添加数据库失败: {str(e)}")
@@ -954,18 +1136,25 @@ async def get_food_records(
                 NutritionDetail.food_record_id == record.id
             ).first()
 
+            # 兜底：如果 food_name 为空，尝试从 analysis_result 中提取
+            food_name = record.food_name
+            if not food_name and record.analysis_result:
+                ar_food_items = record.analysis_result.get("food_items") if isinstance(record.analysis_result, dict) else None
+                if ar_food_items:
+                    food_name = ar_food_items[0] if len(ar_food_items) == 1 else "、".join(ar_food_items[:3])
+
             record_dict = {
                 "id": record.id,
                 "user_id": record.user_id,
                 "record_date": record.record_date.isoformat(),
                 "record_time": record.record_time.isoformat() if record.record_time else None,
                 "meal_type": record.meal_type,
-                "food_name": record.food_name,
+                "food_name": food_name,
                 "description": record.description,
                 "image_url": minio_client.get_file_url(record.image_url) if record.image_url and not record.image_url.startswith("http") else record.image_url,
                 "recording_method": record.recording_method,
                 "analysis_status": record.analysis_status,
-                "analysis_result": record.analysis_result,
+                "analysis_result": _sanitize_analysis_result(record.analysis_result),
                 "cost": float(record.cost) if record.cost else None,
                 "source_tag": record.source_tag,
                 "created_at": record.created_at.isoformat(),
@@ -1007,12 +1196,39 @@ async def get_food_records(
             "total_pages": (total + page_size - 1) // page_size
         }
 
+        # 如果查询的是单日记录，附带当日营养汇总
+        summary = None
+        if start_date and end_date and start_date == end_date:
+            daily_summary = db.query(DailyNutritionSummary).filter(
+                DailyNutritionSummary.user_id == current_user.id,
+                DailyNutritionSummary.summary_date == start_date
+            ).first()
+            if daily_summary:
+                summary = {
+                    "id": daily_summary.id,
+                    "user_id": daily_summary.user_id,
+                    "summary_date": daily_summary.summary_date.isoformat(),
+                    "total_calories": float(daily_summary.total_calories),
+                    "total_protein": float(daily_summary.total_protein),
+                    "total_fat": float(daily_summary.total_fat),
+                    "total_carbohydrates": float(daily_summary.total_carbohydrates),
+                    "total_fiber": float(daily_summary.total_fiber),
+                    "total_sodium": float(daily_summary.total_sodium),
+                    "meal_count": daily_summary.meal_count,
+                    "water_intake": float(daily_summary.water_intake) if daily_summary.water_intake else 0.0,
+                    "exercise_calories": float(daily_summary.exercise_calories) if daily_summary.exercise_calories else 0.0,
+                    "health_score": float(daily_summary.health_level) if daily_summary.health_level else None,
+                    "created_at": daily_summary.created_at.isoformat(),
+                    "updated_at": daily_summary.updated_at.isoformat(),
+                }
+
         return BaseResponse(
             success=True,
             message="获取食物记录列表成功",
             data={
                 "records": records_data,
-                "pagination": pagination_info
+                "pagination": pagination_info,
+                "summary": summary
             }
         )
     except Exception as e:
@@ -1046,12 +1262,19 @@ async def get_food_record(
             NutritionDetail.food_record_id == record_id
         ).first()
 
+        # 兜底：如果 food_name 为空，尝试从 analysis_result 中提取
+        food_name = record.food_name
+        if not food_name and record.analysis_result:
+            ar_food_items = record.analysis_result.get("food_items") if isinstance(record.analysis_result, dict) else None
+            if ar_food_items:
+                food_name = ar_food_items[0] if len(ar_food_items) == 1 else "、".join(ar_food_items[:3])
+
         record_data = {
             "id": record.id,
             "user_id": record.user_id,
             "record_date": record.record_date.isoformat(),
             "meal_type": record.meal_type,
-            "food_name": record.food_name,
+            "food_name": food_name,
             "description": record.description,
             "image_url": minio_client.get_file_url(record.image_url) if record.image_url and not record.image_url.startswith("http") else record.image_url,
             "recording_method": record.recording_method,
@@ -1104,14 +1327,14 @@ async def add_nutrition_detail(
         record_id: int,
         nutrition_data: NutritionDetailCreate,
         current_user: User = Depends(get_current_user),
-        db: Session = Depends(get_db)
 ):
     """添加营养详情"""
+    user_id = current_user.id
+    db = SessionLocal()
     try:
-        # 验证记录是否存在且属于当前用户
         record = db.query(FoodRecord).filter(
             FoodRecord.id == record_id,
-            FoodRecord.user_id == current_user.id
+            FoodRecord.user_id == user_id
         ).first()
 
         if not record:
@@ -1120,7 +1343,6 @@ async def add_nutrition_detail(
                 detail="食物记录不存在"
             )
 
-        # 检查是否已有营养详情
         existing_detail = db.query(NutritionDetail).filter(
             NutritionDetail.food_record_id == record_id
         ).first()
@@ -1131,7 +1353,6 @@ async def add_nutrition_detail(
                 detail="该食物记录已有营养详情"
             )
 
-        # 创建营养详情
         nutrition_detail = NutritionDetail(
             food_record_id=record_id,
             calories=nutrition_data.calories or 0,
@@ -1153,19 +1374,15 @@ async def add_nutrition_detail(
         )
 
         db.add(nutrition_detail)
-
-        # 更新食物记录的分析状态
-        record.analysis_status = 3  # 已完成
+        record.analysis_status = 3
         record.updated_at = datetime.utcnow()
 
         db.commit()
         db.refresh(nutrition_detail)
 
-        # 触发每日营养汇总更新
-        await update_daily_nutrition_summary(current_user.id, record.record_date, db)
+        await update_daily_nutrition_summary(user_id, record.record_date, db)
 
-        # 清除相关缓存
-        cache_key = f"nutrition:daily:{current_user.id}:{record.record_date}"
+        cache_key = f"nutrition:daily:{user_id}:{record.record_date}"
         cache_service.redis.delete(cache_key)
 
         return BaseResponse(
@@ -1203,6 +1420,8 @@ async def add_nutrition_detail(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"添加营养详情失败: {str(e)}"
         )
+    finally:
+        db.close()
 
 
 @router.get("/daily-summary/{summary_date}", response_model=BaseResponse)

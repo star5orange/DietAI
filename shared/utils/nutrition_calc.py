@@ -40,7 +40,7 @@ class CrowdTag:
     """人群标签常量"""
     FAT_LOSS = "减脂"
     FITNESS = "健身"
-    NORMAL = "普通日常"
+    NORMAL = "均衡维持"
 
 
 # Activity level multipliers for TDEE calculation
@@ -61,13 +61,14 @@ ACTIVITY_DESCRIPTIONS: Dict[int, str] = {
     ActivityLevel.VERY_ACTIVE: "超重度活动（极剧烈运动/体力劳动）"
 }
 
-# Calorie adjustments by goal type
-CALORIE_ADJUSTMENTS: Dict[int, int] = {
-    GoalType.LOSE_WEIGHT: -500,    # 500 calorie deficit
-    GoalType.GAIN_WEIGHT: 300,     # 300 calorie surplus
-    GoalType.MAINTAIN: 0,          # No adjustment
-    GoalType.BUILD_MUSCLE: 200,    # Slight surplus for muscle
-    GoalType.LOSE_FAT: -400,       # Moderate deficit for fat loss
+# Calorie multipliers by goal type (percentage of TDEE)
+# Values < 1.0 = deficit, > 1.0 = surplus
+GOAL_CALORIE_MULTIPLIERS: Dict[int, float] = {
+    GoalType.LOSE_WEIGHT: 0.80,    # 20% deficit
+    GoalType.GAIN_WEIGHT: 1.15,    # 15% surplus
+    GoalType.MAINTAIN: 1.0,        # No adjustment
+    GoalType.BUILD_MUSCLE: 1.10,   # 10% surplus
+    GoalType.LOSE_FAT: 0.85,       # 15% deficit
 }
 
 # Macro ratios by goal type (protein, carbs, fat)
@@ -79,17 +80,17 @@ MACRO_RATIOS: Dict[int, Dict[str, float]] = {
     GoalType.LOSE_FAT: {"protein": 0.30, "carbs": 0.35, "fat": 0.35},
 }
 
-# Crowd tag specific calorie adjustments (on top of goal_type adjustments)
-CROWD_TAG_CALORIE_ADJUSTMENT: Dict[str, int] = {
-    CrowdTag.FAT_LOSS: -200,    # 减脂人群额外热量缺口
-    CrowdTag.FITNESS: 100,      # 健身人群额外热量盈余
-    CrowdTag.NORMAL: 0,         # 普通日常不额外调整
+# Crowd tag calorie multipliers (on top of goal_type, as % of TDEE)
+CROWD_CALORIE_MULTIPLIERS: Dict[str, float] = {
+    CrowdTag.FAT_LOSS: 0.95,    # 减脂额外5%缺口
+    CrowdTag.FITNESS: 1.05,     # 健身额外5%盈余
+    CrowdTag.NORMAL: 1.0,       # 均衡维持不调整
 }
 
 # Crowd tag specific macro overrides (protein, carbs, fat)
 # 减脂：高蛋白低碳水，保持肌肉，增强饱腹感
 # 健身：高蛋白高碳水，支持肌肉合成和训练恢复
-# 普通日常：均衡配比
+# 均衡维持：均衡配比
 CROWD_TAG_MACRO_RATIOS: Dict[str, Dict[str, float]] = {
     CrowdTag.FAT_LOSS: {"protein": 0.40, "carbs": 0.30, "fat": 0.30},
     CrowdTag.FITNESS: {"protein": 0.35, "carbs": 0.45, "fat": 0.20},
@@ -188,20 +189,23 @@ def calculate_daily_targets(
     Args:
         tdee: Total Daily Energy Expenditure
         goal_type: Health goal type (1-5)
-        crowd_tag: 人群标签 (减脂/健身/普通日常), None defaults to 普通日常
+        crowd_tag: 人群标签 (减脂/健身/均衡维持), None defaults to 均衡维持
 
     Returns:
         Dictionary with calories, protein (g), carbs (g), fat (g), fiber (g),
         and crowd-specific metadata
     """
-    # Apply calorie adjustment based on goal type
-    adjustment = CALORIE_ADJUSTMENTS.get(goal_type, 0)
+    # Apply calorie multiplier based on goal type (percentage of TDEE)
+    goal_mult = GOAL_CALORIE_MULTIPLIERS.get(goal_type, 1.0)
 
-    # Apply crowd tag specific calorie adjustment
+    # Apply crowd tag calorie multiplier (percentage of TDEE)
+    # Backward compat: map old values to new "均衡维持"
+    if crowd_tag in ("普通日常", "普通"):
+        crowd_tag = CrowdTag.NORMAL
     crowd_tag = crowd_tag or CrowdTag.NORMAL
-    crowd_adj = CROWD_TAG_CALORIE_ADJUSTMENT.get(crowd_tag, 0)
+    crowd_mult = CROWD_CALORIE_MULTIPLIERS.get(crowd_tag, 1.0)
 
-    calorie_target = tdee + adjustment + crowd_adj
+    calorie_target = round(tdee * goal_mult * crowd_mult)
 
     # Get macro ratios: crowd tag overrides goal-based ratios
     crowd_ratios = CROWD_TAG_MACRO_RATIOS.get(crowd_tag, CROWD_TAG_MACRO_RATIOS[CrowdTag.NORMAL])
@@ -231,7 +235,7 @@ def calculate_daily_targets(
         "carbs": round(carbs_target),
         "fat": round(fat_target),
         "fiber": fiber_target,
-        "calorie_adjustment": adjustment + crowd_adj,
+        "calorie_multiplier": round(goal_mult * crowd_mult, 2),
         "crowd_tag": crowd_tag,
         "crowd_description": _get_crowd_description(crowd_tag),
         "crowd_recommendations": _get_crowd_recommendations(crowd_tag),
@@ -243,7 +247,7 @@ def _get_crowd_description(crowd_tag: str) -> str:
     descriptions = {
         CrowdTag.FAT_LOSS: "减脂人群：高蛋白低碳水、增加饱腹感、促进脂肪代谢",
         CrowdTag.FITNESS: "健身人群：高蛋白高碳水、支持肌肉合成、加快训练恢复",
-        CrowdTag.NORMAL: "普通日常：均衡营养配比、维持健康体重",
+        CrowdTag.NORMAL: "均衡维持：均衡营养配比、维持健康体重",
     }
     return descriptions.get(crowd_tag, descriptions[CrowdTag.NORMAL])
 

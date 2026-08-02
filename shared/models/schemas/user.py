@@ -5,9 +5,15 @@ from datetime import datetime, date
 
 class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50, description="用户名")
-    email: EmailStr = Field(..., description="邮箱")
+    email: Optional[EmailStr] = Field(None, description="邮箱")
     password: str = Field(..., min_length=8, description="密码")
     phone: Optional[str] = Field(None, max_length=20, description="手机号")
+
+    @validator('email', pre=True)
+    def validate_email(cls, v):
+        if v is None or v == "":
+            return None
+        return v
 
     @validator('password')
     def validate_password(cls, v):
@@ -69,7 +75,7 @@ class UserProfileUpdate(BaseModel):
     onboarding_step: Optional[int] = Field(None, ge=0, description="引导步骤")
     onboarding_completed: Optional[bool] = Field(None, description="引导完成状态")
     # Milestone 1 新增字段
-    crowd_tag: Optional[str] = Field(None, description="人群标签：减脂/健身/普通日常")
+    crowd_tag: Optional[str] = Field(None, description="人群标签：减脂/健身/均衡维持")
     constitution_type: Optional[str] = Field(None, description="体质类型")
     daily_water_goal: Optional[int] = Field(2000, ge=500, le=5000, description="每日饮水目标(ml)")
     target_calories: Optional[int] = Field(None, ge=800, le=5000, description="每日卡路里目标(kcal)")
@@ -212,3 +218,77 @@ class WeightRecordResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ==================== 密码重置相关模型 ====================
+
+class ForgotPasswordRequest(BaseModel):
+    """忘记密码请求"""
+    phone: str = Field(..., max_length=20, description="手机号")
+
+    @validator('phone')
+    def validate_phone(cls, v):
+        """验证手机号格式"""
+        if not v.isdigit():
+            raise ValueError('手机号必须为数字')
+        if len(v) != 11:
+            raise ValueError('手机号长度必须为11位')
+        if not v.startswith('1'):
+            raise ValueError('手机号格式不正确')
+        return v
+
+
+class VerifyResetCodeRequest(BaseModel):
+    """验证重置验证码请求"""
+    phone: str = Field(..., max_length=20, description="手机号")
+    code: str = Field(..., min_length=6, max_length=6, description="验证码")
+
+    @validator('phone')
+    def validate_phone(cls, v):
+        """验证手机号格式"""
+        if not v.isdigit():
+            raise ValueError('手机号必须为数字')
+        if len(v) != 11:
+            raise ValueError('手机号长度必须为11位')
+        if not v.startswith('1'):
+            raise ValueError('手机号格式不正确')
+        return v
+
+    @validator('code')
+    def validate_code(cls, v):
+        """验证验证码格式"""
+        if not v.isdigit():
+            raise ValueError('验证码必须为数字')
+        return v
+
+
+class ResetPasswordRequest(BaseModel):
+    """重置密码请求"""
+    phone: str = Field(..., max_length=20, description="手机号")
+    code: str = Field(..., min_length=6, max_length=6, description="验证码")
+    new_password: str = Field(..., min_length=8, description="新密码")
+
+    @validator('phone')
+    def validate_phone(cls, v):
+        """验证手机号格式"""
+        if not v.isdigit():
+            raise ValueError('手机号必须为数字')
+        if len(v) != 11:
+            raise ValueError('手机号长度必须为11位')
+        if not v.startswith('1'):
+            raise ValueError('手机号格式不正确')
+        return v
+
+    @validator('code')
+    def validate_code(cls, v):
+        """验证验证码格式"""
+        if not v.isdigit():
+            raise ValueError('验证码必须为数字')
+        return v
+
+    @validator('new_password')
+    def validate_password(cls, v):
+        """验证密码强度"""
+        if len(v) < 8:
+            raise ValueError('密码长度至少8位')
+        return v

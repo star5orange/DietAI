@@ -183,6 +183,110 @@ class AuthService {
     }
   }
 
+  // ==================== 密码重置相关 ====================
+
+  /// 忘记密码 - 发送验证码
+  Future<ApiResponse<Map<String, dynamic>>> forgotPassword(String phone) async {
+    try {
+      final request = ForgotPasswordRequest(phone: phone);
+
+      final response = await _apiService.post(
+        '/auth/forgot-password',
+        data: request.toJson(),
+      );
+
+      if (response.success) {
+        return ApiResponse<Map<String, dynamic>>(
+          success: true,
+          message: response.message,
+          data: response.data as Map<String, dynamic>?,
+        );
+      } else {
+        return ApiResponse<Map<String, dynamic>>(
+          success: false,
+          message: response.message,
+        );
+      }
+    } catch (e) {
+      return ApiResponse<Map<String, dynamic>>(
+        success: false,
+        message: '网络错误，请检查网络连接',
+      );
+    }
+  }
+
+  /// 验证重置验证码
+  Future<ApiResponse<void>> verifyResetCode({
+    required String phone,
+    required String code,
+  }) async {
+    try {
+      final request = VerifyResetCodeRequest(
+        phone: phone,
+        code: code,
+      );
+
+      final response = await _apiService.post(
+        '/auth/verify-reset-code',
+        data: request.toJson(),
+      );
+
+      if (response.success) {
+        return ApiResponse<void>(
+          success: true,
+          message: response.message,
+        );
+      } else {
+        return ApiResponse<void>(
+          success: false,
+          message: response.message,
+        );
+      }
+    } catch (e) {
+      return ApiResponse<void>(
+        success: false,
+        message: '网络错误，请检查网络连接',
+      );
+    }
+  }
+
+  /// 重置密码
+  Future<ApiResponse<void>> resetPassword({
+    required String phone,
+    required String code,
+    required String newPassword,
+  }) async {
+    try {
+      final request = ResetPasswordRequest(
+        phone: phone,
+        code: code,
+        newPassword: newPassword,
+      );
+
+      final response = await _apiService.post(
+        '/auth/reset-password',
+        data: request.toJson(),
+      );
+
+      if (response.success) {
+        return ApiResponse<void>(
+          success: true,
+          message: response.message,
+        );
+      } else {
+        return ApiResponse<void>(
+          success: false,
+          message: response.message,
+        );
+      }
+    } catch (e) {
+      return ApiResponse<void>(
+        success: false,
+        message: '网络错误，请检查网络连接',
+      );
+    }
+  }
+
   /// 清除本地令牌
   Future<void> _clearLocalTokens() async {
     await _apiService.clearTokens();

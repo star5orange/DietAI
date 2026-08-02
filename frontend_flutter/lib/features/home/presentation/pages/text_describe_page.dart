@@ -6,6 +6,7 @@ import '../../../../core/themes/app_text_styles.dart';
 import '../../../../services/food_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../widgets/cost_input_widget.dart'; // 导入消费输入组件
+import '../../../camera/presentation/pages/food_analysis_page.dart';
 
 class TextDescribePage extends StatefulWidget {
   final String mealName;
@@ -14,6 +15,7 @@ class TextDescribePage extends StatefulWidget {
   final String? recordTime;
   final double? costAmount;
   final String? costSource;
+  final String? initialFoodName;
 
   const TextDescribePage({
     super.key,
@@ -23,6 +25,7 @@ class TextDescribePage extends StatefulWidget {
     this.recordTime,
     this.costAmount,
     this.costSource,
+    this.initialFoodName,
   });
 
   @override
@@ -67,6 +70,14 @@ class _TextDescribePageState extends State<TextDescribePage> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.initialFoodName != null) {
+      _foodNameController.text = widget.initialFoodName!;
+    }
+  }
+
+  @override
   void dispose() {
     _foodNameController.dispose();
     _descriptionController.dispose();
@@ -88,74 +99,111 @@ class _TextDescribePageState extends State<TextDescribePage> {
       return;
     }
 
+    // 弹出选择：是否进行AI分析
+    final useAI = await _showAIAnalysisDialog();
+    if (useAI == null) return; // 用户取消
+
+    if (useAI) {
+      await _submitWithAI(foodName);
+    } else {
+      await _submitDirectRecord(foodName);
+    }
+  }
+
+  /// 显示 AI 分析选择弹窗
+  Future<bool?> _showAIAnalysisDialog() {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('记录方式'),
+        content: const Text('AI 分析可以识别食物并生成详细营养建议，但速度较慢。\n\n直接记录会立即保存，适合快速记录。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('直接记录'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('AI 分析',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// AI 分析流程
+  Future<void> _submitWithAI(String foodName) async {
     setState(() => _isSubmitting = true);
 
     try {
-      final portion = double.tryParse(_portionController.text) ?? 1.0;
-      final description = _descriptionController.text.trim();
-      final fullDescription = description.isNotEmpty
-          ? '$foodName ${portion}${_selectedPortionUnit} - $description'
-          : '$foodName ${portion}${_selectedPortionUnit}';
+      final record = _buildRecord(foodName);
 
-      final record = FoodRecordCreate(
-        recordDate: widget.recordDate,
-        recordTime: widget.recordTime ?? DateTime.now().toIso8601String(),
-        mealType: widget.mealType,
-        foodName: foodName,
-        description: fullDescription,
-        recordingMethod: 2,
-        cost: _costAmount ?? widget.costAmount, // 优先使用用户输入的金额
-        sourceTag: _costSource ?? widget.costSource, // 优先使用用户输入的来源
-      );
+      final stream = _foodService.createFoodRecordStream(record);
+
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FoodAnalysisPage(
+              analysisStream: stream,
+            ),
+          ),
+        ).then((result) {
+          if (result == true && mounted) {
+            Navigator.of(context).pop(true);
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('提交失败: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
+  /// 直接记录（跳过 AI）
+  Future<void> _submitDirectRecord(String foodName) async {
+    setState(() => _isSubmitting = true);
+
+    try {
+      final record = _buildRecord(foodName);
 
       final result = await _foodService.createFoodRecord(record);
-      if (mounted) {
-        if (result.success && result.data != null) {
-          final calories = double.tryParse(_caloriesController.text);
-          final protein = double.tryParse(_proteinController.text);
-          final fat = double.tryParse(_fatController.text);
-          final carbs = double.tryParse(_carbsController.text);
 
-          print(
-              '📝 营养数据: calories=$calories, protein=$protein, fat=$fat, carbs=$carbs');
-
-          if (calories != null ||
-              protein != null ||
-              fat != null ||
-              carbs != null) {
-            final nutritionResult = await _foodService.addNutritionDetail(
-                result.data!.id,
-                NutritionDetailCreate(
-                  calories: calories,
-                  protein: protein,
-                  fat: fat,
-                  carbohydrates: carbs,
-                  analysisMethod: _isAutoEstimate ? 'auto_estimate' : 'manual',
-                ));
-
-            if (!nutritionResult.success) {
-              print('❌ 营养数据保存失败: ${nutritionResult.message}');
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('营养信息保存失败: ${nutritionResult.message}'),
-                    backgroundColor: AppColors.warning,
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
-              }
-            } else {
-              print('✅ 营养数据保存成功: recordId=${result.data!.id}');
-            }
-          }
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text('$foodName 已记录到${widget.mealName}'),
-                backgroundColor: AppColors.success),
+      if (mounted && result.success) {
+        // 记录创建成功后，同步保存营养详情
+        final nutritionData = _buildNutritionDetail();
+        if (nutritionData != null) {
+          await _foodService.addNutritionDetail(
+            result.data!.id,
+            nutritionData,
           );
-          await _foodService.invalidateRecordsCache(widget.recordDate);
-          Navigator.pop(context, true);
+        }
+      }
+
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+
+        if (result.success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('记录成功'),
+                backgroundColor: AppColors.success,
+                duration: Duration(seconds: 1)),
+          );
+          Navigator.of(context).pop(true);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -166,13 +214,54 @@ class _TextDescribePageState extends State<TextDescribePage> {
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _isSubmitting = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('记录失败: $e'), backgroundColor: AppColors.error),
+          SnackBar(
+              content: Text('提交失败: $e'), backgroundColor: AppColors.error),
         );
       }
-    } finally {
-      if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  /// 构建营养详情对象（从用户输入的表单字段）
+  NutritionDetailCreate? _buildNutritionDetail() {
+    final calories = double.tryParse(_caloriesController.text);
+    final protein = double.tryParse(_proteinController.text);
+    final fat = double.tryParse(_fatController.text);
+    final carbs = double.tryParse(_carbsController.text);
+
+    // 如果没有任何营养数据，跳过
+    if (calories == null && protein == null && fat == null && carbs == null) {
+      return null;
+    }
+
+    return NutritionDetailCreate(
+      calories: calories,
+      protein: protein,
+      fat: fat,
+      carbohydrates: carbs,
+      analysisMethod: 'manual',
+    );
+  }
+
+  /// 构建 FoodRecordCreate 对象
+  FoodRecordCreate _buildRecord(String foodName) {
+    final portion = double.tryParse(_portionController.text) ?? 1.0;
+    final description = _descriptionController.text.trim();
+    final fullDescription = description.isNotEmpty
+        ? '$foodName ${portion}${_selectedPortionUnit} - $description'
+        : '$foodName ${portion}${_selectedPortionUnit}';
+
+    return FoodRecordCreate(
+      recordDate: widget.recordDate,
+      recordTime: widget.recordTime ?? DateTime.now().toIso8601String(),
+      mealType: widget.mealType,
+      foodName: foodName,
+      description: fullDescription,
+      recordingMethod: 2,
+      cost: _costAmount ?? widget.costAmount,
+      sourceTag: _costSource ?? widget.costSource,
+    );
   }
 
   Future<void> _updateAutoEstimate() async {

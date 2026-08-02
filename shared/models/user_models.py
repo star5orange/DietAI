@@ -69,7 +69,7 @@ class UserProfile(Base):
     # 关系
     user = relationship("User", back_populates="profile")
 
-    crowd_tag = Column(String(50))  # 减脂/健身/普通日常
+    crowd_tag = Column(String(50))  # 减脂/健身/均衡维持
     constitution_type = Column(String(50))  # 九种体质之一
     daily_water_goal = Column(Integer, default=2000)
     onboarding_completed = Column(Boolean, default=False)  # 引导是否完成

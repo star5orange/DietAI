@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -24,7 +25,7 @@ async def daily_recommendation(
     solar_term: Optional[str] = Query(None, description="节气名称"),
     season: Optional[str] = Query(None, description="季节"),
     constitution_type: Optional[str] = Query(None, description="体质类型"),
-    use_ai: bool = Query(True, description="是否使用AI生成推荐"),
+    use_ai: bool = Query(False, description="是否使用AI生成推荐"),
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
@@ -35,14 +36,17 @@ async def daily_recommendation(
     data = None
     if use_ai:
         try:
-            data = await generate_ai_wellness_recommendation(
-                user_id=user.id,
-                db=db,
-                solar_term=solar_term,
-                season=season,
-                constitution_type=constitution_type,
+            data = await asyncio.wait_for(
+                generate_ai_wellness_recommendation(
+                    user_id=user.id,
+                    db=db,
+                    solar_term=solar_term,
+                    season=season,
+                    constitution_type=constitution_type,
+                ),
+                timeout=10.0,
             )
-        except Exception as e:
+        except (asyncio.TimeoutError, Exception) as e:
             logger.warning(f"AI 养生推荐生成失败，降级到知识库查询: {e}")
     if data is None:
         data = get_daily_wellness_recommendation(db, solar_term, season, constitution_type)

@@ -98,7 +98,6 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
             m['food'] = (m['food_name'] as String?) ?? '';
             m['amount_g'] = (m['amount_grams'] as num?)?.toDouble() ?? 0;
             m['time'] = (m['record_time'] as String?) ?? '';
-            m['source'] = (m['from_source'] as String?) ?? '手动';
             return m;
           }).toList();
         }
@@ -165,6 +164,87 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
     ]);
 
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  /// 只刷新饮水数据（比 _loadAllData 轻量，避免全页白屏）
+  Future<void> _loadWaterData() async {
+    final api = RealPetApiService();
+    await Future.wait([
+      api.getWaterRecords(_petId).then((r) {
+        if (r.isSuccess && r.data != null) {
+          final records = r.data!['records'] as List<dynamic>? ?? [];
+          if (mounted) {
+            setState(() {
+              _waterRecords = records
+                  .map((e) => Map<String, dynamic>.from(e as Map))
+                  .toList();
+            });
+          }
+        }
+      }).catchError((_) {}),
+      api
+          .getDailySummary(
+              _petId, DateTime.now().toIso8601String().substring(0, 10))
+          .then((r) {
+        if (r.isSuccess && r.data != null) {
+          if (mounted) setState(() => _dailySummary = r.data);
+        }
+      }).catchError((_) {}),
+    ]);
+  }
+
+  /// 只刷新疫苗记录（比 _loadAllData 轻量，避免全页白屏）
+  Future<void> _loadVaccineRecords() async {
+    final api = RealPetApiService();
+    try {
+      final r = await api.getVaccineRecords(_petId);
+      if (r.isSuccess && r.data != null) {
+        final records = r.data!['records'] as List<dynamic>? ?? [];
+        if (mounted) {
+          setState(() {
+            _vaccineRecords = records
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList();
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// 只刷新驱虫记录（比 _loadAllData 轻量，避免全页白屏）
+  Future<void> _loadDewormingRecords() async {
+    final api = RealPetApiService();
+    try {
+      final r = await api.getDewormingRecords(_petId);
+      if (r.isSuccess && r.data != null) {
+        final records = r.data!['records'] as List<dynamic>? ?? [];
+        if (mounted) {
+          setState(() {
+            _dewormingRecords = records
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList();
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// 只刷新体重记录（比 _loadAllData 轻量，避免全页白屏）
+  Future<void> _loadWeightRecords() async {
+    final api = RealPetApiService();
+    try {
+      final r = await api.getWeightRecords(_petId);
+      if (r.isSuccess && r.data != null) {
+        final records = r.data!['records'] as List<dynamic>? ?? [];
+        if (mounted) {
+          setState(() {
+            _weightRecords = records
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList();
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   @override
@@ -811,6 +891,16 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
     );
   }
 
+  String _formatTime(String? isoTime) {
+    if (isoTime == null || isoTime.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(isoTime);
+      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return '';
+    }
+  }
+
   Widget _buildWeightRecordItem(Map<String, dynamic> record) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -863,6 +953,30 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                     fontSize: 11, color: AppColors.textSecondary),
               ),
             ),
+          // 操作按钮
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(LucideIcons.pencil, size: 16),
+                color: AppColors.textTertiary,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () => _showAddWeightModal(
+                  existing: record,
+                  recordId: record['id'] as int?,
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(LucideIcons.trash2, size: 16),
+                color: AppColors.error,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () => _deleteWeightRecord(record),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -900,7 +1014,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                       fontSize: 15, fontWeight: FontWeight.w600),
                 ),
                 Text(
-                  '${record['amount_g']}g · ${record['time']}',
+                  '${record['amount_g']}g · ${_formatTime(record['time'] as String?)}',
                   style: const TextStyle(
                       fontSize: 12, color: AppColors.textTertiary),
                 ),
@@ -916,18 +1030,6 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppColors.caloriesColor),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.backgroundSecondary,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  record['source'],
-                  style: const TextStyle(
-                      fontSize: 10, color: AppColors.textTertiary),
-                ),
               ),
             ],
           ),
@@ -987,19 +1089,48 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
 
   // ==================== 操作方法 ====================
 
-  void _showAddWeightModal() {
+  void _showAddWeightModal({Map<String, dynamic>? existing, int? recordId}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => AddWeightModal(
         petId: _petId,
+        recordId: recordId,
+        existingData: existing,
         onSaved: () {
           Navigator.pop(context);
-          _loadAllData();
+          _loadWeightRecords();
         },
       ),
     );
+  }
+
+  Future<void> _deleteWeightRecord(Map<String, dynamic> record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认删除'),
+        content: Text('确定要删除 ${record['weight']}kg 的体重记录吗？'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      final api = RealPetApiService();
+      final resp = await api.deleteWeightRecord(_petId, record['id'] as int);
+      if (mounted && resp.isSuccess) {
+        _loadWeightRecords();
+      }
+    }
   }
 
   void _showEditDialog() async {
@@ -1158,6 +1289,16 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                       color: Colors.white,
                       fontWeight: FontWeight.w600)),
               const Spacer(),
+              if (todayRecords.isNotEmpty)
+                IconButton(
+                  icon: const Icon(LucideIcons.undo2, size: 16),
+                  color: Colors.white.withValues(alpha: 0.9),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: '撤回上一次记录',
+                  onPressed: _undoLastWaterRecord,
+                ),
+              const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -1258,7 +1399,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
     return GestureDetector(
       onTap: () => _quickAddWater(amountMl: amountMl),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(20),
@@ -1285,7 +1426,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
     return GestureDetector(
       onTap: _showAddWaterModal,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(20),
@@ -1318,8 +1459,8 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
     });
 
     if (result.isSuccess) {
-      // 重新加载数据
-      await _loadAllData();
+      // 只刷新饮水数据，避免全页重载白屏
+      await _loadWaterData();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1388,18 +1529,6 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                         const Text('今日记录',
                             style: TextStyle(
                                 fontSize: 16, fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        if (todayRecords.isNotEmpty)
-                          TextButton.icon(
-                            onPressed: () => _undoLastWaterRecord(),
-                            icon: const Icon(LucideIcons.undo2, size: 14),
-                            label: const Text('撤回'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppColors.textTertiary,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 8),
-                            ),
-                          ),
                       ],
                     ),
                   ),
@@ -1499,7 +1628,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
     final result = await api.deleteWaterRecord(_petId, recordId);
 
     if (result.isSuccess) {
-      await _loadAllData();
+      await _loadWaterData();
       if (mounted) {
         final amountMl = (lastRecord['amount_ml'] as num?)?.toInt() ?? 0;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1876,6 +2005,20 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
         : null;
     final isEdit = existing != null;
     final petId = (widget.pet['id'] as num?)?.toInt() ?? 0;
+    final species = widget.pet['species'] as String? ?? 'cat';
+
+    // 物种特异性疫苗选项
+    final catVaccines = ['猫三联', '狂犬疫苗', '猫白血病(FeLV)', '猫艾滋(FIV)'];
+    final dogVaccines = [
+      '狗六联(DHPPi+L)',
+      '狂犬疫苗',
+      '犬细小',
+      '犬瘟热',
+      '犬窝咳',
+      '钩端螺旋体',
+      '犬冠状病毒'
+    ];
+    final vaccineOptions = species == 'dog' ? dogVaccines : catVaccines;
 
     await showDialog<bool>(
       context: context,
@@ -1886,10 +2029,55 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                      labelText: '疫苗名称', hintText: '如：猫三联、狂犬疫苗'),
+                RawAutocomplete<String>(
+                  focusNode: FocusNode(),
+                  textEditingController: nameCtrl,
+                  optionsBuilder: (value) {
+                    if (value.text.isEmpty) return vaccineOptions;
+                    return vaccineOptions.where((v) => v.contains(value.text));
+                  },
+                  optionsViewBuilder: (ctx, onSelected, options) => Align(
+                    alignment: Alignment.topLeft,
+                    child: Material(
+                      elevation: 4,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 200),
+                        child: ListView.builder(
+                          padding: EdgeInsets.zero,
+                          shrinkWrap: true,
+                          itemCount: options.length,
+                          itemBuilder: (ctx, index) {
+                            final option = options.elementAt(index);
+                            return ListTile(
+                              dense: true,
+                              title: Text(option),
+                              onTap: () => onSelected(option),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                  fieldViewBuilder: (ctx, controller, focusNode, onSubmit) =>
+                      TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    onSubmitted: (_) => onSubmit(),
+                    decoration: InputDecoration(
+                      label: const Text.rich(
+                        TextSpan(
+                          text: '疫苗名称',
+                          children: [
+                            TextSpan(
+                                text: ' *',
+                                style: TextStyle(color: Colors.red)),
+                          ],
+                        ),
+                      ),
+                      hintText: '选择或输入疫苗名称',
+                      border: const UnderlineInputBorder(),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 ListTile(
@@ -1928,12 +2116,12 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                     ],
                   ),
                   onTap: () async {
+                    final vd = vaccinatedAt!; // 新建时默认为 DateTime.now()
                     final picked = await showDatePicker(
                       context: ctx,
-                      initialDate: nextDate ?? DateTime.now(),
-                      firstDate: DateTime.now(),
-                      lastDate:
-                          DateTime.now().add(const Duration(days: 365 * 5)),
+                      initialDate: nextDate ?? vd.add(const Duration(days: 90)),
+                      firstDate: vd.add(const Duration(days: 1)),
+                      lastDate: vd.add(const Duration(days: 365 * 5)),
                     );
                     if (picked != null) setDState(() => nextDate = picked);
                   },
@@ -1955,8 +2143,22 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
             ),
             ElevatedButton(
               onPressed: () async {
-                if (nameCtrl.text.trim().isEmpty) return;
-                if (vaccinatedAt == null) return;
+                if (nameCtrl.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                        content: Text('请输入疫苗名称'),
+                        duration: Duration(seconds: 2)),
+                  );
+                  return;
+                }
+                if (vaccinatedAt == null) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                        content: Text('请选择接种日期'),
+                        duration: Duration(seconds: 2)),
+                  );
+                  return;
+                }
                 final api = RealPetApiService();
                 final data = <String, dynamic>{
                   'vaccine_name': nameCtrl.text.trim(),
@@ -1977,9 +2179,8 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                   resp = await api.addVaccine(petId, data);
                 }
                 if (mounted && resp.isSuccess) {
-                  await _loadAllData();
-                  if (!mounted) return;
                   Navigator.pop(ctx, true);
+                  _loadVaccineRecords();
                 }
               },
               child: const Text('保存'),
@@ -2016,7 +2217,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
       final api = RealPetApiService();
       final resp = await api.deleteVaccine(petId, recordId);
       if (mounted && resp.isSuccess) {
-        await _loadAllData();
+        _loadVaccineRecords();
       }
     }
   }
@@ -2225,12 +2426,12 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                     ],
                   ),
                   onTap: () async {
+                    final td = treatedAt ?? DateTime.now();
                     final picked = await showDatePicker(
                       context: ctx,
-                      initialDate: nextDate ?? DateTime.now(),
-                      firstDate: DateTime.now(),
-                      lastDate:
-                          DateTime.now().add(const Duration(days: 365 * 5)),
+                      initialDate: nextDate ?? td.add(const Duration(days: 90)),
+                      firstDate: td.add(const Duration(days: 1)),
+                      lastDate: td.add(const Duration(days: 365 * 5)),
                     );
                     if (picked != null) setDState(() => nextDate = picked);
                   },
@@ -2251,8 +2452,22 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
             ),
             ElevatedButton(
               onPressed: () async {
-                if (selectedType == null) return;
-                if (treatedAt == null) return;
+                if (selectedType == null) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                        content: Text('请选择驱虫类型'),
+                        duration: Duration(seconds: 2)),
+                  );
+                  return;
+                }
+                if (treatedAt == null) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                        content: Text('请选择驱虫日期'),
+                        duration: Duration(seconds: 2)),
+                  );
+                  return;
+                }
                 final api = RealPetApiService();
                 final data = <String, dynamic>{
                   'deworming_type': selectedType!,
@@ -2273,9 +2488,8 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                   resp = await api.addDeworming(petId, data);
                 }
                 if (mounted && resp.isSuccess) {
-                  await _loadAllData();
-                  if (!mounted) return;
                   Navigator.pop(ctx, true);
+                  _loadDewormingRecords();
                 }
               },
               child: const Text('保存'),
@@ -2310,7 +2524,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
       final api = RealPetApiService();
       final resp = await api.deleteDeworming(petId, recordId);
       if (mounted && resp.isSuccess) {
-        await _loadAllData();
+        _loadDewormingRecords();
       }
     }
   }

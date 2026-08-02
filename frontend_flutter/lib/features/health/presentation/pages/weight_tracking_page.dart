@@ -47,7 +47,7 @@ class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage>
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text(
-          '体重记录',
+          '体重管理',
           style: TextStyle(
             fontWeight: FontWeight.w700,
           ),

@@ -9,7 +9,7 @@ part of 'user_model.dart';
 User _$UserFromJson(Map<String, dynamic> json) => User(
       id: (json['id'] as num).toInt(),
       username: json['username'] as String,
-      email: json['email'] as String,
+      email: json['email'] as String?,
       phone: json['phone'] as String?,
       avatarUrl: json['avatar_url'] as String?,
       status: (json['status'] as num).toInt(),
@@ -484,4 +484,46 @@ Map<String, dynamic> _$OnboardingStatusToJson(OnboardingStatus instance) =>
       'current_step': instance.currentStep,
       'total_steps': instance.totalSteps,
       'next_step': instance.nextStep,
+    };
+
+ForgotPasswordRequest _$ForgotPasswordRequestFromJson(
+        Map<String, dynamic> json) =>
+    ForgotPasswordRequest(
+      phone: json['phone'] as String,
+    );
+
+Map<String, dynamic> _$ForgotPasswordRequestToJson(
+        ForgotPasswordRequest instance) =>
+    <String, dynamic>{
+      'phone': instance.phone,
+    };
+
+VerifyResetCodeRequest _$VerifyResetCodeRequestFromJson(
+        Map<String, dynamic> json) =>
+    VerifyResetCodeRequest(
+      phone: json['phone'] as String,
+      code: json['code'] as String,
+    );
+
+Map<String, dynamic> _$VerifyResetCodeRequestToJson(
+        VerifyResetCodeRequest instance) =>
+    <String, dynamic>{
+      'phone': instance.phone,
+      'code': instance.code,
+    };
+
+ResetPasswordRequest _$ResetPasswordRequestFromJson(
+        Map<String, dynamic> json) =>
+    ResetPasswordRequest(
+      phone: json['phone'] as String,
+      code: json['code'] as String,
+      newPassword: json['new_password'] as String,
+    );
+
+Map<String, dynamic> _$ResetPasswordRequestToJson(
+        ResetPasswordRequest instance) =>
+    <String, dynamic>{
+      'phone': instance.phone,
+      'code': instance.code,
+      'new_password': instance.newPassword,
     };

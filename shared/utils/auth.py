@@ -233,12 +233,15 @@ def get_current_user_optional(
 
 def authenticate_user(db: Session, username: str, password: str) -> Optional[User]:
     """验证用户"""
-    # 支持用户名或邮箱登录
-    # 用户名明文可查，邮箱需走盲索引
+    # 支持用户名、邮箱或手机号登录
+    # 用户名明文可查，邮箱/手机号需走盲索引
     user = db.query(User).filter(User.username == username).first()
     if not user:
         email_hash = _blind_index(username)
         user = db.query(User).filter(User.email_hash == email_hash).first()
+    if not user:
+        phone_hash = _blind_index(username)
+        user = db.query(User).filter(User.phone_hash == phone_hash).first()
     
     if not user:
         return None
@@ -259,12 +262,15 @@ def create_user(db: Session, username: str, email: str, password: str, phone: st
         )
     
     # 检查邮箱是否已存在（通过盲索引）
-    email_hash = _blind_index(email)
-    if db.query(User).filter(User.email_hash == email_hash).first():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="邮箱已存在"
-        )
+    if email:
+        email_hash = _blind_index(email)
+        if db.query(User).filter(User.email_hash == email_hash).first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="邮箱已存在"
+            )
+    else:
+        email_hash = None
     
     # 检查手机号是否已存在（通过盲索引）
     phone_hash = _blind_index(phone) if phone else None

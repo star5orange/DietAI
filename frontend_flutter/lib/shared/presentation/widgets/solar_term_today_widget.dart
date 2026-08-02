@@ -15,7 +15,7 @@ class SolarTermTodayWidget extends StatefulWidget {
   const SolarTermTodayWidget({
     super.key,
     this.onTapDetails,
-    this.crowdTag = '普通',
+    this.crowdTag = '均衡维持',
   });
 
   /// 24节气数据（静态，供所有组件复用）
