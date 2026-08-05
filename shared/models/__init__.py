@@ -12,6 +12,13 @@ from .wellness_models import WellnessKnowledge
 from .advisor_models import AiAdvisorSettings
 from .fasting_models import FastingPlan, FastingCheckin
 from .pet_models import VirtualPetState, PetUnlockable
+
+# Milestone 4 新增模型
+from .social_models import UserRelationship
+from .message_models import Message
+from .exam_models import ExamReport, ExamMetric
+from .proxy_models import ProxyRecord
+
 # 导入所有Pydantic模型
 from . import schemas
 

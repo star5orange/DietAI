@@ -731,6 +731,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
             const SizedBox(height: 24),
 
+            // 用户ID
+            _buildDetailItem('用户ID', '${currentUser?.id ?? "—"}'),
+            const SizedBox(height: 12),
+
             // 详细信息内容
             if (currentUser?.username != null) ...[
               _buildDetailItem('用户名', '@${currentUser!.username}'),

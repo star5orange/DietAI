@@ -37,7 +37,7 @@ UserProfile _$UserProfileFromJson(Map<String, dynamic> json) => UserProfile(
       height: (json['height'] as num?)?.toDouble(),
       weight: (json['weight'] as num?)?.toDouble(),
       bmi: (json['bmi'] as num?)?.toDouble(),
-      activityLevel: (json['activity_level'] as num?)?.toInt(),
+      activityLevel: (json['activity_level'] as num?)?.toInt() ?? 2,
       occupation: json['occupation'] as String?,
       region: json['region'] as String?,
       dietaryPreferences: (json['dietary_preferences'] as List<dynamic>?)

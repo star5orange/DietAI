@@ -29,6 +29,7 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
   DailyWaterSummary? _summary;
   List<WaterIntakeRecord> _todayRecords = [];
   bool _isLoading = true;
+  bool _isOperating = false;
 
   @override
   void initState() {
@@ -68,32 +69,37 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
   }
 
   Future<void> _quickAdd({int amountMl = 250}) async {
-    final result = await _waterService.addWaterIntake(
-        amountMl: amountMl,
-        recordedAt: widget.selectedDate);
+    if (_isOperating) return;
+    _isOperating = true;
+    try {
+      final result = await _waterService.addWaterIntake(
+          amountMl: amountMl, recordedAt: widget.selectedDate);
 
-    if (result.success) {
-      await _loadData();
-      widget.onWaterRecorded?.call();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已添加 ${amountMl}ml 饮水'),
-            backgroundColor: AppColors.info,
-            duration: const Duration(seconds: 1),
-          ),
-        );
+      if (result.success) {
+        await _loadData();
+        widget.onWaterRecorded?.call();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('已添加 ${amountMl}ml 饮水'),
+              backgroundColor: AppColors.info,
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('添加失败: ${result.message}'),
+              backgroundColor: AppColors.error,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('添加失败: ${result.message}'),
-            backgroundColor: AppColors.error,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+    } finally {
+      _isOperating = false;
     }
   }
 
@@ -163,32 +169,37 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
   }
 
   Future<void> _undoLastRecord() async {
-    if (_todayRecords.isEmpty) return;
-    // _todayRecords 按存储顺序排列（最新在前），第一条才是最近添加的
-    final lastRecord = _todayRecords.first;
-    final amountMl = lastRecord.amountMl;
-    final result = await _waterService.deleteWaterRecord(lastRecord.id);
-    if (result.success) {
-      await _loadData();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已撤回 ${amountMl}ml 饮水记录'),
-            backgroundColor: AppColors.info,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+    if (_todayRecords.isEmpty || _isOperating) return;
+    _isOperating = true;
+    try {
+      // 后端按 record_time DESC, id DESC 排序，first 即为最新记录
+      final lastRecord = _todayRecords.first;
+      final amountMl = lastRecord.amountMl;
+      final result = await _waterService.deleteWaterRecord(lastRecord.id);
+      if (result.success) {
+        await _loadData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('已撤回 ${amountMl}ml 饮水记录'),
+              backgroundColor: AppColors.info,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('撤回失败: ${result.message}'),
+              backgroundColor: AppColors.error,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
       }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('撤回失败: ${result.message}'),
-            backgroundColor: AppColors.error,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
+    } finally {
+      _isOperating = false;
     }
   }
 
@@ -521,7 +532,8 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
               child: Text(label,
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.labelMedium.copyWith(
-                      color: AppColors.textInverse, fontWeight: FontWeight.w600)),
+                      color: AppColors.textInverse,
+                      fontWeight: FontWeight.w600)),
             ),
           ],
         ),
@@ -549,7 +561,8 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
               child: Text('自定义',
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.labelMedium.copyWith(
-                      color: AppColors.textInverse, fontWeight: FontWeight.w600)),
+                      color: AppColors.textInverse,
+                      fontWeight: FontWeight.w600)),
             ),
           ],
         ),

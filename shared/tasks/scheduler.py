@@ -445,6 +445,40 @@ def setup_scheduler() -> AsyncIOScheduler:
     except ImportError as e:
         logger.warning(f"Health report tasks not registered: {e}")
 
+    # M4: 体检提醒任务
+    try:
+        from shared.tasks.exam_reminder_tasks import (
+            check_annual_exam_reminders,
+            check_followup_exam_reminders,
+            check_missing_exam_reminders
+        )
+        _scheduler.add_job(
+            check_annual_exam_reminders,
+            trigger=CronTrigger(day=1, hour=9, minute=0),
+            id="check_annual_exam_reminders",
+            name="年度体检提醒检查",
+            replace_existing=True,
+        )
+        logger.info("Annual exam reminder task registered (1st 09:00)")
+        _scheduler.add_job(
+            check_followup_exam_reminders,
+            trigger=CronTrigger(hour=8, minute=30),
+            id="check_followup_exam_reminders",
+            name="复查提醒检查",
+            replace_existing=True,
+        )
+        logger.info("Followup exam reminder task registered (daily 08:30)")
+        _scheduler.add_job(
+            check_missing_exam_reminders,
+            trigger=CronTrigger(day_of_week='mon', hour=10, minute=0),
+            id="check_missing_exam_reminders",
+            name="未上传提醒检查",
+            replace_existing=True,
+        )
+        logger.info("Missing exam reminder task registered (Monday 10:00)")
+    except ImportError as e:
+        logger.warning(f"Exam reminder tasks not registered: {e}")
+
     _scheduler.start()
     logger.info("Background task scheduler started")
 

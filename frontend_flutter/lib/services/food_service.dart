@@ -226,13 +226,14 @@ class FoodService {
         final dataMap = response.data as Map<String, dynamic>;
         print('✅ 获取食物记录图片数据成功: recordId=$recordId');
 
-        // 缓存数据
-        _cacheManager.setMemoryCache(cacheKey, dataMap);
-        await _cacheManager.setLocalCache(cacheKey, dataMap);
-
-        // 如果图片数据是base64格式，也缓存图片字节数据
         final imageBase64 = dataMap['image_base64'] as String?;
-        if (imageBase64 != null) {
+
+        // 只有图片数据完整时才缓存，避免缓存空结果导致后续不重试
+        if (imageBase64 != null && imageBase64.isNotEmpty) {
+          _cacheManager.setMemoryCache(cacheKey, dataMap);
+          await _cacheManager.setLocalCache(cacheKey, dataMap);
+
+          // 缓存图片字节数据
           try {
             final imageBytes = base64Decode(imageBase64);
             _cacheManager.setImageCache(cacheKey, imageBytes);
@@ -240,6 +241,8 @@ class FoodService {
           } catch (e) {
             print('⚠️ 缓存图片字节数据失败: $e');
           }
+        } else {
+          print('⚠️ 图片base64为空，跳过缓存以便下次重试');
         }
 
         return ApiResponse<Map<String, dynamic>>(
@@ -575,7 +578,8 @@ class FoodService {
   }
 
   /// 语音识别
-  Future<ApiResponse<Map<String, dynamic>>> recognizeVoice(File audioFile) async {
+  Future<ApiResponse<Map<String, dynamic>>> recognizeVoice(
+      File audioFile) async {
     try {
       print('📤 上传音频文件进行语音识别');
 
@@ -697,6 +701,7 @@ class FoodService {
     String? recordTime,
     double? cost,
     String? sourceTag,
+    int? targetUserId,
   }) async* {
     try {
       print('🚀 开始创建带图片的食物记录（流式）');
@@ -742,6 +747,7 @@ class FoodService {
         recordingMethod: 1, // AI扫描
         cost: cost,
         sourceTag: sourceTag,
+        targetUserId: targetUserId,
       );
 
       print('📤 步骤2: 创建食物记录（流式）');
@@ -767,6 +773,7 @@ class FoodService {
     String? recordTime,
     double? cost,
     String? sourceTag,
+    int? targetUserId,
   }) async {
     try {
       print('🚀 开始创建带图片的食物记录');
@@ -796,6 +803,7 @@ class FoodService {
         recordingMethod: 1, // AI扫描
         cost: cost,
         sourceTag: sourceTag,
+        targetUserId: targetUserId,
       );
 
       print('📤 步骤2: 创建食物记录');

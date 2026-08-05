@@ -5,6 +5,7 @@ import '../../domain/pet_state_calculator.dart';
 import '../../data/pet_storage.dart';
 import '../../domain/services/pet_service.dart';
 import '../../domain/pet_skin_config.dart'; // 导入桌宠皮肤配置
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 class PetState {
   final PetExpression expression;
@@ -94,6 +95,7 @@ class PetState {
 class PetNotifier extends StateNotifier<PetState> {
   PetStorage? _storage;
   final PetService _petService = PetService();
+  int? _lastUserId;
 
   PetNotifier() : super(const PetState());
 
@@ -113,10 +115,21 @@ class PetNotifier extends StateNotifier<PetState> {
       );
     }
 
-    _syncFromStorage();
+    // 先从后端同步：后端 pet_name 为 null 则重置为默认值（防止读到其他账号残留数据）
+    await _syncFromBackend();
 
-    // 从后端同步宠物状态
-    _syncFromBackend();
+    // 再从本地读取其他持久化字段（level、exp 等，petNames 已被 _syncFromBackend 处理好）
+    _syncFromStorage();
+  }
+
+  /// 账号切换时重新同步（由 petProvider 监听 currentUserProvider 触发）
+  Future<void> onUserChanged(int? userId) async {
+    if (userId == _lastUserId || _storage == null) return;
+    _lastUserId = userId;
+    // 先重置 pet_names 防止读到旧账号残留数据，再由 _syncFromBackend 按需恢复
+    _storage!.petNames = {'default': '桌宠一', 'christine': '桌宠二'};
+    await _syncFromBackend();
+    _syncFromStorage();
   }
 
   /// 从后端获取宠物状态并合并到本地
@@ -127,16 +140,21 @@ class PetNotifier extends StateNotifier<PetState> {
         final data = response.data!;
         final skinKey = data['current_skin'] as String? ?? 'default';
 
-        // 解析 pet_names
-        Map<String, String> petNames = {'default': '桌宠一', 'christine': '桌宠二'};
-        if (data['pet_names'] != null && data['pet_names'] is Map) {
-          final namesMap = data['pet_names'] as Map;
-          petNames = namesMap
-              .map((key, value) => MapEntry(key.toString(), value.toString()));
+        // 后端 pet_name 决定是否使用自定义名称（null 表示从未改过名，重置默认值确保账号隔离）
+        final backendPetName = data['pet_name'] as String?;
+        final currentSkin = PetSkin.fromKey(skinKey);
+
+        Map<String, String> petNames;
+        if (backendPetName != null && backendPetName.isNotEmpty) {
+          // 有自定义名称，加载本地 pet_names 并用后端值覆盖当前皮肤
+          petNames = Map<String, String>.from(
+              _storage?.petNames ?? {'default': '桌宠一', 'christine': '桌宠二'});
+          petNames[skinKey] = backendPetName;
+        } else {
+          // 无自定义名称，全部重置为默认值（切换账号时防止读到其他用户的数据）
+          petNames = {'default': '桌宠一', 'christine': '桌宠二'};
         }
 
-        // 获取当前皮肤的名称
-        final currentSkin = PetSkin.fromKey(skinKey);
         final currentPetName = petNames[skinKey] ?? currentSkin.defaultName;
 
         state = state.copyWith(
@@ -327,6 +345,13 @@ class PetNotifier extends StateNotifier<PetState> {
 
 final petProvider = StateNotifierProvider<PetNotifier, PetState>((ref) {
   final notifier = PetNotifier();
+  // 首次初始化
   notifier.init();
+  // 监听账号切换，重新同步宠物数据
+  ref.listen(currentUserProvider, (prev, next) {
+    if (prev?.id != next?.id) {
+      notifier.onUserChanged(next?.id);
+    }
+  });
   return notifier;
 });

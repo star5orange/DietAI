@@ -225,6 +225,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
                 "email": current_user.email,
                 "phone": current_user.phone,
                 "avatar_url": current_user.avatar_url,
+                "invite_code": current_user.invite_code,
                 "status": current_user.status,
                 "created_at": current_user.created_at,
                 "last_login_at": current_user.last_login_at

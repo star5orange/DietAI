@@ -72,12 +72,17 @@ async def _run_chat_agent(
     current_user: user_models.User,
     db: Session,
 ) -> tuple[str, dict[str, Any], list[str]]:
-    user_context, _ = await get_user_context(current_user.id, db, session_type)
-    recent_meals = await get_recent_meals(current_user.id, db)
-    health_goals = await get_health_goals(current_user.id, db)
-    weekly_trends = await get_weekly_trends(current_user.id, db)
-    diseases = await get_user_diseases(current_user.id, db)
-    allergies = await get_user_allergies(current_user.id, db)
+    # 宠物健康咨询时不加载人的数据，完全隔离
+    if session_type == 6:
+        user_context, recent_meals, health_goals, weekly_trends = {}, [], {}, {}
+        diseases, allergies = [], []
+    else:
+        user_context, _ = await get_user_context(current_user.id, db, session_type)
+        recent_meals = await get_recent_meals(current_user.id, db)
+        health_goals = await get_health_goals(current_user.id, db)
+        weekly_trends = await get_weekly_trends(current_user.id, db)
+        diseases = await get_user_diseases(current_user.id, db)
+        allergies = await get_user_allergies(current_user.id, db)
     conversation_history = await get_conversation_history(session_id, db)
     if (
         conversation_history
@@ -171,18 +176,94 @@ async def send_chat_message_stream(
             db.commit()
             db.refresh(user_message)
 
-            # 3. 获取用户上下文数据
-            user_context, advisor_system_prompt = await get_user_context(current_user.id, db, session_type)
-            recent_meals = await get_recent_meals(current_user.id, db)
-            health_goals = await get_health_goals(current_user.id, db)
-            weekly_trends = await get_weekly_trends(current_user.id, db)
-            diseases = await get_user_diseases(current_user.id, db)
-            allergies = await get_user_allergies(current_user.id, db)
+            # 3. 获取用户上下文数据（宠物咨询时跳过人的数据）
+            if session_type == 6:
+                user_context, advisor_system_prompt = {}, ''
+                recent_meals, health_goals, weekly_trends = [], {}, {}
+                diseases, allergies = [], []
+                crowd_tag = None
+                constitution_type = None
+            else:
+                user_context, advisor_system_prompt = await get_user_context(current_user.id, db, session_type)
+                recent_meals = await get_recent_meals(current_user.id, db)
+                health_goals = await get_health_goals(current_user.id, db)
+                weekly_trends = await get_weekly_trends(current_user.id, db)
+                diseases = await get_user_diseases(current_user.id, db)
+                allergies = await get_user_allergies(current_user.id, db)
+                # 提取人群标签和体质类型
+                crowd_tag = user_context.get('crowd_tag')
+                constitution_type = user_context.get('constitution_type')
             conversation_history = await get_conversation_history(session.id, db)
 
-            # 提取人群标签和体质类型
-            crowd_tag = user_context.get('crowd_tag')
-            constitution_type = user_context.get('constitution_type')
+            # M3: 宠物健康咨询时加载宠物上下文
+            pet_context = None
+            if session_type == 6 and pet_id:
+                try:
+                    from shared.models.pet_models import PetProfile
+                    from shared.services.pet_nutrition_calc import check_daily_completion, calculate_daily_targets
+                    pet = db.query(PetProfile).filter(
+                        PetProfile.id == pet_id,
+                        PetProfile.user_id == current_user.id
+                    ).first()
+                    if pet:
+                        today_summary = check_daily_completion(db, pet_id)
+                        nutrition_targets = calculate_daily_targets(pet)
+                        # 获取最新体重
+                        latest_weight = None
+                        try:
+                            from shared.models.pet_models import PetWeightRecord
+                            latest_w = db.query(PetWeightRecord).filter(
+                                PetWeightRecord.pet_id == pet_id
+                            ).order_by(PetWeightRecord.measured_at.desc()).first()
+                            if latest_w:
+                                latest_weight = float(latest_w.weight) if latest_w.weight else None
+                        except Exception:
+                            pass
+                        pet_context = {
+                            'pet_id': pet.id,
+                            'pet_name': pet.name,
+                            'species': pet.species,
+                            'breed': pet.breed,
+                            'gender': pet.gender,
+                            'birth_date': str(pet.birth_date) if pet.birth_date else None,
+                            'weight': latest_weight,
+                            'is_neutered': pet.is_neutered,
+                            'daily_calories': nutrition_targets.get('daily_calories'),
+                            'daily_protein': nutrition_targets.get('daily_protein_g'),
+                            'today_intake': today_summary,
+                        }
+                        # 加载疫苗记录
+                        try:
+                            from shared.models.pet_models import PetVaccineRecord
+                            vaccines = db.query(PetVaccineRecord).filter(
+                                PetVaccineRecord.pet_id == pet_id
+                            ).order_by(PetVaccineRecord.vaccinated_at.desc()).limit(10).all()
+                            pet_context['vaccines'] = [{
+                                'name': v.vaccine_name or '',
+                                'date': v.vaccinated_at.isoformat() if v.vaccinated_at else '',
+                                'next_date': v.next_vaccination_date.isoformat() if v.next_vaccination_date else '',
+                                'notes': v.notes or '',
+                            } for v in vaccines]
+                        except Exception:
+                            pet_context['vaccines'] = []
+                        # 加载驱虫记录
+                        try:
+                            from shared.models.pet_models import PetDewormingRecord
+                            dewormings = db.query(PetDewormingRecord).filter(
+                                PetDewormingRecord.pet_id == pet_id
+                            ).order_by(PetDewormingRecord.treated_at.desc()).limit(10).all()
+                            pet_context['dewormings'] = [{
+                                'type': d.deworming_type or '',
+                                'date': d.treated_at.isoformat() if d.treated_at else '',
+                                'next_date': d.next_treatment_date.isoformat() if d.next_treatment_date else '',
+                                'notes': d.notes or '',
+                            } for d in dewormings]
+                        except Exception:
+                            pet_context['dewormings'] = []
+                except ImportError:
+                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to load pet context: {e}")
 
             # M3: 宠物健康咨询时加载宠物上下文
             pet_context = None
@@ -889,6 +970,7 @@ async def get_user_diseases(user_id: int, db: Session) -> List[Dict[str, Any]]:
                 "disease_name": d.disease_name,
                 "severity_level": d.severity_level,
                 "is_current": d.is_current,
+                "notes": d.notes or "",
             }
             for d in diseases
         ]

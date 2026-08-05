@@ -43,28 +43,30 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
 
     try {
       print('📝 开始注册流程...');
-      
-      final success = await ref.read(authStateProvider.notifier).registerAndLogin(
-        username: _usernameController.text.trim(),
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-        phone: _phoneController.text.trim().isEmpty 
-            ? null 
-            : _phoneController.text.trim(),
-      );
+
+      final errorMsg =
+          await ref.read(authStateProvider.notifier).registerAndLogin(
+                username: _usernameController.text.trim(),
+                email: _emailController.text.trim(),
+                password: _passwordController.text,
+                phone: _phoneController.text.trim().isEmpty
+                    ? null
+                    : _phoneController.text.trim(),
+              );
 
       if (mounted) {
-        if (success) {
+        if (errorMsg == null) {
           print('✅ 注册成功，立即跳转到引导页...');
-          
+
           // 立即导航，不等路由守卫介入（路由守卫在下一帧才会触发）
           context.go('/onboarding');
         } else {
-          print('❌ 注册失败');
+          print('❌ 注册失败: $errorMsg');
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('注册失败，请检查您的信息'),
+            SnackBar(
+              content: Text(errorMsg),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
             ),
           );
         }
@@ -98,20 +100,20 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const SizedBox(height: 40),
-              
+
               // Logo和标题区域
               _buildHeader(),
-              
+
               const SizedBox(height: 32),
-              
+
               // 注册表单
               _buildRegisterForm(),
-              
+
               const SizedBox(height: 24),
-              
+
               // 登录提示
               _buildLoginPrompt(),
-              
+
               const SizedBox(height: 20),
             ],
           ),
@@ -143,9 +145,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
             child: Image.asset('assets/images/logo_welcome.png'),
           ),
         ),
-        
+
         const SizedBox(height: 24),
-        
+
         // 欢迎文案
         Text(
           '创建新账户',
@@ -154,9 +156,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
             fontWeight: FontWeight.w700,
           ),
         ),
-        
+
         const SizedBox(height: 8),
-        
+
         // 副标题
         Text(
           '加入我们，开始您的健康之旅',
@@ -177,14 +179,17 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
           AppInput(
             controller: _usernameController,
             label: '用户名',
-            placeholder: '请输入用户名',
+            placeholder: '请输入用户名（1-10位）',
             prefixIcon: Icons.person_outline,
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
                 return '请输入用户名';
               }
-              if (value.trim().length < 3) {
-                return '用户名至少3位字符';
+              if (value.trim().length < 1) {
+                return '用户名至少1位字符';
+              }
+              if (value.trim().length > 10) {
+                return '用户名不能超过10位字符';
               }
               return null;
             },
@@ -219,7 +224,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
             type: AppInputType.email,
             validator: (value) {
               if (value != null && value.trim().isNotEmpty) {
-                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value.trim())) {
+                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+                    .hasMatch(value.trim())) {
                   return '请输入有效的邮箱地址';
                 }
               }
@@ -227,7 +233,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
             },
           ),
           const SizedBox(height: 16),
-          
+
           // 密码输入框
           AppInput(
             controller: _passwordController,
@@ -246,7 +252,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
             },
           ),
           const SizedBox(height: 16),
-          
+
           // 确认密码输入框
           AppInput(
             controller: _confirmPasswordController,
@@ -265,7 +271,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
             },
           ),
           const SizedBox(height: 24),
-          
+
           // 注册按钮
           AppButton(
             text: '注册',
@@ -302,4 +308,4 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       ],
     );
   }
-} 
+}

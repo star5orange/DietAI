@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form
 from shared.models.database import get_db
 from shared.utils.auth import get_current_user
 from shared.models.user_models import User
@@ -142,3 +142,83 @@ async def recognize_voice(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"识别失败: {str(e)}")
+
+
+# ============================================================
+# 文本转语音 (TTS)
+# ============================================================
+
+# 火山引擎 TTS API
+TTS_URL = "https://openspeech.bytedance.com/api/v1/tts"
+
+
+@router.post("/tts", summary="文本转语音")
+async def text_to_speech(
+    text: str = Form(..., description="要转换的文本"),
+    voice_type: str = Form("zh_female", description="语音类型：zh_female/zh_male"),
+    current_user: User = Depends(get_current_user),
+):
+    """将文本转换为语音并返回音频文件"""
+    api_key = settings.volc_asr_api_key
+    if not api_key:
+        raise HTTPException(status_code=500, detail="语音服务未配置")
+
+    # 文本长度限制
+    if len(text) > 500:
+        raise HTTPException(status_code=400, detail="文本过长，最多500字")
+
+    # 构建 TTS 请求
+    headers = {
+        "X-Api-Key": api_key,
+        "X-Api-Resource-Id": settings.volc_asr_resource_id,
+        "Content-Type": "application/json",
+    }
+
+    body = {
+        "text": text,
+        "config": {
+            "encoding": "mp3",
+            "rate": 10,  # 语速 0-10
+            "volume": 10,  # 音量 0-10
+            "pitch": 10,  # 音调 0-10
+        },
+        "voice_type": voice_type,
+    }
+
+    try:
+        resp = http_requests.post(
+            TTS_URL,
+            data=json.dumps(body),
+            headers=headers,
+            timeout=30,
+        )
+
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=500,
+                detail=f"TTS 请求失败: {resp.status_code}"
+            )
+
+        # 检查响应
+        status_code = resp.headers.get("X-Api-Status-Code", "")
+        if status_code != "30000000":
+            message = resp.headers.get("X-Api-Message", "未知错误")
+            raise HTTPException(
+                status_code=500,
+                detail=f"TTS 转换失败: [{status_code}] {message}"
+            )
+
+        # 返回音频数据
+        from fastapi.responses import Response
+        return Response(
+            content=resp.content,
+            media_type="audio/mpeg",
+            headers={
+                "Content-Disposition": "inline; filename=speech.mp3"
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"TTS 转换失败: {str(e)}")

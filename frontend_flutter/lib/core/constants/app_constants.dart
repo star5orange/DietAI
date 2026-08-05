@@ -10,6 +10,9 @@ class AppConstants {
   static String get baseUrl => ApiConfig.effectiveBaseUrl; // 使用更灵活的API配置
   static const String apiPrefix = '/api';
 
+  // WebSocket配置（从 baseUrl 转换 http:// → ws://）
+  static String get wsUrl => baseUrl.replaceFirst('http://', 'ws://').replaceFirst('https://', 'wss://');
+
   // 存储键
   static const String accessTokenKey = 'access_token';
   static const String refreshTokenKey = 'refresh_token';
@@ -25,6 +28,9 @@ class AppConstants {
   static const String healthRoute = '/health';
   static const String profileRoute = '/profile';
   static const String savedMealsRoute = '/saved-meals';
+  // Milestone 4: 社交路由
+  static const String socialRoute = '/social';
+  static const String familyDashboardRoute = '/family-dashboard';
 
   // 时间配置
   static const int requestTimeout = 300000; // 300秒 (AI形象生成需要更长时间)

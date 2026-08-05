@@ -323,6 +323,13 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
               ),
               _buildNavItem(
                 context,
+                icon: LucideIcons.users,
+                label: '社交',
+                route: AppConstants.socialRoute,
+                isActive: currentLocation == AppConstants.socialRoute,
+              ),
+              _buildNavItem(
+                context,
                 icon: LucideIcons.user,
                 label: '我的',
                 route: AppConstants.profileRoute,

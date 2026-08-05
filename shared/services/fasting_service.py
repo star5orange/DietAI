@@ -129,6 +129,7 @@ def create_fasting_plan(
     health_assessment: Optional[Dict[str, Any]],
     disclaimer_accepted: bool = False,
     target_weight: Optional[float] = None,
+    start_weight: Optional[float] = None,
     eating_window_start: Optional[str] = "08:00",
     eating_window_end: Optional[str] = "16:00",
     fasting_days: Optional[List[int]] = None,
@@ -161,6 +162,7 @@ def create_fasting_plan(
         user_id=user_id,
         plan_type=plan_type,
         target_weight=target_weight,
+        start_weight=start_weight,
         start_date=start_date,
         status="active",
         eating_window_start=datetime.strptime(eating_window_start, "%H:%M").time(),
@@ -224,6 +226,7 @@ def get_fasting_plans(
             "days_elapsed": days_elapsed,
             "days_remaining": days_remaining,
             "target_weight": float(p.target_weight) if p.target_weight else None,
+            "start_weight": float(p.start_weight) if p.start_weight else None,
             "current_weight": float(latest_checkin.weight) if latest_checkin else None,
             "eating_window_start": p.eating_window_start.strftime("%H:%M"),
             "eating_window_end": p.eating_window_end.strftime("%H:%M"),
@@ -568,8 +571,33 @@ def get_progress(
     if not plan:
         raise ValueError("计划不存在")
 
-    days_elapsed = (date.today() - plan.start_date).days
-    days_total = (plan.end_date - plan.start_date).days if plan.end_date else 30
+    days_elapsed = max((date.today() - plan.start_date).days + 1, 1)  # 第N天，从1开始
+
+    # 按计划类型计算总天数（end_date 未设置时使用默认值）
+    if plan.end_date:
+        days_total = (plan.end_date - plan.start_date).days
+    else:
+        default_durations = {"16_8": 30, "5_2": 56, "basic_fasting": 7}
+        days_total = default_durations.get(plan.plan_type, 30)
+
+    # 计划到期自动标记为完成
+    is_completed = days_elapsed >= days_total
+    if is_completed and plan.status == "active":
+        plan.status = "completed"
+        plan.end_date = plan.end_date or (plan.start_date + timedelta(days=days_total))
+        db.commit()
+
+    # 计算计划周期内预期的断食日总数
+    fasting_days_list = plan.fasting_days or []
+    if plan.plan_type == "16_8":
+        expected_fasting_days = days_total  # 每天都是断食日
+    else:
+        # 5:2 或基础断食：遍历计划周期，统计匹配的星期几
+        expected_fasting_days = 0
+        for i in range(days_total):
+            d = plan.start_date + timedelta(days=i)
+            if d.weekday() in fasting_days_list:
+                expected_fasting_days += 1
 
     checkins = db.query(FastingCheckin).filter(
         FastingCheckin.plan_id == plan_id
@@ -584,14 +612,28 @@ def get_progress(
                 "weight": float(c.weight),
             })
 
-    # 体重统计
-    weight_start = float(checkins[0].weight) if checkins and checkins[0].weight else None
+    # 体重统计：优先使用计划创建时的起始体重，否则用首次打卡体重
+    weight_start = float(plan.start_weight) if plan.start_weight else (float(checkins[0].weight) if checkins and checkins[0].weight else None)
     weight_current = float(checkins[-1].weight) if checkins and checkins[-1].weight else None
     weight_change = round(weight_current - weight_start, 1) if (weight_start and weight_current) else None
 
-    # 打卡率
+    # 打卡率：按预期断食日总数计算
     completed_count = sum(1 for c in checkins if c.completed)
-    completion_rate = round(completed_count / max(days_elapsed, 1) * 100, 1)
+    completion_rate = round(completed_count / max(expected_fasting_days, 1) * 100, 1)
+
+    # 本周打卡统计
+    today = date.today()
+    monday = today - timedelta(days=today.weekday())  # 本周一
+    sunday = monday + timedelta(days=6)               # 本周日
+    weekly_target = 0
+    for i in range(7):
+        d = monday + timedelta(days=i)
+        if d.weekday() in fasting_days_list:
+            weekly_target += 1
+    weekly_checkins = sum(
+        1 for c in checkins
+        if c.completed and monday <= c.checkin_date <= today
+    )
 
     # 体感统计
     feeling_counts = {}
@@ -611,8 +653,11 @@ def get_progress(
 
     return {
         "plan_id": plan_id,
-        "days_elapsed": days_elapsed,
+        "is_completed": is_completed,
+        "days_elapsed": min(days_elapsed, days_total),  # 不超过总天数
         "days_total": days_total,
+        "completed_count": completed_count,
+        "expected_fasting_days": expected_fasting_days,
         "completion_rate": completion_rate,
         "weight_start": weight_start,
         "weight_current": weight_current,
@@ -620,6 +665,8 @@ def get_progress(
         "feeling_avg": feeling_avg,
         "streak_days": streak,
         "chart": weight_chart,
+        "weekly_checkins": weekly_checkins,
+        "weekly_target": weekly_target,
     }
 
 

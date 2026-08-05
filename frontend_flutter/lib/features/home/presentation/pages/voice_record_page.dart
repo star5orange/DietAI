@@ -19,6 +19,8 @@ class VoiceRecordPage extends StatefulWidget {
   final String? recordTime;
   final double? costAmount;
   final String? costSource;
+  // 代记录：目标家人用户ID（为空表示记录给自己）
+  final int? proxyTargetUserId;
 
   const VoiceRecordPage({
     super.key,
@@ -28,6 +30,7 @@ class VoiceRecordPage extends StatefulWidget {
     this.recordTime,
     this.costAmount,
     this.costSource,
+    this.proxyTargetUserId,
   });
 
   @override
@@ -111,8 +114,7 @@ class _VoiceRecordPageState extends State<VoiceRecordPage>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('录音失败: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('录音失败: $e'), backgroundColor: AppColors.error),
         );
       }
     }
@@ -254,7 +256,8 @@ class _VoiceRecordPageState extends State<VoiceRecordPage>
               ),
               child: Text(
                 text,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
               ),
             ),
             const SizedBox(height: 24),
@@ -336,6 +339,7 @@ class _VoiceRecordPageState extends State<VoiceRecordPage>
         recordingMethod: 3, // 语音记录
         cost: widget.costAmount,
         sourceTag: widget.costSource,
+        targetUserId: widget.proxyTargetUserId,
       );
 
       final result = await _foodService.createFoodRecord(record);
@@ -363,8 +367,7 @@ class _VoiceRecordPageState extends State<VoiceRecordPage>
       if (mounted) {
         setState(() => _isSubmitting = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('提交失败: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('提交失败: $e'), backgroundColor: AppColors.error),
         );
       }
     }
@@ -384,6 +387,7 @@ class _VoiceRecordPageState extends State<VoiceRecordPage>
         recordingMethod: 3, // 语音记录
         cost: widget.costAmount,
         sourceTag: widget.costSource,
+        targetUserId: widget.proxyTargetUserId,
       );
 
       final stream = _foodService.createFoodRecordStream(record);
@@ -407,8 +411,7 @@ class _VoiceRecordPageState extends State<VoiceRecordPage>
       if (mounted) {
         setState(() => _isSubmitting = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('提交失败: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('提交失败: $e'), backgroundColor: AppColors.error),
         );
       }
     }
@@ -435,8 +438,9 @@ class _VoiceRecordPageState extends State<VoiceRecordPage>
           children: [
             // 录音按钮
             GestureDetector(
-              onTapDown:
-                  (_isRecognizing || _isSubmitting) ? null : (_) => _startRecording(),
+              onTapDown: (_isRecognizing || _isSubmitting)
+                  ? null
+                  : (_) => _startRecording(),
               onTapUp: _isRecording ? (_) => _stopRecording() : null,
               onTapCancel: _isRecording ? () => _stopRecording() : null,
               child: Container(
@@ -477,8 +481,7 @@ class _VoiceRecordPageState extends State<VoiceRecordPage>
                     Icon(
                       _isRecording ? LucideIcons.micOff : LucideIcons.mic,
                       size: 48,
-                      color:
-                          _isRecording ? AppColors.error : AppColors.primary,
+                      color: _isRecording ? AppColors.error : AppColors.primary,
                     ),
                   ],
                 ),

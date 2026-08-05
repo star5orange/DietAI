@@ -30,6 +30,7 @@ import '../../../pet/presentation/widgets/pet_avatar_display.dart';
 import '../../../pet/presentation/widgets/add_feeding_record_modal.dart';
 import '../../../pet/data/real_pet_api_service.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../shared/domain/models/user_model.dart';
 import '../../../cost/data/services/cost_service.dart';
 import '../../../cost/presentation/widgets/budget_progress_card.dart';
@@ -37,6 +38,7 @@ import 'meal_selection_page.dart';
 import 'text_describe_page.dart';
 import 'voice_record_page.dart';
 import '../../../saved_meals/presentation/pages/saved_meals_page.dart';
+import '../../../exam/presentation/pages/exam_upload_page.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -96,9 +98,12 @@ class _HomePageState extends ConsumerState<HomePage> {
     return emotions.map((k, v) => MapEntry(k, v?.toString() ?? ''));
   }
 
+  int? _lastUserId;
+
   @override
   void initState() {
     super.initState();
+    _lastUserId = ref.read(currentUserProvider)?.id;
     _loadTodayData();
     _loadPets();
   }
@@ -151,6 +156,13 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Future<void> _loadDataForDate(DateTime date) async {
     setState(() => _isLoading = true);
+
+    // 重置目标值，避免使用旧账号的数据
+    _targetCalories = 2000.0;
+    _targetProtein = 150.0;
+    _targetCarbs = 250.0;
+    _targetFat = 65.0;
+
     try {
       final dateStr = DateFormat('yyyy-MM-dd').format(date);
       final result = await _foodService.getFoodRecords(
@@ -216,7 +228,8 @@ class _HomePageState extends ConsumerState<HomePage> {
 
         // 卡路里目标优先使用用户设置的值（不依赖 getDailyStatus API）
         // 注意：targetCalories 默认是 0.0 而非 null，需要同时判断 > 0
-        if (userProfile?.targetCalories != null && userProfile!.targetCalories! > 0) {
+        if (userProfile?.targetCalories != null &&
+            userProfile!.targetCalories! > 0) {
           _targetCalories = userProfile!.targetCalories!.toDouble();
           print('✅ 使用用户设置的卡路里目标: $_targetCalories');
         }
@@ -233,7 +246,8 @@ class _HomePageState extends ConsumerState<HomePage> {
             _targetFat = (targets['fat'] as num?)?.toDouble() ?? _targetFat;
 
             // 如果用户未设置有效的卡路里目标，使用系统计算值
-            if (userProfile?.targetCalories == null || userProfile!.targetCalories! <= 0) {
+            if (userProfile?.targetCalories == null ||
+                userProfile!.targetCalories! <= 0) {
               _targetCalories =
                   (targets['calories'] as num?)?.toDouble() ?? _targetCalories;
               print('📊 使用系统计算的卡路里目标: $_targetCalories');
@@ -280,7 +294,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ErrorHandler.showError(context, e.toString());
+        ErrorHandler.showError(this.context, e.toString());
       }
     }
   }
@@ -1255,6 +1269,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                               const Center(child: CircularProgressIndicator())
                             else ...[
                               _buildCrowdTagHighlight(crowdTag),
+                              const SizedBox(height: 12),
+                              _buildExamReportButton(),
                               const SizedBox(height: 20),
                               _buildCalorieCard(
                                   remainingCalories, currentCalories, crowdTag),
@@ -1271,14 +1287,12 @@ class _HomePageState extends ConsumerState<HomePage> {
                               SizedBox(
                                 height: 180,
                                 child: ExerciseQuickAdd(
-                                  todayCalories:
-                                      _todayExerciseCalories > 0
-                                          ? _todayExerciseCalories
-                                          : null,
-                                  todayDuration:
-                                      _todayExerciseDuration > 0
-                                          ? _todayExerciseDuration
-                                          : null,
+                                  todayCalories: _todayExerciseCalories > 0
+                                      ? _todayExerciseCalories
+                                      : null,
+                                  todayDuration: _todayExerciseDuration > 0
+                                      ? _todayExerciseDuration
+                                      : null,
                                   onTap: () => Navigator.push(
                                     context,
                                     MaterialPageRoute(
@@ -1531,8 +1545,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(dateText,
-                    style: AppTextStyles.headlineSmall
-                        .copyWith(fontSize: 18)),
+                    style: AppTextStyles.headlineSmall.copyWith(fontSize: 18)),
                 const SizedBox(width: 4),
                 const Icon(LucideIcons.chevronDown,
                     size: 16, color: AppColors.textSecondary),
@@ -2241,7 +2254,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                   children: [
                     Expanded(
                       child: Text(
-                          (record.foodName != null && record.foodName!.isNotEmpty)
+                          (record.foodName != null &&
+                                  record.foodName!.isNotEmpty)
                               ? record.foodName!
                               : '未命名食物',
                           style: AppTextStyles.bodySmall
@@ -2331,7 +2345,8 @@ class _HomePageState extends ConsumerState<HomePage> {
           description: record.description ?? '',
           imageUrl: record.imageUrl,
         );
-        final updateResult = await _foodService.updateFoodRecord(record.id, updateData);
+        final updateResult =
+            await _foodService.updateFoodRecord(record.id, updateData);
         if (updateResult.success && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text('食物名称已更新为: $result'),
@@ -2647,6 +2662,94 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
+  /// 拍体检报告大按钮（首页顶部，最显眼位置）
+  Widget _buildExamReportButton() {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ExamUploadPage()),
+      ).then((_) => _refreshData()),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1E88E5), Color(0xFF42A5F5)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF1E88E5).withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child:
+                  const Icon(Icons.camera_alt, color: Colors.white, size: 30),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '拍体检报告',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    '拍完 AI 自动识别日期和指标',
+                    style: TextStyle(fontSize: 12, color: Colors.white70),
+                  ),
+                  const SizedBox(height: 6),
+                  FutureBuilder<String>(
+                    future: _getLastExamOwner(),
+                    builder: (context, snapshot) {
+                      final owner = snapshot.data ?? '';
+                      if (owner.isEmpty) return const SizedBox.shrink();
+                      return Text(
+                        '最近：$owner',
+                        style: const TextStyle(
+                            fontSize: 11, color: Colors.white70),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white70),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 读取上次体检拍摄对象（由上传页写入 SharedPreferences）
+  Future<String> _getLastExamOwner() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('last_exam_owner_name') ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   /// 根据人群标签显示差异化高亮卡片
   Widget _buildCrowdTagHighlight(String crowdTag) {
     if (crowdTag == '减脂') {
@@ -2670,7 +2773,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('热量缺口追踪',
+                  const Text('热量余额',
                       style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
@@ -2721,7 +2824,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('蛋白质摄入追踪',
+                  const Text('蛋白质摄入',
                       style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
@@ -2803,8 +2906,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(crowdTag == '养生' ? '养生均衡饮食' : '均衡饮食追踪',
-                          style: const TextStyle(
+                      const Text('均衡饮食',
+                          style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
                               color: Colors.white)),
@@ -2916,6 +3019,10 @@ class _HomePageState extends ConsumerState<HomePage> {
     final protein = _dailySummary?.totalProtein ?? 0.0;
     final carbs = _dailySummary?.totalCarbohydrates ?? 0.0;
     final fat = _dailySummary?.totalFat ?? 0.0;
+    final totalCalories = _dailySummary?.totalCalories ?? 0.0;
+    // 其他营养素热量（膳食纤维、糖醇等）
+    final otherCal = (totalCalories - protein * 4 - carbs * 4 - fat * 9)
+        .clamp(0.0, double.infinity);
     final targetProtein = _targetProtein;
     final targetCarbs = _targetCarbs;
     final targetFat = _targetFat;
@@ -3032,6 +3139,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     protein: protein,
                     carbs: carbs,
                     fat: fat,
+                    totalCalories: totalCalories,
                     proteinColor: AppColors.proteinColor,
                     carbsColor: AppColors.carbsColor,
                     fatColor: AppColors.fatColor,
@@ -3041,7 +3149,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '${(protein + carbs * 4 + fat * 9).round()}',
+                          '${totalCalories.round()}',
                           style: AppTextStyles.numberMedium.copyWith(
                             color: AppColors.textPrimary,
                           ),
@@ -3057,14 +3165,15 @@ class _HomePageState extends ConsumerState<HomePage> {
             ),
             const SizedBox(height: 12),
             // 图例
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 16,
+              runSpacing: 4,
               children: [
                 _buildLegend('蛋白质', protein, AppColors.proteinColor),
-                const SizedBox(width: 16),
                 _buildLegend('碳水', carbs, AppColors.carbsColor),
-                const SizedBox(width: 16),
                 _buildLegend('脂肪', fat, AppColors.fatColor),
+                if (otherCal > 0) _buildOtherLegend(totalCalories, otherCal),
               ],
             ),
             const SizedBox(height: 16),
@@ -3085,10 +3194,10 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildLegend(String label, double value, Color color) {
-    final total = (_dailySummary?.totalProtein ?? 0) +
-        (_dailySummary?.totalCarbohydrates ?? 0) +
-        (_dailySummary?.totalFat ?? 0);
-    final percent = total > 0 ? (value / total * 100).round() : 0;
+    // 按热量贡献计算百分比：蛋白质 4cal/g，碳水 4cal/g，脂肪 9cal/g
+    final totalCal = _dailySummary?.totalCalories ?? 0;
+    final calValue = label == '脂肪' ? value * 9 : value * 4;
+    final percent = totalCal > 0 ? (calValue / totalCal * 100).round() : 0;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -3098,6 +3207,24 @@ class _HomePageState extends ConsumerState<HomePage> {
             decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 4),
         Text('$label $percent%',
+            style: AppTextStyles.bodySmall
+                .copyWith(color: AppColors.textSecondary)),
+      ],
+    );
+  }
+
+  Widget _buildOtherLegend(double totalCal, double otherCal) {
+    final percent = totalCal > 0 ? (otherCal / totalCal * 100).round() : 0;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+                color: AppColors.textTertiary, shape: BoxShape.circle)),
+        const SizedBox(width: 4),
+        Text('其他 $percent%',
             style: AppTextStyles.bodySmall
                 .copyWith(color: AppColors.textSecondary)),
       ],
@@ -3257,7 +3384,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                     children: [
                       Row(
                         children: [
-                          Text('消费概览', style: AppTextStyles.h5.copyWith(fontSize: 15)),
+                          Text('消费概览',
+                              style: AppTextStyles.h5.copyWith(fontSize: 15)),
                           if (budgetWarning != null)
                             Container(
                               margin: const EdgeInsets.only(left: 8),
@@ -3395,6 +3523,7 @@ class _MacroDonutPainter extends CustomPainter {
   final double protein;
   final double carbs;
   final double fat;
+  final double totalCalories;
   final Color proteinColor;
   final Color carbsColor;
   final Color fatColor;
@@ -3403,6 +3532,7 @@ class _MacroDonutPainter extends CustomPainter {
     required this.protein,
     required this.carbs,
     required this.fat,
+    required this.totalCalories,
     required this.proteinColor,
     required this.carbsColor,
     required this.fatColor,
@@ -3410,7 +3540,13 @@ class _MacroDonutPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final total = protein + carbs + fat;
+    // 按热量贡献加权：蛋白质 4cal/g，碳水 4cal/g，脂肪 9cal/g
+    final proteinCal = protein * 4;
+    final carbsCal = carbs * 4;
+    final fatCal = fat * 9;
+    final macroCal = proteinCal + carbsCal + fatCal;
+    final otherCal = (totalCalories - macroCal).clamp(0, double.infinity);
+    final total = macroCal + otherCal;
     if (total <= 0) return;
 
     final center = Offset(size.width / 2, size.height / 2);
@@ -3429,12 +3565,13 @@ class _MacroDonutPainter extends CustomPainter {
       ..color = AppColors.backgroundTertiary;
     canvas.drawCircle(center, radius - strokeWidth / 2, bgPaint);
 
-    // 绘制各段
+    // 绘制各段（含"其他"灰色段）
     double startAngle = -3.14159265 / 2; // 从顶部开始
     final segments = [
-      (protein, proteinColor),
-      (carbs, carbsColor),
-      (fat, fatColor),
+      (proteinCal, proteinColor),
+      (carbsCal, carbsColor),
+      (fatCal, fatColor),
+      if (otherCal > 0) (otherCal, AppColors.textTertiary),
     ];
 
     for (final (value, color) in segments) {
@@ -3456,7 +3593,8 @@ class _MacroDonutPainter extends CustomPainter {
   bool shouldRepaint(covariant _MacroDonutPainter oldDelegate) {
     return oldDelegate.protein != protein ||
         oldDelegate.carbs != carbs ||
-        oldDelegate.fat != fat;
+        oldDelegate.fat != fat ||
+        oldDelegate.totalCalories != totalCalories;
   }
 }
 

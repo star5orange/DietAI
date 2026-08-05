@@ -101,7 +101,8 @@ def render_shared_memory(data: SharedMemoryData) -> str:
         severity_map = {1: "轻度", 2: "中度", 3: "重度"}
         for allergy in data.allergies:
             severity = severity_map.get(allergy.severity, "未知")
-            lines.append(f"- {allergy.name} (严重度: {allergy.severity}-{severity})")
+            reaction = f", 反应: {allergy.reaction}" if allergy.reaction else ""
+            lines.append(f"- {allergy.name} (严重度: {allergy.severity}-{severity}{reaction})")
     else:
         lines.append("- 无已知过敏原")
     lines.append("")
@@ -111,7 +112,8 @@ def render_shared_memory(data: SharedMemoryData) -> str:
     if data.diseases:
         for disease in data.diseases:
             icd = f" (ICD-10: {disease.icd_code})" if disease.icd_code else ""
-            lines.append(f"- {disease.name}{icd}, {disease.status}")
+            notes = f", 备注: {disease.notes}" if disease.notes else ""
+            lines.append(f"- {disease.name}{icd}, {disease.status}{notes}")
     else:
         lines.append("- 无已知疾病")
     lines.append("")

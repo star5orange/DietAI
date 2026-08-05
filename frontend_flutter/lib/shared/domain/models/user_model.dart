@@ -55,7 +55,7 @@ class UserProfile {
   final double? weight;
   final double? bmi;
   @JsonKey(name: 'activity_level')
-  final int? activityLevel;
+  final int activityLevel;
   final String? occupation;
   final String? region;
   @JsonKey(name: 'dietary_preferences')
@@ -96,7 +96,7 @@ class UserProfile {
     this.height,
     this.weight,
     this.bmi,
-    this.activityLevel,
+    this.activityLevel = 2,
     this.occupation,
     this.region,
     this.dietaryPreferences,

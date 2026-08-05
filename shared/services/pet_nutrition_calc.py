@@ -44,16 +44,39 @@ NEUTERED_ADJUSTMENT = 0.85
 
 
 def get_breed_info(breed_name: str, species: str) -> Dict[str, Any]:
-    """从品种配置中查询信息"""
+    """从品种配置中查询信息（支持模糊匹配）"""
     species_data = _BREEDS_DATA.get("species", {}).get(species, {})
     breeds = species_data.get("breeds", [])
+    if not breeds:
+        logger.warning(f"未找到物种 [{species}] 的品种配置，使用默认值 5.0kg/50kcal")
+        return {"name": "未知品种", "avg_weight_kg": {"male": 5.0, "female": 4.0}, "daily_calories_per_kg": 50}
+
+    if not breed_name:
+        logger.info(f"品种名为空，使用物种 [{species}] 第一个品种作为默认: {breeds[0].get('name')}")
+        return breeds[0]
+
+    # 1. 精确匹配
     for b in breeds:
         if b.get("name") == breed_name:
             return b
-    # 返回物种默认值
-    if breeds:
-        return breeds[0]
-    return {"avg_weight_kg": {"male": 5.0, "female": 4.0}, "daily_calories_per_kg": 50}
+
+    # 2. 字符重叠匹配（中文品种名缩写场景："英短" 匹配 "英国短毛猫"）
+    for b in breeds:
+        name = b.get("name", "")
+        # 所有输入字符都出现在标准名中
+        if breed_name and name and all(ch in name for ch in breed_name):
+            logger.info(f"品种模糊匹配: '{breed_name}' -> '{name}'")
+            return b
+    # 反向：标准名所有字符都出现在输入中（如 "柯基" 匹配 "柯基犬"）
+    for b in breeds:
+        name = b.get("name", "")
+        if breed_name and name and all(ch in breed_name for ch in name):
+            logger.info(f"品种模糊匹配: '{breed_name}' -> '{name}'")
+            return b
+
+    # 3. 未匹配，使用物种第一个品种作为默认
+    logger.warning(f"品种 [{breed_name}] 未在配置中找到，使用物种 [{species}] 第一个品种作为默认: {breeds[0].get('name')}")
+    return breeds[0]
 
 
 def calc_pet_age(pet: PetProfile) -> Tuple[float, str]:

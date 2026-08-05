@@ -17,6 +17,7 @@ class FastingPlan(Base):
 
     # 目标与周期
     target_weight = Column(Numeric(5, 2), nullable=True)
+    start_weight = Column(Numeric(5, 2), nullable=True, comment="计划开始时的体重(kg)")
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=True)
 

@@ -47,7 +47,7 @@ def get_water_records(
         query = query.filter(func.date(WaterIntakeRecord.record_time) >= start_date)
     if end_date:
         query = query.filter(func.date(WaterIntakeRecord.record_time) <= end_date)
-    return query.order_by(WaterIntakeRecord.record_time.desc())\
+    return query.order_by(WaterIntakeRecord.record_time.desc(), WaterIntakeRecord.id.desc())\
                 .offset(skip).limit(limit).all()
 
 

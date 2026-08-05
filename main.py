@@ -13,6 +13,8 @@ from datetime import datetime
 from shared.config.settings import get_settings
 from shared.models.database import create_tables, engine
 from shared.models import user_models, food_models, conversation_models, saved_meal_models, exercise_models, water_models, reminder_models, notification_models, wellness_models
+# Milestone 4 新增模型
+from shared.models import social_models, message_models, exam_models, proxy_models
 
 # 导入路由 - 核心路由
 from routers.auth_router import router as auth_router
@@ -128,6 +130,36 @@ except ImportError:
     pass
 
 # Milestone 3: AI 宠物形象生成 — 已合并到 real_pet_router，不再单独注册 pet_avatar_router
+
+# Milestone 4: 社交、消息、家庭健康、体检报告
+_social_router = None
+_message_router = None
+_family_router = None
+_exam_router = None
+
+try:
+    from routers.social_router import router as social_router
+    _social_router = social_router
+except ImportError:
+    pass
+
+try:
+    from routers.message_router import router as message_router
+    _message_router = message_router
+except ImportError:
+    pass
+
+try:
+    from routers.family_router import router as family_router
+    _family_router = family_router
+except ImportError:
+    pass
+
+try:
+    from routers.exam_router import router as exam_router
+    _exam_router = exam_router
+except ImportError:
+    pass
 
 settings = get_settings()
 
@@ -392,6 +424,16 @@ if _advisor_router is not None:
 # 语音识别路由
 if _voice_router is not None:
     app.include_router(_voice_router, prefix="/api", tags=["语音识别"])
+
+# Milestone 4: 社交、消息、家庭健康、体检报告
+if _social_router is not None:
+    app.include_router(_social_router, prefix="/api", tags=["社交关系"])
+if _message_router is not None:
+    app.include_router(_message_router, prefix="/api", tags=["消息"])
+if _family_router is not None:
+    app.include_router(_family_router, prefix="/api", tags=["家庭健康"])
+if _exam_router is not None:
+    app.include_router(_exam_router, prefix="/api", tags=["体检报告"])
 
 # 启动服务器
 if __name__ == "__main__":

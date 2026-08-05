@@ -21,6 +21,8 @@ class FoodRecordCreate(BaseModel):
     # Milestone 2 新增
     cost: Optional[float] = Field(None, ge=0, le=100000, description="消费金额(元)")
     source_tag: Optional[str] = Field(None, max_length=50, description="来源标签")
+    # Milestone 4: 代记录
+    target_user_id: Optional[int] = Field(None, description="代记录目标用户ID（仅家人关系可用）")
 
 
 class FoodRecordResponse(BaseModel):

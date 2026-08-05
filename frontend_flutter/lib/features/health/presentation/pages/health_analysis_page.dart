@@ -301,7 +301,7 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('健康分析'),
+        title: const Text('AI健康分析'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),

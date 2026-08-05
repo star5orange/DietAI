@@ -72,11 +72,11 @@ def get_user_profile(user_id: int) -> dict[str, Any]:
                 "activity_level": profile.activity_level,
             },
             "allergies": [
-                {"name": a.allergen_name, "severity": a.severity_level}
+                {"name": a.allergen_name, "severity": a.severity_level, "reaction": a.reaction_description or ""}
                 for a in allergies
             ],
             "diseases": [
-                {"name": d.disease_name, "severity": d.severity_level}
+                {"name": d.disease_name, "severity": d.severity_level, "notes": d.notes or ""}
                 for d in diseases
             ],
             "active_goals": [

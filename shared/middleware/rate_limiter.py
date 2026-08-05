@@ -22,11 +22,11 @@ from starlette.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
 
-# 默认配置：每个 IP 每分钟 120 个请求（适合一般 API 使用）
-DEFAULT_MAX_REQUESTS = 120
+# 默认配置：每个 IP 每分钟 300 个请求（适合一般 API 使用）
+DEFAULT_MAX_REQUESTS = 300
 DEFAULT_WINDOW_SECONDS = 60
-# 敏感端点（写入操作）限制：每分钟 60 个请求
-WRITE_DEFAULT_MAX = 60
+# 敏感端点（写入操作）限制：每分钟 180 个请求
+WRITE_DEFAULT_MAX = 180
 WRITE_DEFAULT_WINDOW = 60
 
 # 写入类路径前缀

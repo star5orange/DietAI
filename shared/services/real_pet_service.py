@@ -164,10 +164,13 @@ def get_weight_trend(db: Session, pet_id: int, user_id: int, days: int = 30) -> 
     chart = [{"date": r.measured_at.isoformat() if hasattr(r.measured_at, 'isoformat') else str(r.measured_at),
               "weight": float(r.weight)} for r in records]
 
-    # 品种标准体重
-    info = BREED_INFO.get(pet.breed or "", {})
-    ideal_min = float(info.get("avg_weight", 5)) * 0.85
-    ideal_max = float(info.get("avg_weight", 5)) * 1.15
+    # 品种标准体重（使用统一品种匹配）
+    from shared.services.pet_nutrition_calc import get_breed_info
+    breed_info = get_breed_info(pet.breed or "", pet.species or "cat")
+    gender = pet.gender or "male"
+    avg_weight = float(breed_info.get("avg_weight_kg", {}).get(gender, 5.0))
+    ideal_min = avg_weight * 0.85
+    ideal_max = avg_weight * 1.15
 
     return {
         "pet_id": pet_id,
@@ -189,6 +192,25 @@ def delete_weight_record(db: Session, record_id: int, pet_id: int, user_id: int)
         raise ValueError("体重记录不存在")
     db.delete(record)
     db.commit()
+
+
+def update_weight_record(db: Session, record_id: int, pet_id: int, user_id: int, data: dict) -> PetWeightRecord:
+    """更新体重记录"""
+    pet = get_pet(db, pet_id, user_id)
+    if not pet:
+        raise ValueError("宠物不存在")
+    record = db.query(PetWeightRecord).filter(
+        PetWeightRecord.id == record_id,
+        PetWeightRecord.pet_id == pet_id
+    ).first()
+    if not record:
+        raise ValueError("体重记录不存在")
+    for key, value in data.items():
+        if hasattr(record, key):
+            setattr(record, key, value)
+    db.commit()
+    db.refresh(record)
+    return record
 
 
 # ============================================================
@@ -384,6 +406,16 @@ def delete_feeding(db: Session, pet_id: int, record_id: int) -> bool:
 
 
 def get_pet_daily_summary(db: Session, pet_id: int, target_date: date) -> dict:
+    pet = db.query(PetProfile).filter(PetProfile.id == pet_id).first()
+    from shared.services.pet_nutrition_calc import calculate_daily_targets
+    if pet:
+        targets = calculate_daily_targets(pet)
+        target_cal = targets.get("daily_calories", 250)
+        target_protein = targets.get("daily_protein_g", 20)
+        target_fat = targets.get("daily_fat_g", 10)
+    else:
+        target_cal, target_protein, target_fat = 250, 20, 10
+
     summary = db.query(PetDailySummary).filter(
         PetDailySummary.pet_id == pet_id,
         PetDailySummary.summary_date == target_date
@@ -391,12 +423,16 @@ def get_pet_daily_summary(db: Session, pet_id: int, target_date: date) -> dict:
     if not summary:
         return {"pet_id": pet_id, "summary_date": target_date.isoformat(),
                 "total_calories": 0, "total_protein": 0, "total_fat": 0,
-                "total_carbs": 0, "total_water_ml": 0, "meal_count": 0}
+                "total_carbs": 0, "total_water_ml": 0, "meal_count": 0,
+                "target_calories": target_cal, "target_protein": target_protein,
+                "target_fat": target_fat}
     return {
         "pet_id": summary.pet_id, "summary_date": summary.summary_date.isoformat(),
         "total_calories": float(summary.total_calories), "total_protein": float(summary.total_protein),
         "total_fat": float(summary.total_fat), "total_carbs": float(summary.total_carbs),
         "total_water_ml": summary.total_water_ml, "meal_count": summary.meal_count,
+        "target_calories": target_cal, "target_protein": target_protein,
+        "target_fat": target_fat,
     }
 
 
@@ -404,19 +440,16 @@ def get_feeding_plan(db: Session, pet_id: int, user_id: int) -> dict:
     pet = get_pet(db, pet_id, user_id)
     if not pet:
         raise ValueError("宠物不存在")
-    info = BREED_INFO.get(pet.breed or "", {})
+    from shared.services.pet_nutrition_calc import calculate_daily_targets
+    targets = calculate_daily_targets(pet)
     species = pet.species or "cat"
-
-    avg_weight = float(info.get("avg_weight", 5.0)) if info else 5.0
-    cal_per_kg = float(info.get("daily_cal_per_kg", 50)) if info else 50
-
-    daily_cal = avg_weight * cal_per_kg
+    daily_cal = targets.get("daily_calories", 250)
     meals = 2 if species == "dog" else 3
 
     return {
         "pet_id": pet_id, "pet_name": pet.name, "species": species,
         "breed": pet.breed,
-        "daily_calories": round(daily_cal),
+        "daily_calories": daily_cal,
         "recommended_meals": meals,
         "grams_per_meal": round(daily_cal / meals / 3.8, 0),
         "suggestions": ["定时定量喂养", "保持新鲜饮水", "避免人类食物"],
@@ -440,7 +473,7 @@ def add_water(db: Session, pet_id: int, data: dict) -> PetWaterRecord:
 def get_water_records(db: Session, pet_id: int, skip: int = 0, limit: int = 50) -> List[PetWaterRecord]:
     return db.query(PetWaterRecord).filter(
         PetWaterRecord.pet_id == pet_id
-    ).order_by(PetWaterRecord.record_time.desc()).offset(skip).limit(limit).all()
+    ).order_by(PetWaterRecord.record_time.desc(), PetWaterRecord.id.desc()).offset(skip).limit(limit).all()
 
 
 def delete_water_record(db: Session, record_id: int, pet_id: int, user_id: int):

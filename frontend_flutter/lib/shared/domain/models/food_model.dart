@@ -222,6 +222,8 @@ class FoodRecord {
   final int? recordingMethod;
   @JsonKey(name: 'analysis_status')
   final int? analysisStatus;
+  @JsonKey(name: 'from_source')
+  final String? fromSource;
   @JsonKey(name: 'created_at')
   final String createdAt;
   @JsonKey(name: 'updated_at')
@@ -247,6 +249,7 @@ class FoodRecord {
     this.imageUrl,
     this.recordingMethod,
     this.analysisStatus,
+    this.fromSource,
     required this.createdAt,
     this.updatedAt,
     this.nutritionDetail,
@@ -309,11 +312,17 @@ class FoodRecordCreate {
   final String? imageUrl;
   @JsonKey(name: 'recording_method')
   final int? recordingMethod;
+  @JsonKey(name: 'from_source')
+  final String? fromSource;
 
   // Milestone 2: 消费字段
   final double? cost;
   @JsonKey(name: 'source_tag')
   final String? sourceTag;
+
+  // Milestone 4: 代记录目标用户
+  @JsonKey(name: 'target_user_id')
+  final int? targetUserId;
 
   const FoodRecordCreate({
     required this.recordDate,
@@ -323,8 +332,10 @@ class FoodRecordCreate {
     this.description,
     this.imageUrl,
     this.recordingMethod,
+    this.fromSource,
     this.cost,
     this.sourceTag,
+    this.targetUserId,
   });
 
   factory FoodRecordCreate.fromJson(Map<String, dynamic> json) =>

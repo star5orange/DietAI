@@ -6,6 +6,7 @@ import '../../../../core/services/api_service.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../data/services/fasting_service.dart';
+import '../../../profile/presentation/providers/profile_provider.dart';
 import 'fasting_checkin_page.dart';
 import 'fasting_progress_page.dart';
 import 'fasting_refeed_page.dart';
@@ -21,6 +22,8 @@ class FastingPlanPage extends ConsumerStatefulWidget {
 class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
   FastingPlan? _activePlan;
   FastingProgress? _progress;
+  List<FastingPlan> _completedPlans = [];
+  bool _checkedInToday = false;
   int _streakDays = 0;
   int _checkinCount = 0;
   int _weekCount = 0;
@@ -37,30 +40,42 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
   Future<void> _loadPlans() async {
     try {
       final service = ref.read(fastingServiceProvider);
-      // 并行加载活动计划和断食计划类型
+      // 并行加载活动计划、已完成计划和断食计划类型
       final results = await Future.wait([
         service.getPlans(status: 'active'),
+        service.getPlans(status: 'completed'),
         _fetchPlanTypes(),
       ]);
       final plans = results[0] as List<FastingPlan>;
+      final completedPlans = results[1] as List<FastingPlan>;
       if (plans.isNotEmpty) {
         final plan = plans.first;
         // Parallel load progress and checkins
         FastingProgress? progress;
         int checkinCount = 0;
+        bool checkedInToday = false;
         try {
           final results = await Future.wait([
             service.getProgress(plan.planId),
             service.getCheckins(plan.planId),
           ]);
           progress = results[0] as FastingProgress;
-          checkinCount = (results[1] as List<FastingCheckin>).length;
+          final checkins = results[1] as List<FastingCheckin>;
+          checkinCount = checkins.length;
+          // 检查今日是否已打卡
+          final today = DateTime.now();
+          final todayStr =
+              '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+          checkedInToday =
+              checkins.any((c) => c.checkinDate == todayStr && c.completed);
         } catch (_) {}
 
         if (mounted) {
           setState(() {
             _activePlan = plan;
             _progress = progress;
+            _completedPlans = completedPlans;
+            _checkedInToday = checkedInToday;
             _streakDays = progress?.streakDays ?? 0;
             _checkinCount = checkinCount;
             _weekCount = progress != null
@@ -70,6 +85,8 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
             _weeklyTarget = progress?.weeklyTarget ?? 0;
           });
         }
+      } else {
+        if (mounted) setState(() => _completedPlans = completedPlans);
       }
     } catch (_) {
       // 后端不可用，使用空状态
@@ -184,6 +201,8 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
               Text('选择计划类型', style: AppTextStyles.h6),
               const SizedBox(height: 12),
               ..._planTypes.map((plan) => _buildPlanCard(plan)),
+              const SizedBox(height: 18),
+              _buildRefeedInfoCard(),
               const SizedBox(height: 24),
             ],
 
@@ -197,6 +216,11 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
                 _buildStreakCard()
               else
                 _buildWeeklyProgressCard(),
+            ],
+            // 已完成计划记录
+            if (_completedPlans.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              _buildCompletedPlansSection(),
             ],
           ],
         ),
@@ -318,11 +342,17 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
       children: [
         Expanded(
           child: _buildActionButton(
-            icon: LucideIcons.clipboardCheck,
-            label: isFastingDay ? '今日打卡' : '今日非断食日',
-            color: isFastingDay ? AppColors.primary : AppColors.textTertiary,
-            onTap: isFastingDay
-                ? () {
+            icon: _checkedInToday
+                ? LucideIcons.checkCircle
+                : LucideIcons.clipboardCheck,
+            label:
+                _checkedInToday ? '今日已打卡' : (isFastingDay ? '今日打卡' : '今日非断食日'),
+            color: _checkedInToday
+                ? AppColors.success
+                : (isFastingDay ? AppColors.primary : AppColors.textTertiary),
+            onTap: (_checkedInToday || !isFastingDay)
+                ? () {} // 已打卡或非断食日不可点
+                : () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -330,8 +360,7 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
                             planId: plan.planId, planType: plan.planType),
                       ),
                     ).then((_) => _loadPlans());
-                  }
-                : () {}, // 空回调，按钮不可用时
+                  },
           ),
         ),
         const SizedBox(width: 10),
@@ -439,6 +468,16 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
             ),
           ),
           const SizedBox(height: 12),
+          // 5:2/基础断食：显示已完成断食日数量
+          if (_activePlan!.planType != '16_8' && p.expectedFastingDays > 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '已完成 ${p.completedCount}/${p.expectedFastingDays} 个断食日',
+                style: AppTextStyles.bodyMedium.copyWith(
+                    color: AppColors.primary, fontWeight: FontWeight.w600),
+              ),
+            ),
           Row(
             children: [
               _buildMiniStat('${p.daysElapsed}/${p.daysTotal}天', '已坚持'),
@@ -640,7 +679,108 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
     );
   }
 
-  // ==================== 业务逻辑 ====================
+  // ==================== 已完成计划 ====================
+
+  Widget _buildRefeedInfoCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: Icon(LucideIcons.info, color: AppColors.warning, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '断食结束后需要逐步恢复饮食（复食阶段），'
+              '创建计划后可查看分阶段的复食指导方案，'
+              '帮助您的身体平稳过渡。',
+              style: AppTextStyles.caption.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompletedPlansSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('已完成计划', style: AppTextStyles.h6),
+        const SizedBox(height: 12),
+        ..._completedPlans.map((plan) => _buildCompletedPlanCard(plan)),
+      ],
+    );
+  }
+
+  Widget _buildCompletedPlanCard(FastingPlan plan) {
+    final daysText = plan.daysElapsed != null ? '${plan.daysElapsed}天' : '--';
+    final typeName = _planTypeName(plan);
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FastingRefeedPage(planId: plan.planId),
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(LucideIcons.checkCircle,
+                  color: AppColors.success, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(typeName,
+                      style: AppTextStyles.bodyLarge
+                          .copyWith(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${plan.startDate.substring(0, 10)} 起 · $daysText',
+                    style: AppTextStyles.caption
+                        .copyWith(color: AppColors.textTertiary),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(LucideIcons.chevronRight,
+                color: AppColors.textTertiary, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<bool> _showDisclaimer() async {
     final result = await showDialog<bool>(
@@ -651,7 +791,8 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
           children: [
             Icon(LucideIcons.alertTriangle, color: AppColors.warning, size: 24),
             SizedBox(width: 8),
-            Text('免责声明', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            Text('免责声明',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           ],
         ),
         content: SingleChildScrollView(
@@ -676,12 +817,14 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
                 decoration: BoxDecoration(
                   color: AppColors.warning.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                  border: Border.all(
+                      color: AppColors.warning.withValues(alpha: 0.3)),
                 ),
                 child: const Text(
                   '本应用提供的断食建议仅供参考，不构成医疗建议。'
                   '如有任何健康疑虑，请先咨询专业医生。',
-                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  style:
+                      TextStyle(fontSize: 13, color: AppColors.textSecondary),
                 ),
               ),
             ],
@@ -690,7 +833,8 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消', style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text('取消',
+                style: TextStyle(color: AppColors.textSecondary)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
@@ -709,9 +853,12 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('• ', style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+          const Text('• ',
+              style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
           Expanded(
-            child: Text(text, style: const TextStyle(fontSize: 14, color: AppColors.textPrimary)),
+            child: Text(text,
+                style: const TextStyle(
+                    fontSize: 14, color: AppColors.textPrimary)),
           ),
         ],
       ),
@@ -851,10 +998,12 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
       String planType, List<int>? fastingDays) async {
     try {
       final service = ref.read(fastingServiceProvider);
+      final profile = ref.read(userProfileProvider).value;
       await service.createPlan(
         planType: planType,
         startDate: DateTime.now().toIso8601String().split('T')[0],
         fastingDays: fastingDays,
+        startWeight: profile?.weight,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1080,6 +1229,7 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
     try {
       final service = ref.read(fastingServiceProvider);
       await service.stopPlan(_activePlan!.planId);
+      final stoppedPlanId = _activePlan!.planId;
       setState(() {
         _activePlan = null;
         _progress = null;
@@ -1090,6 +1240,13 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('计划已停止')),
+        );
+        // 停止后直接跳转复食指导
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FastingRefeedPage(planId: stoppedPlanId),
+          ),
         );
       }
     } catch (e) {

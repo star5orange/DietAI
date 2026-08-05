@@ -21,6 +21,9 @@ class CameraPage extends ConsumerStatefulWidget {
   final String? recordTime;
   final double? costAmount;
   final String? costSource;
+  // 代记录：目标家人用户ID（为空表示记录给自己）
+  final int? proxyTargetUserId;
+  final String? proxyTargetName;
 
   const CameraPage({
     super.key,
@@ -30,6 +33,8 @@ class CameraPage extends ConsumerStatefulWidget {
     this.recordTime,
     this.costAmount,
     this.costSource,
+    this.proxyTargetUserId,
+    this.proxyTargetName,
   });
 
   @override
@@ -153,6 +158,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         recordTime: widget.recordTime,
         cost: widget.costAmount,
         sourceTag: widget.costSource,
+        targetUserId: widget.proxyTargetUserId,
       );
 
       // 立即跳转到分析页面并传递流式数据

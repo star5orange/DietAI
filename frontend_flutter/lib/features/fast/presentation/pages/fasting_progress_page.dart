@@ -176,10 +176,10 @@ class _FastingProgressPageState extends ConsumerState<FastingProgressPage> {
       progressValue = '${p.daysElapsed}';
       progressSubtitle = '/ ${p.daysTotal} 天';
     } else {
-      // 5:2 / 基础断食显示本周打卡
-      progressLabel = '本周进度';
-      progressValue = '${p.weeklyCheckins}';
-      progressSubtitle = '/ ${p.weeklyTarget} 天';
+      // 5:2 / 基础断食显示总断食日进度
+      progressLabel = '断食日进度';
+      progressValue = '${p.completedCount}';
+      progressSubtitle = '/ ${p.expectedFastingDays} 个断食日';
     }
 
     return Container(

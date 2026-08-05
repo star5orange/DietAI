@@ -58,7 +58,7 @@ class _ExerciseHistoryPageState extends State<ExerciseHistoryPage> {
   void _applyFilters() {
     var records = _allRecords.where((r) {
       try {
-        final date = DateTime.parse(r.recordedAt);
+        final date = DateTime.parse(r.recordDate);
         final afterStart =
             date.isAfter(_startDate.subtract(const Duration(microseconds: 1)));
         final beforeEnd = date.isBefore(_endDate.add(const Duration(days: 1)));
@@ -72,7 +72,7 @@ class _ExerciseHistoryPageState extends State<ExerciseHistoryPage> {
       records = records.where((r) => r.exerciseType == _selectedType).toList();
     }
 
-    records.sort((a, b) => b.recordedAt.compareTo(a.recordedAt));
+    records.sort((a, b) => b.recordDate.compareTo(a.recordDate));
 
     setState(() {
       _filteredRecords = records;
@@ -82,7 +82,7 @@ class _ExerciseHistoryPageState extends State<ExerciseHistoryPage> {
   Map<String, List<ExerciseRecord>> _groupByDate() {
     final map = <String, List<ExerciseRecord>>{};
     for (final record in _filteredRecords) {
-      final dateStr = record.recordedAt.substring(0, 10);
+      final dateStr = record.recordDate.substring(0, 10);
       map.putIfAbsent(dateStr, () => []).add(record);
     }
     final sortedKeys = map.keys.toList()..sort((a, b) => b.compareTo(a));
@@ -117,7 +117,7 @@ class _ExerciseHistoryPageState extends State<ExerciseHistoryPage> {
 
   DailyExerciseSummary _calcDaySummary(List<ExerciseRecord> records) {
     return DailyExerciseSummary(
-      date: records.first.recordedAt.substring(0, 10),
+      date: records.first.recordDate.substring(0, 10),
       totalCaloriesBurned:
           records.fold(0.0, (sum, r) => sum + r.caloriesBurned),
       totalDurationMinutes:
@@ -253,18 +253,7 @@ class _ExerciseHistoryPageState extends State<ExerciseHistoryPage> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              final recordId = int.tryParse(record.id);
-              if (recordId == null) {
-                if (mounted) {
-                  ScaffoldMessenger.of(this.context).showSnackBar(
-                    const SnackBar(
-                      content: Text('删除失败: 无效的记录ID'),
-                      backgroundColor: AppColors.error,
-                    ),
-                  );
-                }
-                return;
-              }
+              final recordId = record.id;
               final result =
                   await _exerciseService.deleteRemoteExerciseRecord(recordId);
               if (result.success) {
@@ -555,7 +544,7 @@ class _ExerciseHistoryPageState extends State<ExerciseHistoryPage> {
     final typeIcon = _getExerciseIcon(record.exerciseType);
 
     return Dismissible(
-      key: Key(record.id),
+      key: Key(record.id.toString()),
       direction: DismissDirection.endToStart,
       onDismissed: (_) async {
         await _exerciseService.deleteExerciseRecord(record.id);

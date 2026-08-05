@@ -46,6 +46,23 @@ import '../../features/onboarding/presentation/providers/onboarding_provider.dar
 import '../../shared/domain/models/user_model.dart';
 import '../../shared/presentation/widgets/main_scaffold.dart';
 import '../../shared/presentation/pages/splash_page.dart';
+// Milestone 4: 社交与家庭
+import '../../features/social/presentation/pages/social_page.dart';
+import '../../features/social/presentation/pages/search_user_page.dart';
+import '../../features/social/presentation/pages/friend_requests_page.dart';
+import '../../features/social/presentation/pages/chat_page.dart';
+import '../../features/social/presentation/pages/family_health_page.dart';
+import '../../features/social/presentation/pages/leaderboard_page.dart';
+import '../../features/social/presentation/pages/permission_page.dart';
+import '../../features/social/presentation/pages/invite_code_page.dart';
+import '../../features/family/presentation/pages/family_dashboard_page.dart';
+import '../../features/family/presentation/pages/weekly_report_page.dart';
+import '../../features/family/presentation/pages/diet_recommendation_page.dart';
+import '../../features/family/presentation/pages/proxy_record_page.dart';
+import '../../features/exam/presentation/pages/exam_reports_page.dart';
+import '../../features/exam/presentation/pages/exam_detail_page.dart';
+import '../../features/exam/presentation/pages/exam_upload_page.dart';
+import '../../features/exam/presentation/pages/exam_trend_page.dart';
 
 /// 认证状态变化监听器 - 仅通知路由刷新，不重建GoRouter实例
 class AuthNotifier extends ChangeNotifier {
@@ -150,7 +167,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           final extra = state.extra as Map<String, dynamic>;
           return ResetPasswordPage(
             phone: extra['phone'] as String,
-            code: extra['code'] as String,  // 接收验证码参数
+            code: extra['code'] as String, // 接收验证码参数
           );
         },
       ),
@@ -205,15 +222,21 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const OnboardingCompletePage(),
       ),
 
-      // 主页面（带底部导航）
+      // 主页面（带底部导航）- 使用用户 ID 作为 key，切换账号时强制重建
       ShellRoute(
-        builder: (context, state, child) => MainScaffold(child: child),
+        builder: (context, state, child) {
+          final userId = ref.watch(currentUserProvider)?.id ?? 0;
+          return MainScaffold(key: ValueKey('scaffold_$userId'), child: child);
+        },
         routes: [
           // 首页
           GoRoute(
             path: '/',
             name: 'home',
-            builder: (context, state) => const HomePage(),
+            builder: (context, state) {
+              final userId = ref.watch(currentUserProvider)?.id ?? 0;
+              return HomePage(key: ValueKey('home_$userId'));
+            },
           ),
 
           // 历史页面
@@ -384,6 +407,169 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/fasting-progress',
             name: 'fasting_progress',
             builder: (context, state) => const FastingProgressPage(),
+          ),
+
+          // M4: 社交 — 家人与好友主页
+          GoRoute(
+            path: '/social',
+            name: 'social',
+            builder: (context, state) => const SocialPage(),
+          ),
+
+          // M4: 社交 — 搜索用户
+          GoRoute(
+            path: '/social/search',
+            name: 'social_search',
+            builder: (context, state) => const SearchUserPage(),
+          ),
+
+          // M4: 社交 — 好友申请
+          GoRoute(
+            path: '/social/requests',
+            name: 'social_requests',
+            builder: (context, state) => const FriendRequestsPage(),
+          ),
+
+          // M4: 社交 — 好友饮食排行榜
+          GoRoute(
+            path: '/social/leaderboard',
+            name: 'social_leaderboard',
+            builder: (context, state) => const LeaderboardPage(),
+          ),
+
+          // M4: 社交 — 聊天页面
+          GoRoute(
+            path: '/social/chat/:userId',
+            name: 'social_chat',
+            builder: (context, state) {
+              final userId = int.parse(state.pathParameters['userId']!);
+              final extra = state.extra as Map<String, dynamic>?;
+              return ChatPage(
+                targetUserId: userId,
+                targetUserName: extra?['name'] as String?,
+                targetUserAvatar: extra?['avatarUrl'] as String?,
+              );
+            },
+          ),
+
+          // M4: 社交 — 家人健康详情
+          GoRoute(
+            path: '/social/family-health/:userId',
+            name: 'family_health',
+            builder: (context, state) {
+              final userId = int.parse(state.pathParameters['userId']!);
+              final extra = state.extra as Map<String, dynamic>?;
+              return FamilyHealthPage(
+                userId: userId,
+                userName: extra?['name'] as String?,
+              );
+            },
+          ),
+
+          // M4: 家庭健康看板
+          GoRoute(
+            path: '/family-dashboard',
+            name: 'family_dashboard',
+            builder: (context, state) => const FamilyDashboardPage(),
+          ),
+
+          // M4: 家庭周报
+          GoRoute(
+            path: '/family/weekly-report',
+            name: 'family_weekly_report',
+            builder: (context, state) => const WeeklyReportPage(),
+          ),
+
+          // M4: 饮食推荐
+          GoRoute(
+            path: '/family/diet-recommendation/:userId',
+            name: 'diet_recommendation',
+            builder: (context, state) {
+              final userId = int.parse(state.pathParameters['userId']!);
+              final extra = state.extra as Map<String, dynamic>?;
+              return DietRecommendationPage(
+                userId: userId,
+                userName: extra?['name'] as String? ?? '家人',
+              );
+            },
+          ),
+
+          // M4: 代记录饮食
+          GoRoute(
+            path: '/family/proxy-record/:userId',
+            name: 'proxy_record',
+            builder: (context, state) {
+              final userId = int.parse(state.pathParameters['userId']!);
+              final extra = state.extra as Map<String, dynamic>?;
+              return ProxyRecordPage(
+                targetUserId: userId,
+                targetUserName: extra?['name'] as String? ?? '家人',
+              );
+            },
+          ),
+
+          // M4: 数据权限管理
+          GoRoute(
+            path: '/social/permission/:userId',
+            name: 'social_permission',
+            builder: (context, state) {
+              final userId = int.parse(state.pathParameters['userId']!);
+              final extra = state.extra as Map<String, dynamic>?;
+              return PermissionPage(
+                targetUserId: userId,
+                targetUserName: extra?['name'] as String? ?? '好友',
+              );
+            },
+          ),
+
+          // M4: 邀请码
+          GoRoute(
+            path: '/social/invite-code',
+            name: 'invite_code',
+            builder: (context, state) => const InviteCodePage(),
+          ),
+
+          // M4: 体检报告列表
+          GoRoute(
+            path: '/exam/reports',
+            name: 'exam_reports',
+            builder: (context, state) {
+              final extra = state.extra as Map<String, dynamic>?;
+              return ExamReportsPage(userId: extra?['userId'] as int?);
+            },
+          ),
+
+          // M4: 体检报告详情
+          GoRoute(
+            path: '/exam/detail/:reportId',
+            name: 'exam_detail',
+            builder: (context, state) {
+              final reportId = int.parse(state.pathParameters['reportId']!);
+              final extra = state.extra as Map<String, dynamic>?;
+              return ExamDetailPage(
+                reportId: reportId,
+                userId: extra?['userId'] as int?,
+              );
+            },
+          ),
+
+          // M4: 体检指标趋势
+          GoRoute(
+            path: '/exam/trend/:userId/:metricName',
+            name: 'exam_trend',
+            builder: (context, state) {
+              final userId = int.parse(state.pathParameters['userId']!);
+              final metricName =
+                  Uri.decodeComponent(state.pathParameters['metricName']!);
+              return ExamTrendPage(userId: userId, metricName: metricName);
+            },
+          ),
+
+          // M4: 上传体检报告
+          GoRoute(
+            path: '/exam/upload',
+            name: 'exam_upload',
+            builder: (context, state) => const ExamUploadPage(),
           ),
         ],
       ),
