@@ -578,7 +578,8 @@ class FoodService {
   }
 
   /// 语音识别
-  Future<ApiResponse<Map<String, dynamic>>> recognizeVoice(File audioFile) async {
+  Future<ApiResponse<Map<String, dynamic>>> recognizeVoice(
+      File audioFile) async {
     try {
       print('📤 上传音频文件进行语音识别');
 
@@ -700,6 +701,7 @@ class FoodService {
     String? recordTime,
     double? cost,
     String? sourceTag,
+    int? targetUserId,
   }) async* {
     try {
       print('🚀 开始创建带图片的食物记录（流式）');
@@ -745,6 +747,7 @@ class FoodService {
         recordingMethod: 1, // AI扫描
         cost: cost,
         sourceTag: sourceTag,
+        targetUserId: targetUserId,
       );
 
       print('📤 步骤2: 创建食物记录（流式）');
@@ -770,6 +773,7 @@ class FoodService {
     String? recordTime,
     double? cost,
     String? sourceTag,
+    int? targetUserId,
   }) async {
     try {
       print('🚀 开始创建带图片的食物记录');
@@ -799,6 +803,7 @@ class FoodService {
         recordingMethod: 1, // AI扫描
         cost: cost,
         sourceTag: sourceTag,
+        targetUserId: targetUserId,
       );
 
       print('📤 步骤2: 创建食物记录');

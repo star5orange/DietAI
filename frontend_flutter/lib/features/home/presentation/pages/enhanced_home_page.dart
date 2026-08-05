@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../shared/presentation/widgets/animated_progress_circle.dart';
+import '../../../social/presentation/providers/family_provider.dart';
 import '../widgets/enhanced_meal_card.dart';
 
 /// 增强版主页
-class EnhancedHomePage extends StatefulWidget {
+class EnhancedHomePage extends ConsumerStatefulWidget {
   const EnhancedHomePage({super.key});
 
   @override
-  State<EnhancedHomePage> createState() => _EnhancedHomePageState();
+  ConsumerState<EnhancedHomePage> createState() => _EnhancedHomePageState();
 }
 
-class _EnhancedHomePageState extends State<EnhancedHomePage>
+class _EnhancedHomePageState extends ConsumerState<EnhancedHomePage>
     with TickerProviderStateMixin {
   late AnimationController _headerAnimationController;
   late Animation<double> _headerSlideAnimation;
@@ -77,6 +80,11 @@ class _EnhancedHomePageState extends State<EnhancedHomePage>
     Future.delayed(const Duration(milliseconds: 300), () {
       _cardAnimationController.forward();
     });
+
+    // 加载家庭看板数据
+    Future.microtask(() {
+      ref.read(familyDashboardProvider.notifier).loadDashboard();
+    });
   }
 
   @override
@@ -88,6 +96,8 @@ class _EnhancedHomePageState extends State<EnhancedHomePage>
 
   @override
   Widget build(BuildContext context) {
+    final familyState = ref.watch(familyDashboardProvider);
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       body: CustomScrollView(
@@ -100,6 +110,12 @@ class _EnhancedHomePageState extends State<EnhancedHomePage>
           SliverToBoxAdapter(
             child: Column(
               children: [
+                // 家庭健康看板入口
+                if (familyState.members.isNotEmpty) ...[
+                  _buildFamilyDashboardCard(familyState),
+                  const SizedBox(height: 20),
+                ],
+
                 // 今日概览卡片
                 _buildTodayOverviewCard(),
 
@@ -127,6 +143,159 @@ class _EnhancedHomePageState extends State<EnhancedHomePage>
       // 浮动添加按钮
       floatingActionButton: _buildFloatingActionButton(),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  Widget _buildFamilyDashboardCard(FamilyDashboardState state) {
+    return GestureDetector(
+      onTap: () => context.push('/family-dashboard'),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF667EEA),
+              Color(0xFF764BA2),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF667EEA).withValues(alpha: 0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  LucideIcons.users,
+                  color: Colors.white,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    '家庭健康看板',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${state.members.length}位家人',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // 显示前3位家人的健康摘要
+            Row(
+              children: state.members.take(3).map((member) {
+                return Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        CircleAvatar(
+                          radius: 20,
+                          backgroundColor: Colors.white.withValues(alpha: 0.2),
+                          backgroundImage: member.avatarUrl != null
+                              ? NetworkImage(member.avatarUrl!)
+                              : null,
+                          child: member.avatarUrl == null
+                              ? const Icon(Icons.person,
+                                  size: 20, color: Colors.white)
+                              : null,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          member.realName ?? member.username,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${member.totalCalories.toInt()} kcal',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.white.withValues(alpha: 0.8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+            // 异常提醒
+            if (state.alerts.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      LucideIcons.alertCircle,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${state.alerts.length}条异常提醒',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const Icon(
+                      LucideIcons.chevronRight,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -200,7 +369,8 @@ class _EnhancedHomePageState extends State<EnhancedHomePage>
                                       '今天也要保持健康饮食哦！',
                                       style: TextStyle(
                                         fontSize: 14,
-                                        color: Colors.white.withValues(alpha: 0.9),
+                                        color:
+                                            Colors.white.withValues(alpha: 0.9),
                                       ),
                                     ),
                                   ],

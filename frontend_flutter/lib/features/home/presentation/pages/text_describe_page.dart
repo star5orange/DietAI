@@ -16,6 +16,8 @@ class TextDescribePage extends StatefulWidget {
   final double? costAmount;
   final String? costSource;
   final String? initialFoodName;
+  // 代记录：目标家人用户ID（为空表示记录给自己）
+  final int? proxyTargetUserId;
 
   const TextDescribePage({
     super.key,
@@ -26,6 +28,7 @@ class TextDescribePage extends StatefulWidget {
     this.costAmount,
     this.costSource,
     this.initialFoodName,
+    this.proxyTargetUserId,
   });
 
   @override
@@ -130,8 +133,7 @@ class _TextDescribePageState extends State<TextDescribePage> {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8)),
             ),
-            child: const Text('AI 分析',
-                style: TextStyle(color: Colors.white)),
+            child: const Text('AI 分析', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -166,8 +168,7 @@ class _TextDescribePageState extends State<TextDescribePage> {
       if (mounted) {
         setState(() => _isSubmitting = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('提交失败: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('提交失败: $e'), backgroundColor: AppColors.error),
         );
       }
     }
@@ -216,8 +217,7 @@ class _TextDescribePageState extends State<TextDescribePage> {
       if (mounted) {
         setState(() => _isSubmitting = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('提交失败: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('提交失败: $e'), backgroundColor: AppColors.error),
         );
       }
     }
@@ -261,6 +261,7 @@ class _TextDescribePageState extends State<TextDescribePage> {
       recordingMethod: 2,
       cost: _costAmount ?? widget.costAmount,
       sourceTag: _costSource ?? widget.costSource,
+      targetUserId: widget.proxyTargetUserId,
     );
   }
 

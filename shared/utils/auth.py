@@ -154,6 +154,17 @@ class AuthService:
         return hashlib.sha256(api_key.encode()).hexdigest()
 
 
+def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
+    """解码访问令牌（WebSocket 等场景使用），失败返回 None"""
+    try:
+        payload = jwt.decode(token, _get_verification_key(), algorithms=[ALGORITHM])
+        if payload.get("type") != "access":
+            return None
+        return payload
+    except JWTError:
+        return None
+
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
@@ -252,6 +263,21 @@ def authenticate_user(db: Session, username: str, password: str) -> Optional[Use
     return user
 
 
+def _generate_invite_code() -> str:
+    """生成唯一邀请码（6位大写字母+数字）"""
+    while True:
+        code = secrets.token_hex(3).upper()  # 6位
+        # 确保不与现有邀请码冲突
+        from ..models.database import SessionLocal
+        from ..models.user_models import User
+        db = SessionLocal()
+        try:
+            if not db.query(User).filter(User.invite_code == code).first():
+                return code
+        finally:
+            db.close()
+
+
 def create_user(db: Session, username: str, email: str, password: str, phone: str = None) -> User:
     """创建用户"""
     # 检查用户名是否已存在
@@ -280,6 +306,9 @@ def create_user(db: Session, username: str, email: str, password: str, phone: st
             detail="手机号已存在"
         )
     
+    # 生成唯一邀请码
+    invite_code = _generate_invite_code()
+    
     # 创建用户
     hashed_password = AuthService.hash_password(password)
     user = User(
@@ -288,7 +317,8 @@ def create_user(db: Session, username: str, email: str, password: str, phone: st
         email_hash=email_hash,
         phone=phone,
         phone_hash=phone_hash,
-        password_hash=hashed_password
+        password_hash=hashed_password,
+        invite_code=invite_code
     )
     
     db.add(user)

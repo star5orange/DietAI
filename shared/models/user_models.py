@@ -30,6 +30,7 @@ class User(Base):
     phone_hash = Column(String(64), unique=True, nullable=True, index=True)  # 盲索引
     password_hash = Column(String(255), nullable=False)
     avatar_url = Column(String(500), nullable=True)
+    invite_code = Column(String(20), unique=True, index=True, nullable=True)  # 邀请码
     status = Column(Integer, default=1)  # 1:正常 2:禁用 3:删除
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
@@ -40,7 +41,7 @@ class User(Base):
     health_goals = relationship("HealthGoal", back_populates="user")
     diseases = relationship("Disease", back_populates="user")
     allergies = relationship("Allergy", back_populates="user")
-    food_records = relationship("FoodRecord", back_populates="user")
+    food_records = relationship("FoodRecord", back_populates="user", foreign_keys="[FoodRecord.user_id]")
     weight_records = relationship("WeightRecord", back_populates="user")
     daily_summaries = relationship("DailyNutritionSummary", back_populates="user")
     conversations = relationship("ConversationSession", back_populates="user")

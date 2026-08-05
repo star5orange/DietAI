@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Request
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, or_
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 import base64
 import json
+import logging
+import traceback
 from langgraph_sdk import get_client
 from fastapi.responses import StreamingResponse, Response
 
@@ -18,6 +20,8 @@ from shared.models.schemas import (
 from shared.utils.auth import get_current_user, AuthService
 from shared.models.user_models import User
 from shared.models.food_models import FoodRecord, NutritionDetail, DailyNutritionSummary, FoodDatabase
+from shared.models.social_models import UserRelationship
+from shared.models.proxy_models import ProxyRecord
 from shared.config.redis_config import cache_service
 from shared.config.minio_config import minio_client
 from shared.config.settings import get_settings
@@ -26,6 +30,60 @@ from agent.common_utils.configuration import get_agent_model_config
 from shared.utils.model import decimal_to_float
 
 settings = get_settings()
+logger = logging.getLogger("food_router")
+
+
+def _check_family_relation(db: Session, user_id: int, target_user_id: int) -> bool:
+    """校验 user_id 与 target_user_id 是否为已接受的家人关系"""
+    return db.query(UserRelationship).filter(
+        or_(
+            and_(
+                UserRelationship.user_id == user_id,
+                UserRelationship.related_user_id == target_user_id
+            ),
+            and_(
+                UserRelationship.user_id == target_user_id,
+                UserRelationship.related_user_id == user_id
+            )
+        ),
+        UserRelationship.relationship_type == "family",
+        UserRelationship.status == "accepted"
+    ).first() is not None
+
+
+async def _send_proxy_food_notification(db: Session, recorder_user_id: int, target_user_id: int, food_record):
+    """发送代记录饮食通知给被代记录人"""
+    try:
+        from shared.services.push_service import send_push_to_user
+        recorder = db.query(User).filter(User.id == recorder_user_id).first()
+        recorder_name = recorder.real_name or recorder.username if recorder else "家人"
+        food_name = food_record.food_name or "食物"
+        calories = food_record.calories or 0
+        await send_push_to_user(
+            db=db,
+            user_id=target_user_id,
+            title=f"{recorder_name} 帮你记录了饮食",
+            body=f"{food_name} {float(calories):.0f}卡",
+            data={
+                "type": "proxy_record",
+                "recorded_by": recorder_user_id,
+                "food_record_id": food_record.id
+            },
+            reminder_type="proxy_record"
+        )
+    except Exception as e:
+        logger.warning(f"发送代记录饮食通知失败: {e}")
+
+
+def _get_accessible_food_record(db: Session, record_id: int, user_id: int):
+    """获取当前用户可访问的食物记录：记录归属人或代记录人均可"""
+    return db.query(FoodRecord).filter(
+        FoodRecord.id == record_id,
+        or_(
+            FoodRecord.user_id == user_id,
+            FoodRecord.recorded_by_user_id == user_id,
+        )
+    ).first()
 
 
 def _sanitize_analysis_result(result):
@@ -146,9 +204,14 @@ async def generate_sse_stream(
     """SSE 流式生成器 — 自行管理 db session，不依赖 FastAPI DI"""
     db = SessionLocal()
     try:
+        # 代记录归属：target_user_id 优先，记录计入目标用户账户
+        owner_user_id = food_data.target_user_id or user_id
+        is_proxy = food_data.target_user_id is not None
+
         # 创建食物记录
         food_record = FoodRecord(
-            user_id=user_id,
+            user_id=owner_user_id,
+            recorded_by_user_id=user_id if is_proxy else None,
             record_date=food_data.record_date,
             record_time=food_data.record_time or datetime.now(),
             meal_type=food_data.meal_type,
@@ -165,10 +228,27 @@ async def generate_sse_stream(
         db.commit()
         db.refresh(food_record)
 
+        # 代记录：写溯源日志 + 通知被代记录人
+        if is_proxy:
+            try:
+                proxy_record = ProxyRecord(
+                    recorded_by_user_id=user_id,
+                    target_user_id=owner_user_id,
+                    record_type="food",
+                    record_id=food_record.id
+                )
+                db.add(proxy_record)
+                db.commit()
+                await _send_proxy_food_notification(
+                    db, user_id, owner_user_id, food_record
+                )
+            except Exception as e:
+                logger.warning(f"代记录溯源/通知失败: {e}")
+
         # 如果有图片URL，使用流式Agent分析（在下方处理）
         if not food_data.image_url and not food_data.description:
             # 清除相关缓存
-            cache_key = f"nutrition:daily:{user_id}:{food_data.record_date}"
+            cache_key = f"nutrition:daily:{owner_user_id}:{food_data.record_date}"
             cache_service.redis.delete(cache_key)
 
         # 构建响应数据（直接返回完整数据）
@@ -289,8 +369,8 @@ async def generate_sse_stream(
                         food_record.analysis_status = 3  # 已完成
                         db.commit()
 
-                        # 触发每日营养汇总更新
-                        await update_daily_nutrition_summary(user_id, food_data.record_date, db)
+                        # 触发每日营养汇总更新（代记录时归属记录本人）
+                        await update_daily_nutrition_summary(owner_user_id, food_data.record_date, db)
 
                         yield f"data: {json.dumps({'type': 'nutrition_saved', 'data': {'status': 'completed', 'message': '营养分析完成并已保存'}, 'success': True}, ensure_ascii=False)}\n\n"
                     except Exception as save_err:
@@ -354,6 +434,18 @@ async def create_food_record(
     payload = AuthService.verify_token(token)
     user_id = int(payload.get("sub"))
 
+    # 代记录：校验目标用户是否为已接受的家人关系
+    if food_data.target_user_id is not None:
+        db = SessionLocal()
+        try:
+            if not _check_family_relation(db, user_id, food_data.target_user_id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="只能为家人代记录"
+                )
+        finally:
+            db.close()
+
     return StreamingResponse(
         generate_sse_stream(
             food_data=food_data,
@@ -399,11 +491,22 @@ async def create_food_record_traditional(
         sys.stderr.write("[TRACE-v3] SessionLocal created\n")
         sys.stderr.flush()
 
+        # 代记录归属：target_user_id 优先，记录计入目标用户账户
+        owner_user_id = food_data.target_user_id or user_id
+        is_proxy = food_data.target_user_id is not None
+        if is_proxy:
+            if not _check_family_relation(db, user_id, owner_user_id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="只能为家人代记录"
+                )
+
         # 直接记录：待分析状态（营养详情通过 /nutrition 接口单独添加后会变为3）
         analysis_status = 1
 
         food_record = FoodRecord(
-            user_id=user_id,
+            user_id=owner_user_id,
+            recorded_by_user_id=user_id if is_proxy else None,
             record_date=food_data.record_date,
             record_time=food_data.record_time or datetime.now(),
             meal_type=food_data.meal_type,
@@ -427,7 +530,22 @@ async def create_food_record_traditional(
         sys.stderr.write(f"[TRACE-v3] commit done, record id={food_record.id}\n")
         sys.stderr.flush()
 
-        cache_key = f"nutrition:daily:{user_id}:{food_data.record_date}"
+        # 代记录：写溯源日志 + 通知被代记录人
+        if is_proxy:
+            try:
+                proxy_record = ProxyRecord(
+                    recorded_by_user_id=user_id,
+                    target_user_id=owner_user_id,
+                    record_type="food",
+                    record_id=food_record.id
+                )
+                db.add(proxy_record)
+                db.commit()
+                await _send_proxy_food_notification(db, user_id, owner_user_id, food_record)
+            except Exception as e:
+                logger.warning(f"代记录溯源/通知失败: {e}")
+
+        cache_key = f"nutrition:daily:{owner_user_id}:{food_data.record_date}"
         cache_service.redis.delete(cache_key)
 
         response_data = {
@@ -678,10 +796,7 @@ async def confirm_food_record(
     user_id = current_user.id
     db = SessionLocal()
     try:
-        record = db.query(FoodRecord).filter(
-            FoodRecord.id == record_id,
-            FoodRecord.user_id == user_id
-        ).first()
+        record = _get_accessible_food_record(db, record_id, user_id)
 
         if not record:
             raise HTTPException(
@@ -1246,10 +1361,7 @@ async def get_food_record(
 ):
     """获取食物记录详情"""
     try:
-        record = db.query(FoodRecord).filter(
-            FoodRecord.id == record_id,
-            FoodRecord.user_id == current_user.id
-        ).first()
+        record = _get_accessible_food_record(db, record_id, current_user.id)
 
         if not record:
             raise HTTPException(
@@ -1332,10 +1444,7 @@ async def add_nutrition_detail(
     user_id = current_user.id
     db = SessionLocal()
     try:
-        record = db.query(FoodRecord).filter(
-            FoodRecord.id == record_id,
-            FoodRecord.user_id == user_id
-        ).first()
+        record = _get_accessible_food_record(db, record_id, user_id)
 
         if not record:
             raise HTTPException(
@@ -1380,9 +1489,10 @@ async def add_nutrition_detail(
         db.commit()
         db.refresh(nutrition_detail)
 
-        await update_daily_nutrition_summary(user_id, record.record_date, db)
+        # 代记录时汇总归属记录本人（record.user_id）
+        await update_daily_nutrition_summary(record.user_id, record.record_date, db)
 
-        cache_key = f"nutrition:daily:{user_id}:{record.record_date}"
+        cache_key = f"nutrition:daily:{record.user_id}:{record.record_date}"
         cache_service.redis.delete(cache_key)
 
         return BaseResponse(

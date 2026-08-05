@@ -24,14 +24,17 @@ class ExerciseService {
   ) async {
     try {
       final now = DateTime.now();
+      final recordDate = request.recordDate ?? now.toIso8601String().substring(0, 10);
       final record = ExerciseRecord(
-        id: now.millisecondsSinceEpoch.toString(),
+        id: now.millisecondsSinceEpoch,
         exerciseName: request.exerciseName,
         exerciseType: request.exerciseType,
         durationMinutes: request.durationMinutes,
-        caloriesBurned: request.caloriesBurned,
+        intensity: request.intensity,
+        caloriesBurned: request.caloriesBurned ?? 0.0,
         notes: request.notes,
-        recordedAt: request.recordedAt ?? now.toIso8601String(),
+        recordDate: recordDate,
+        recordedAt: now.toIso8601String(),
         createdAt: now.toIso8601String(),
       );
 
@@ -48,7 +51,7 @@ class ExerciseService {
     }
   }
 
-  Future<ApiResponse<void>> deleteExerciseRecord(String id) async {
+  Future<ApiResponse<void>> deleteExerciseRecord(int id) async {
     try {
       await ExerciseRecordStorage.delete(id);
       return ApiResponse<void>.success(

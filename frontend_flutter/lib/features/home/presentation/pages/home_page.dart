@@ -30,6 +30,7 @@ import '../../../pet/presentation/widgets/pet_avatar_display.dart';
 import '../../../pet/presentation/widgets/add_feeding_record_modal.dart';
 import '../../../pet/data/real_pet_api_service.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../shared/domain/models/user_model.dart';
 import '../../../cost/data/services/cost_service.dart';
 import '../../../cost/presentation/widgets/budget_progress_card.dart';
@@ -37,6 +38,7 @@ import 'meal_selection_page.dart';
 import 'text_describe_page.dart';
 import 'voice_record_page.dart';
 import '../../../saved_meals/presentation/pages/saved_meals_page.dart';
+import '../../../exam/presentation/pages/exam_upload_page.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -96,9 +98,12 @@ class _HomePageState extends ConsumerState<HomePage> {
     return emotions.map((k, v) => MapEntry(k, v?.toString() ?? ''));
   }
 
+  int? _lastUserId;
+
   @override
   void initState() {
     super.initState();
+    _lastUserId = ref.read(currentUserProvider)?.id;
     _loadTodayData();
     _loadPets();
   }
@@ -151,6 +156,13 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Future<void> _loadDataForDate(DateTime date) async {
     setState(() => _isLoading = true);
+
+    // 重置目标值，避免使用旧账号的数据
+    _targetCalories = 2000.0;
+    _targetProtein = 150.0;
+    _targetCarbs = 250.0;
+    _targetFat = 65.0;
+
     try {
       final dateStr = DateFormat('yyyy-MM-dd').format(date);
       final result = await _foodService.getFoodRecords(
@@ -281,7 +293,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ErrorHandler.showError(context, e.toString());
+        ErrorHandler.showError(this.context, e.toString());
       }
     }
   }
@@ -1256,6 +1268,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                               const Center(child: CircularProgressIndicator())
                             else ...[
                               _buildCrowdTagHighlight(crowdTag),
+                              const SizedBox(height: 12),
+                              _buildExamReportButton(),
                               const SizedBox(height: 20),
                               _buildCalorieCard(
                                   remainingCalories, currentCalories, crowdTag),
@@ -2641,6 +2655,94 @@ class _HomePageState extends ConsumerState<HomePage> {
         return 5;
       default:
         return 1;
+    }
+  }
+
+  /// 拍体检报告大按钮（首页顶部，最显眼位置）
+  Widget _buildExamReportButton() {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ExamUploadPage()),
+      ).then((_) => _refreshData()),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1E88E5), Color(0xFF42A5F5)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF1E88E5).withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child:
+                  const Icon(Icons.camera_alt, color: Colors.white, size: 30),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '拍体检报告',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    '拍完 AI 自动识别日期和指标',
+                    style: TextStyle(fontSize: 12, color: Colors.white70),
+                  ),
+                  const SizedBox(height: 6),
+                  FutureBuilder<String>(
+                    future: _getLastExamOwner(),
+                    builder: (context, snapshot) {
+                      final owner = snapshot.data ?? '';
+                      if (owner.isEmpty) return const SizedBox.shrink();
+                      return Text(
+                        '最近：$owner',
+                        style: const TextStyle(
+                            fontSize: 11, color: Colors.white70),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white70),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 读取上次体检拍摄对象（由上传页写入 SharedPreferences）
+  Future<String> _getLastExamOwner() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('last_exam_owner_name') ?? '';
+    } catch (_) {
+      return '';
     }
   }
 

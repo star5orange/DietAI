@@ -39,10 +39,9 @@ class PetStatusData {
       exp: json['exp'] as int? ?? 0,
       expToNext: json['exp_to_next'] as int? ?? 100,
       currentSkin: json['current_skin'] as String? ?? 'default',
-      unlockedSkins: (json['unlocked_skins'] as List?)
-              ?.map((e) => e as String)
-              .toList() ??
-          [],
+      unlockedSkins:
+          (json['unlocked_skins'] as List?)?.map((e) => e as String).toList() ??
+              [],
       habitScore: json['habit_score'] as int? ?? 0,
       lastInteractAt: json['last_interact_at'] as String?,
       streakDays: json['streak_days'] as int? ?? 0,
@@ -139,10 +138,12 @@ class PetApiService {
     try {
       final response = await _apiService.get('/virtual-pet/status');
       if (response.success && response.data != null) {
-        final data = PetStatusData.fromJson(response.data as Map<String, dynamic>);
+        final data =
+            PetStatusData.fromJson(response.data as Map<String, dynamic>);
         return ApiResponse.success(message: '获取宠物状态成功', data: data);
       }
-      return ApiResponse.failure(message: response.message.isNotEmpty ? response.message : '获取宠物状态失败');
+      return ApiResponse.failure(
+          message: response.message.isNotEmpty ? response.message : '获取宠物状态失败');
     } catch (e) {
       debugPrint('PetApiService.getStatus error: $e');
       return ApiResponse.failure(message: '获取宠物状态失败: $e');
@@ -154,10 +155,13 @@ class PetApiService {
     try {
       final response = await _apiService.get('/virtual-pet/status-for-device');
       if (response.success && response.data != null) {
-        final data = DevicePetStatus.fromJson(response.data as Map<String, dynamic>);
+        final data =
+            DevicePetStatus.fromJson(response.data as Map<String, dynamic>);
         return ApiResponse.success(message: '获取设备宠物状态成功', data: data);
       }
-      return ApiResponse.failure(message: response.message.isNotEmpty ? response.message : '获取设备宠物状态失败');
+      return ApiResponse.failure(
+          message:
+              response.message.isNotEmpty ? response.message : '获取设备宠物状态失败');
     } catch (e) {
       debugPrint('PetApiService.getStatusForDevice error: $e');
       return ApiResponse.failure(message: '获取设备宠物状态失败: $e');
@@ -165,17 +169,21 @@ class PetApiService {
   }
 
   /// 互动（pet/feed/play/train）
-  Future<ApiResponse<InteractResult>> interact({required String action, String? itemId}) async {
+  Future<ApiResponse<InteractResult>> interact(
+      {required String action, String? itemId}) async {
     try {
       final body = <String, dynamic>{'action': action};
       if (itemId != null) body['item_id'] = itemId;
 
-      final response = await _apiService.post('/virtual-pet/interact', data: body);
+      final response =
+          await _apiService.post('/virtual-pet/interact', data: body);
       if (response.success && response.data != null) {
-        final data = InteractResult.fromJson(response.data as Map<String, dynamic>);
+        final data =
+            InteractResult.fromJson(response.data as Map<String, dynamic>);
         return ApiResponse.success(message: '互动成功', data: data);
       }
-      return ApiResponse.failure(message: response.message.isNotEmpty ? response.message : '互动失败');
+      return ApiResponse.failure(
+          message: response.message.isNotEmpty ? response.message : '互动失败');
     } catch (e) {
       debugPrint('PetApiService.interact error: $e');
       return ApiResponse.failure(message: '互动失败: $e');
@@ -185,12 +193,15 @@ class PetApiService {
   /// 增加经验值（硬件按键互动）
   Future<ApiResponse<AddExpResult>> addExp({String action = 'pet'}) async {
     try {
-      final response = await _apiService.post('/virtual-pet/exp/add', queryParameters: {'action': action});
+      final response = await _apiService
+          .post('/virtual-pet/exp/add', queryParameters: {'action': action});
       if (response.success && response.data != null) {
-        final data = AddExpResult.fromJson(response.data as Map<String, dynamic>);
+        final data =
+            AddExpResult.fromJson(response.data as Map<String, dynamic>);
         return ApiResponse.success(message: '获得经验值', data: data);
       }
-      return ApiResponse.failure(message: response.message.isNotEmpty ? response.message : '增加经验失败');
+      return ApiResponse.failure(
+          message: response.message.isNotEmpty ? response.message : '增加经验失败');
     } catch (e) {
       debugPrint('PetApiService.addExp error: $e');
       return ApiResponse.failure(message: '增加经验失败: $e');
@@ -198,15 +209,19 @@ class PetApiService {
   }
 
   /// 重命名宠物
-  Future<ApiResponse<Map<String, dynamic>>> rename({required String name}) async {
-      final response = await _apiService.put('/virtual-pet/rename', data: {'name': name});
+  Future<ApiResponse<Map<String, dynamic>>> rename(
+      {required String name}) async {
+    try {
+      final response =
+          await _apiService.put('/virtual-pet/rename', data: {'name': name});
       if (response.success) {
         return ApiResponse.success(
           message: response.message.isNotEmpty ? response.message : '重命名成功',
           data: response.data as Map<String, dynamic>?,
         );
       }
-      return ApiResponse.failure(message: response.message.isNotEmpty ? response.message : '重命名失败');
+      return ApiResponse.failure(
+          message: response.message.isNotEmpty ? response.message : '重命名失败');
     } catch (e) {
       debugPrint('PetApiService.rename error: $e');
       return ApiResponse.failure(message: '重命名失败: $e');
@@ -214,16 +229,19 @@ class PetApiService {
   }
 
   /// 切换宠物类型
-  Future<ApiResponse<Map<String, dynamic>>> changePetType({required String petType}) async {
+  Future<ApiResponse<Map<String, dynamic>>> changePetType(
+      {required String petType}) async {
     try {
-      final response = await _apiService.put('/virtual-pet/pet-type', data: {'pet_type': petType});
+      final response = await _apiService
+          .put('/virtual-pet/pet-type', data: {'pet_type': petType});
       if (response.success) {
         return ApiResponse.success(
           message: response.message.isNotEmpty ? response.message : '切换成功',
           data: response.data as Map<String, dynamic>?,
         );
       }
-      return ApiResponse.failure(message: response.message.isNotEmpty ? response.message : '切换失败');
+      return ApiResponse.failure(
+          message: response.message.isNotEmpty ? response.message : '切换失败');
     } catch (e) {
       debugPrint('PetApiService.changePetType error: $e');
       return ApiResponse.failure(message: '切换失败: $e');
@@ -231,16 +249,19 @@ class PetApiService {
   }
 
   /// 设置可见性
-  Future<ApiResponse<Map<String, dynamic>>> setVisibility({required bool isVisible}) async {
+  Future<ApiResponse<Map<String, dynamic>>> setVisibility(
+      {required bool isVisible}) async {
     try {
-      final response = await _apiService.put('/virtual-pet/visibility', data: {'is_visible': isVisible});
+      final response = await _apiService
+          .put('/virtual-pet/visibility', data: {'is_visible': isVisible});
       if (response.success) {
         return ApiResponse.success(
           message: response.message.isNotEmpty ? response.message : '设置成功',
           data: response.data as Map<String, dynamic>?,
         );
       }
-      return ApiResponse.failure(message: response.message.isNotEmpty ? response.message : '设置失败');
+      return ApiResponse.failure(
+          message: response.message.isNotEmpty ? response.message : '设置失败');
     } catch (e) {
       debugPrint('PetApiService.setVisibility error: $e');
       return ApiResponse.failure(message: '设置失败: $e');

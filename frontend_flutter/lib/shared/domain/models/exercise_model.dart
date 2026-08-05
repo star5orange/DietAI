@@ -5,41 +5,50 @@ import 'package:shared_preferences/shared_preferences.dart';
 // For API-based exercise types, use ExerciseType.fetchFromApi() which accepts an ApiService instance.
 
 class ExerciseRecord {
-  final String id;
+  final int id;
+  final int? userId;
   final String exerciseName;
   final String exerciseType;
   final int durationMinutes;
+  final int intensity; // 1=低，2=中，3=高
   final double? distanceKm;
   final double caloriesBurned;
   final String? notes;
-  final String recordedAt;
+  final String recordDate;
+  final String? recordedAt;
   final String createdAt;
   final Map<String, dynamic>? strengthDetail;
 
   ExerciseRecord({
     required this.id,
+    this.userId,
     required this.exerciseName,
     required this.exerciseType,
     required this.durationMinutes,
+    this.intensity = 2,
     this.distanceKm,
     required this.caloriesBurned,
     this.notes,
-    required this.recordedAt,
+    required this.recordDate,
+    this.recordedAt,
     required this.createdAt,
     this.strengthDetail,
   });
 
   factory ExerciseRecord.fromJson(Map<String, dynamic> json) {
     return ExerciseRecord(
-      id: (json['id'] ?? '').toString(),
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      userId: (json['user_id'] as num?)?.toInt(),
       exerciseName:
           (json['exercise_name'] ?? json['exercise_type'] ?? '').toString(),
       exerciseType: (json['exercise_type'] ?? '').toString(),
       durationMinutes: (json['duration_minutes'] as num?)?.toInt() ?? 0,
+      intensity: (json['intensity'] as num?)?.toInt() ?? 2,
       distanceKm: (json['distance_km'] as num?)?.toDouble(),
       caloriesBurned: (json['calories_burned'] as num?)?.toDouble() ?? 0.0,
       notes: json['notes'] as String?,
-      recordedAt: (json['recorded_at'] ?? json['record_date'] ?? '').toString(),
+      recordDate: (json['record_date'] ?? json['recorded_at'] ?? '').toString(),
+      recordedAt: json['recorded_at'] as String?,
       createdAt: (json['created_at'] ?? '').toString(),
       strengthDetail: json['strength_detail'] as Map<String, dynamic>?,
     );
@@ -48,12 +57,15 @@ class ExerciseRecord {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      if (userId != null) 'user_id': userId,
       'exercise_name': exerciseName,
       'exercise_type': exerciseType,
       'duration_minutes': durationMinutes,
+      'intensity': intensity,
       'calories_burned': caloriesBurned,
       'notes': notes,
-      'recorded_at': recordedAt,
+      'record_date': recordDate,
+      if (recordedAt != null) 'recorded_at': recordedAt,
       'created_at': createdAt,
       if (distanceKm != null) 'distance_km': distanceKm,
       if (strengthDetail != null) 'strength_detail': strengthDetail,
@@ -61,14 +73,15 @@ class ExerciseRecord {
   }
 
   String get formattedDate {
+    final displayDate = recordedAt ?? recordDate;
     try {
-      final date = DateTime.parse(recordedAt);
+      final date = DateTime.parse(displayDate);
       final dateStr = '${date.month}月${date.day}日';
       // 如果是纯日期（无时间部分），只显示日期
-      if (recordedAt.length <= 10) return dateStr;
+      if (displayDate.length <= 10) return dateStr;
       return '$dateStr ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
     } catch (e) {
-      return recordedAt;
+      return displayDate;
     }
   }
 
@@ -103,19 +116,21 @@ class CreateExerciseRecordRequest {
   final String exerciseName;
   final String exerciseType;
   final int durationMinutes;
-  final double caloriesBurned;
+  final int intensity; // 1=低，2=中，3=高
+  final double? caloriesBurned; // 可选，不传则后端自动计算
   final double? distanceKm;
   final String? notes;
-  final String? recordedAt;
+  final String? recordDate;
 
   CreateExerciseRecordRequest({
     required this.exerciseName,
     required this.exerciseType,
     required this.durationMinutes,
-    required this.caloriesBurned,
+    this.intensity = 2,
+    this.caloriesBurned,
     this.distanceKm,
     this.notes,
-    this.recordedAt,
+    this.recordDate,
   });
 
   Map<String, dynamic> toJson() {
@@ -123,9 +138,10 @@ class CreateExerciseRecordRequest {
       'exercise_name': exerciseName,
       'exercise_type': exerciseType,
       'duration_minutes': durationMinutes,
-      'calories_burned': caloriesBurned,
+      'intensity': intensity,
+      if (caloriesBurned != null) 'calories_burned': caloriesBurned,
       'notes': notes,
-      'recorded_at': recordedAt,
+      if (recordDate != null) 'record_date': recordDate,
       if (distanceKm != null) 'distance_km': distanceKm,
     };
   }
@@ -241,7 +257,7 @@ class ExerciseRecordStorage {
     return records;
   }
 
-  static Future<List<ExerciseRecord>> delete(String id) async {
+  static Future<List<ExerciseRecord>> delete(int id) async {
     final records = await loadAll();
     records.removeWhere((r) => r.id == id);
     await saveAll(records);
@@ -250,7 +266,7 @@ class ExerciseRecordStorage {
 
   static Future<List<ExerciseRecord>> getByDate(String dateStr) async {
     final records = await loadAll();
-    return records.where((r) => r.recordedAt.startsWith(dateStr)).toList();
+    return records.where((r) => r.recordDate.startsWith(dateStr)).toList();
   }
 
   static Future<DailyExerciseSummary> getDailySummary(String dateStr) async {

@@ -31,8 +31,11 @@ class FoodRecord(Base):
     # AI分析结果（JSON存储：short_comment, food_items, image_description, recommendations）
     analysis_result = Column(JSON, nullable=True)
 
+    # Milestone 4: 代记录人ID（NULL=本人记录，有值=代记录人ID）
+    recorded_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
     # 关系
-    user = relationship("User", back_populates="food_records")
+    user = relationship("User", back_populates="food_records", foreign_keys=[user_id])
     nutrition_detail = relationship("NutritionDetail", back_populates="food_record", uselist=False)
     
     # 索引

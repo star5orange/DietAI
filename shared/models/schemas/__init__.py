@@ -33,3 +33,26 @@ from .constitution import (
     ConstitutionQuizRequest, QuizAnswer, ConstitutionQuizResponse,
     ConstitutionTypeInfo, CONSTITUTION_TYPES, CONSTITUTION_DIET_ADVICE, QUIZ_QUESTIONS
 )
+
+# Milestone 4 新增模块
+from .social import (
+    RelationshipType, RelationshipStatus,
+    FriendRequestCreate, FriendRequestResponse,
+    UserRelationResponse, UserRelationWithProfile,
+    FamilyAddRequest, UserSearchResult, FriendListResponse,
+    DataPermissionUpdate, DataPermissionResponse,
+    RelationNoteUpdate,
+)
+from .message import (
+    MessageType, MessageSend, MessageResponse, MessageWithSender,
+    ChatRoomResponse, MessageHistoryRequest, MessageHistoryResponse,
+    PokeRequest, WSMessage,
+)
+from .exam import (
+    ReportType, MetricStatus,
+    ExamReportUpload, ExamReportUploadResponse,
+    ExamReportResponse, ExamReportListResponse,
+    ExamMetricResponse, ExamMetricUpdate,
+    MetricTrendPoint, MetricTrendResponse,
+    ExamSummaryResponse, ExamAdviceResponse,
+)

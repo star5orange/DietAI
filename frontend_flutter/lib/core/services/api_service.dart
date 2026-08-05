@@ -178,6 +178,32 @@ class ApiService {
     return false;
   }
 
+  /// 解析后端错误消息（统一处理 BaseResponse 和 Pydantic 422 格式）
+  String? _parseErrorMessage(Map<String, dynamic> errorData) {
+    // 优先取 BaseResponse 的 message 字段
+    final message = errorData['message'];
+    if (message is String && message.isNotEmpty) return message;
+
+    final detail = errorData['detail'];
+    if (detail == null) return null;
+
+    // Pydantic 422 验证错误：detail 是数组 [{loc, msg, type}, ...]
+    if (detail is List && detail.isNotEmpty) {
+      final firstError = detail.first;
+      if (firstError is Map) {
+        final loc = (firstError['loc'] as List?)?.join('.') ?? '';
+        final msg = firstError['msg'] ?? '';
+        return '$loc: $msg';
+      }
+      return detail.first.toString();
+    }
+
+    // HTTPException 的 detail 是字符串
+    if (detail is String) return detail;
+
+    return detail.toString();
+  }
+
   /// 通用请求方法
   Future<Response> request(
     String method,
@@ -217,8 +243,7 @@ class ApiService {
         final errorData = e.response?.data;
         String? errorMessage;
         if (errorData is Map<String, dynamic>) {
-          errorMessage =
-              (errorData['message'] ?? errorData['detail'])?.toString();
+          errorMessage = _parseErrorMessage(errorData);
         }
         return ApiResponse<dynamic>(
           success: false,
@@ -257,8 +282,7 @@ class ApiService {
         final errorData = e.response?.data;
         String? errorMessage;
         if (errorData is Map<String, dynamic>) {
-          errorMessage =
-              (errorData['message'] ?? errorData['detail'])?.toString();
+          errorMessage = _parseErrorMessage(errorData);
         }
         return ApiResponse<dynamic>(
           success: false,
@@ -336,8 +360,7 @@ class ApiService {
         final errorData = e.response?.data;
         String? errorMessage;
         if (errorData is Map<String, dynamic>) {
-          errorMessage =
-              (errorData['message'] ?? errorData['detail'])?.toString();
+          errorMessage = _parseErrorMessage(errorData);
         }
         return ApiResponse<dynamic>(
           success: false,
@@ -438,6 +461,45 @@ class ApiService {
       return ApiResponse<dynamic>(
         success: false,
         message: '请求失败: $e',
+      );
+    }
+  }
+
+  /// 上传单个文件
+  Future<ApiResponse<dynamic>> uploadFile(
+    String path,
+    String filePath, {
+    String fieldName = 'file',
+    Map<String, dynamic>? extraFields,
+    ProgressCallback? onSendProgress,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        fieldName: await MultipartFile.fromFile(filePath),
+        if (extraFields != null) ...extraFields,
+      });
+
+      final response = await dio.post(
+        path,
+        data: formData,
+        onSendProgress: onSendProgress,
+      );
+
+      return ApiResponse<dynamic>(
+        success: response.data['success'] ?? false,
+        message: response.data['message'] ?? '',
+        data: response.data['data'],
+      );
+    } catch (e) {
+      if (e is DioException) {
+        return ApiResponse<dynamic>(
+          success: false,
+          message: e.response?.data?['message'] ?? e.message ?? '上传失败',
+        );
+      }
+      return ApiResponse<dynamic>(
+        success: false,
+        message: '上传失败: $e',
       );
     }
   }

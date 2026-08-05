@@ -7,6 +7,7 @@ import '../../../core/themes/app_text_styles.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../features/onboarding/presentation/providers/onboarding_provider.dart';
+import '../../../shared/domain/models/user_model.dart';
 
 /// 启动页面
 class SplashPage extends ConsumerStatefulWidget {
@@ -21,17 +22,18 @@ class _SplashPageState extends ConsumerState<SplashPage>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
+  bool _hasNavigated = false;
 
   @override
   void initState() {
     super.initState();
-    
+
     // 初始化动画控制器
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     );
-    
+
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
@@ -39,7 +41,7 @@ class _SplashPageState extends ConsumerState<SplashPage>
       parent: _animationController,
       curve: Curves.easeInOut,
     ));
-    
+
     _scaleAnimation = Tween<double>(
       begin: 0.8,
       end: 1.0,
@@ -47,61 +49,15 @@ class _SplashPageState extends ConsumerState<SplashPage>
       parent: _animationController,
       curve: Curves.elasticOut,
     ));
-    
+
     // 开始动画
     _animationController.forward();
-    
-    // 延迟后进行认证检查
-    _initializeApp();
   }
 
   @override
   void dispose() {
     _animationController.dispose();
     super.dispose();
-  }
-
-  Future<void> _initializeApp() async {
-    // 等待动画完成
-    await Future.delayed(const Duration(milliseconds: 1500));
-    
-    if (!mounted) return;
-    
-    // 直接检查认证状态并跳转
-    _handleAuthStateChange();
-  }
-
-  void _handleAuthStateChange() {
-    final authState = ref.read(authStateProvider);
-
-    authState.when(
-      data: (user) {
-        if (!mounted) return;
-        if (user != null) {
-          // 检查引导状态，决定跳转到首页还是引导欢迎页
-          _checkOnboardingAndNavigate();
-        } else {
-          // 未登录，跳转到登录页面
-          print('🔄 用户未登录，跳转到登录页面');
-          context.go('/login');
-        }
-      },
-      loading: () {
-        // 认证状态加载中，等待下一次状态更新
-        print('🔄 认证状态加载中...');
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            _handleAuthStateChange();
-          }
-        });
-      },
-      error: (error, stack) {
-        if (!mounted) return;
-        print('❌ 认证错误: $error');
-        // 认证错误，跳转到登录页面
-        context.go('/login');
-      },
-    );
   }
 
   /// 检查用户是否已完成引导，决定跳转目标
@@ -131,6 +87,42 @@ class _SplashPageState extends ConsumerState<SplashPage>
 
   @override
   Widget build(BuildContext context) {
+    // 监听认证状态变化
+    final authState = ref.watch(authStateProvider);
+
+    // 立即检查当前状态（防止错过已经完成的初始化）
+    if (!_hasNavigated) {
+      authState.when(
+        data: (user) {
+          if (_hasNavigated || !mounted) return;
+          print('✅ 认证状态：data, user=${user?.username ?? "null"}');
+          _hasNavigated = true;
+          // 使用 postFrameCallback 避免在 build 中直接调用导航
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            if (user != null) {
+              _checkOnboardingAndNavigate();
+            } else {
+              print('🔄 用户未登录，跳转到登录页面');
+              context.go('/login');
+            }
+          });
+        },
+        loading: () {
+          print('🔄 认证状态加载中...');
+        },
+        error: (error, stack) {
+          if (_hasNavigated || !mounted) return;
+          print('❌ 认证错误：$error');
+          _hasNavigated = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            context.go('/login');
+          });
+        },
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Center(
@@ -164,9 +156,9 @@ class _SplashPageState extends ConsumerState<SplashPage>
                         child: Image.asset('assets/images/logo_welcome.png'),
                       ),
                     ),
-                    
+
                     const SizedBox(height: 32),
-                    
+
                     // 应用名称
                     Text(
                       AppConstants.appName,
@@ -175,9 +167,9 @@ class _SplashPageState extends ConsumerState<SplashPage>
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    
+
                     const SizedBox(height: 8),
-                    
+
                     // 应用描述
                     Text(
                       AppConstants.appDescription,
@@ -185,14 +177,14 @@ class _SplashPageState extends ConsumerState<SplashPage>
                         color: AppColors.textSecondary,
                       ),
                     ),
-                    
+
                     const SizedBox(height: 48),
-                    
+
                     // 加载指示器
                     _buildLoadingIndicator(),
-                    
+
                     const SizedBox(height: 16),
-                    
+
                     // 状态文字
                     Text(
                       '正在初始化...',
@@ -209,7 +201,7 @@ class _SplashPageState extends ConsumerState<SplashPage>
       ),
     );
   }
-  
+
   Widget _buildLoadingIndicator() {
     return SizedBox(
       width: 32,
@@ -222,4 +214,4 @@ class _SplashPageState extends ConsumerState<SplashPage>
       ),
     );
   }
-} 
+}

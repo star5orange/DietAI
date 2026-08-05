@@ -79,7 +79,7 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
         // 计算今日汇总
         final todayStr = DateFormat('yyyy-MM-dd').format(now);
         final todayRecords =
-            records.where((r) => r.recordedAt.startsWith(todayStr)).toList();
+            records.where((r) => r.recordDate.startsWith(todayStr)).toList();
         final todaySummary = DailyExerciseSummary(
           date: todayStr,
           totalCaloriesBurned:
@@ -361,7 +361,7 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
   Widget _buildTodayRecordsList() {
     final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
     final todayRecords =
-        _records.where((r) => r.recordedAt.startsWith(todayStr)).toList();
+        _records.where((r) => r.recordDate.startsWith(todayStr)).toList();
 
     if (todayRecords.isEmpty) {
       return _buildEmptyState('今天还没有运动记录', '点击下方按钮开始记录运动');
@@ -725,7 +725,7 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
       final date = now.subtract(Duration(days: i));
       final dateStr = DateFormat('yyyy-MM-dd').format(date);
       final dayRecords =
-          _records.where((r) => r.recordedAt.startsWith(dateStr)).toList();
+          _records.where((r) => r.recordDate.startsWith(dateStr)).toList();
 
       final calories =
           dayRecords.fold<double>(0, (sum, r) => sum + r.caloriesBurned);
@@ -1181,18 +1181,7 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              final recordId = int.tryParse(record.id);
-              if (recordId == null) {
-                if (mounted) {
-                  ScaffoldMessenger.of(this.context).showSnackBar(
-                    const SnackBar(
-                      content: Text('删除失败: 无效的记录ID'),
-                      backgroundColor: AppColors.error,
-                    ),
-                  );
-                }
-                return;
-              }
+              final recordId = record.id;
               final result =
                   await _exerciseService.deleteRemoteExerciseRecord(recordId);
               if (result.success) {
