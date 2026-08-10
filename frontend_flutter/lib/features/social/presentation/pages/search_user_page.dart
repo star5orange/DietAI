@@ -80,7 +80,7 @@ class _SearchUserPageState extends ConsumerState<SearchUserPage>
                   child: TextField(
                     controller: _controller,
                     decoration: InputDecoration(
-                      hintText: '输入用户名或ID搜索',
+                      hintText: '输入用户名/ID/手机号搜索',
                       prefixIcon: const Icon(Icons.search),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),

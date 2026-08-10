@@ -56,7 +56,8 @@ class ExamReportListNotifier extends StateNotifier<ExamReportListState> {
     }
   }
 
-  Future<bool> uploadReport({
+  /// 上传体检报告，成功返回报告对象（含 reportId），失败返回 null
+  Future<ExamReport?> uploadReport({
     required File photo,
     required int userId,
     String? examDate,
@@ -70,17 +71,17 @@ class ExamReportListNotifier extends StateNotifier<ExamReportListState> {
         examDate: examDate,
         hospitalName: hospitalName,
       );
-      if (response.success) {
+      if (response.success && response.data != null) {
         // 重新加载列表
         await loadReports(userId);
-        return true;
+        return response.data;
       } else {
         state = state.copyWith(isLoading: false, error: response.message);
-        return false;
+        return null;
       }
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
-      return false;
+      return null;
     }
   }
 }
@@ -143,6 +144,7 @@ class ExamMetricsNotifier extends StateNotifier<ExamMetricsState> {
     double? metricValue,
     String? status,
     bool? isAbnormal,
+    String? unit,
   }) async {
     try {
       final response = await _apiService.updateExamMetric(
@@ -150,6 +152,7 @@ class ExamMetricsNotifier extends StateNotifier<ExamMetricsState> {
         metricValue: metricValue,
         status: status,
         isAbnormal: isAbnormal,
+        unit: unit,
       );
       return response.success;
     } catch (e) {

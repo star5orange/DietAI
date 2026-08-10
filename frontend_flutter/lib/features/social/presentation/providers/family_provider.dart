@@ -8,15 +8,15 @@ class FamilyMemberSummary {
   final String? realName;
   final String? avatarUrl;
   final String? note;
-  final double totalCalories;
-  final double targetCalories;
-  final int waterIntake;
-  final int waterGoal;
-  final String virtualPetName;
-  final String virtualPetMood;
-  final String virtualPetBodyType;
-  final int hungerHours;
-  final List<Map<String, dynamic>> realPets;
+  final double? totalCalories;
+  final double? targetCalories;
+  final int? waterIntake;
+  final int? waterGoal;
+  final String? virtualPetName;
+  final String? virtualPetMood;
+  final String? virtualPetBodyType;
+  final int? hungerHours;
+  final List<Map<String, dynamic>>? realPets;
   final Map<String, dynamic>? examSummary;
 
   FamilyMemberSummary({
@@ -25,15 +25,15 @@ class FamilyMemberSummary {
     this.realName,
     this.avatarUrl,
     this.note,
-    this.totalCalories = 0,
-    this.targetCalories = 2000,
-    this.waterIntake = 0,
-    this.waterGoal = 2000,
-    this.virtualPetName = '桌宠',
-    this.virtualPetMood = 'normal',
-    this.virtualPetBodyType = '标准体型',
-    this.hungerHours = 0,
-    this.realPets = const [],
+    this.totalCalories,
+    this.targetCalories,
+    this.waterIntake,
+    this.waterGoal,
+    this.virtualPetName,
+    this.virtualPetMood,
+    this.virtualPetBodyType,
+    this.hungerHours,
+    this.realPets,
     this.examSummary,
   });
 
@@ -44,18 +44,17 @@ class FamilyMemberSummary {
       realName: json['real_name'] as String?,
       avatarUrl: json['avatar_url'] as String?,
       note: json['note'] as String?,
-      totalCalories: (json['total_calories'] as num?)?.toDouble() ?? 0,
-      targetCalories: (json['target_calories'] as num?)?.toDouble() ?? 2000,
-      waterIntake: json['water_intake'] as int? ?? 0,
-      waterGoal: json['water_goal'] as int? ?? 2000,
-      virtualPetName: json['virtual_pet_name'] as String? ?? '桌宠',
-      virtualPetMood: json['virtual_pet_mood'] as String? ?? 'normal',
-      virtualPetBodyType: json['virtual_pet_body_type'] as String? ?? '标准体型',
-      hungerHours: json['hunger_hours'] as int? ?? 0,
+      totalCalories: (json['total_calories'] as num?)?.toDouble(),
+      targetCalories: (json['target_calories'] as num?)?.toDouble(),
+      waterIntake: json['water_intake'] as int?,
+      waterGoal: json['water_goal'] as int?,
+      virtualPetName: json['virtual_pet_name'] as String?,
+      virtualPetMood: json['virtual_pet_mood'] as String?,
+      virtualPetBodyType: json['virtual_pet_body_type'] as String?,
+      hungerHours: json['hunger_hours'] as int?,
       realPets: (json['real_pets'] as List<dynamic>?)
-              ?.map((e) => e as Map<String, dynamic>)
-              .toList() ??
-          [],
+          ?.map((e) => e as Map<String, dynamic>)
+          .toList(),
       examSummary: json['exam_summary'] is Map<String, dynamic>
           ? json['exam_summary'] as Map<String, dynamic>
           : null,
@@ -444,6 +443,158 @@ class MemberHealthNotifier extends StateNotifier<MemberHealthState> {
     }
   }
 }
+
+/// 家庭成就
+class FamilyAchievement {
+  final int id;
+  final String achievementType;
+  final String title;
+  final Map<String, dynamic>? metadata;
+  final String? unlockedAt;
+
+  FamilyAchievement({
+    required this.id,
+    required this.achievementType,
+    required this.title,
+    this.metadata,
+    this.unlockedAt,
+  });
+
+  factory FamilyAchievement.fromJson(Map<String, dynamic> json) {
+    return FamilyAchievement(
+      id: json['id'] as int? ?? 0,
+      achievementType: json['achievement_type'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      metadata: json['metadata'] is Map<String, dynamic>
+          ? json['metadata'] as Map<String, dynamic>
+          : null,
+      unlockedAt: json['unlocked_at'] as String?,
+    );
+  }
+}
+
+/// 家庭成就状态
+class FamilyAchievementsState {
+  final List<FamilyAchievement> achievements;
+  final bool healthFamilyDayUnlocked;
+  final bool isLoading;
+  final bool isChecking;
+  final String? checkResult;
+  final String? error;
+
+  FamilyAchievementsState({
+    this.achievements = const [],
+    this.healthFamilyDayUnlocked = false,
+    this.isLoading = false,
+    this.isChecking = false,
+    this.checkResult,
+    this.error,
+  });
+
+  FamilyAchievementsState copyWith({
+    List<FamilyAchievement>? achievements,
+    bool? healthFamilyDayUnlocked,
+    bool? isLoading,
+    bool? isChecking,
+    String? checkResult,
+    String? error,
+  }) {
+    return FamilyAchievementsState(
+      achievements: achievements ?? this.achievements,
+      healthFamilyDayUnlocked:
+          healthFamilyDayUnlocked ?? this.healthFamilyDayUnlocked,
+      isLoading: isLoading ?? this.isLoading,
+      isChecking: isChecking ?? this.isChecking,
+      checkResult: checkResult ?? this.checkResult,
+      error: error,
+    );
+  }
+}
+
+/// 家庭成就 Provider
+class FamilyAchievementsNotifier
+    extends StateNotifier<FamilyAchievementsState> {
+  final ApiService _api = ApiService();
+
+  FamilyAchievementsNotifier() : super(FamilyAchievementsState());
+
+  /// 加载已解锁成就
+  Future<void> loadAchievements() async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final response = await _api.get('/family/achievements');
+      if (response.success && response.data is Map<String, dynamic>) {
+        final data = response.data as Map<String, dynamic>;
+        final list = (data['achievements'] as List<dynamic>?)
+                ?.map((e) =>
+                    FamilyAchievement.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            [];
+        state = state.copyWith(
+          achievements: list,
+          healthFamilyDayUnlocked:
+              data['health_family_day_unlocked'] as bool? ?? false,
+          isLoading: false,
+        );
+      } else {
+        state = state.copyWith(isLoading: false, error: response.message);
+      }
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+    }
+  }
+
+  /// 判定"健康家庭"成就是否达成（未解锁时点击触发）
+  Future<void> checkHealthFamilyDay() async {
+    state = state.copyWith(isChecking: true);
+    try {
+      final response = await _api.post('/family/check-health-day');
+      if (response.success && response.data is Map<String, dynamic>) {
+        final data = response.data as Map<String, dynamic>;
+        final unlocked = data['unlocked'] as bool? ?? false;
+        if (unlocked) {
+          final ach = data['achievement'];
+          final newAch = ach is Map<String, dynamic>
+              ? FamilyAchievement.fromJson(ach)
+              : FamilyAchievement(
+                  id: 0,
+                  achievementType: 'health_family_day',
+                  title: '健康家庭',
+                  unlockedAt: DateTime.now().toIso8601String(),
+                );
+          state = state.copyWith(
+            achievements: [newAch, ...state.achievements],
+            healthFamilyDayUnlocked: true,
+            isChecking: false,
+            checkResult: '🎉 已解锁健康家庭成就',
+          );
+        } else {
+          final reason = data['reason'] as String?;
+          state = state.copyWith(
+            isChecking: false,
+            checkResult: reason != null && reason.isNotEmpty
+                ? '未解锁：$reason'
+                : '健康家庭成就未解锁',
+          );
+        }
+      } else {
+        state = state.copyWith(
+          isChecking: false,
+          checkResult:
+              '判定失败：${response.message.isNotEmpty ? response.message : '请稍后重试'}',
+        );
+      }
+    } catch (e) {
+      state = state.copyWith(isChecking: false, checkResult: '判定失败：$e');
+    }
+  }
+}
+
+final familyAchievementsProvider =
+    StateNotifierProvider<FamilyAchievementsNotifier, FamilyAchievementsState>(
+        (ref) {
+  return FamilyAchievementsNotifier();
+});
 
 final familyDashboardProvider =
     StateNotifierProvider<FamilyDashboardNotifier, FamilyDashboardState>((ref) {

@@ -95,20 +95,21 @@ class FamilyMemberCard extends ConsumerWidget {
                         ? const Icon(Icons.person, size: 28, color: Colors.grey)
                         : null,
                   ),
-                  if (onlineState.isOnline)
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        width: 16,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: Colors.green,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 16,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: onlineState.isOnline
+                            ? Colors.green
+                            : Colors.grey[400],
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
                       ),
                     ),
+                  ),
                   // 未读消息徽标
                   if (unreadCount > 0)
                     Positioned(

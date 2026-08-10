@@ -39,6 +39,7 @@ class FoodRecordResponse(BaseModel):
     from_source: Optional[str]
     cost: Optional[float] = None
     source_tag: Optional[str] = None
+    recorded_by_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

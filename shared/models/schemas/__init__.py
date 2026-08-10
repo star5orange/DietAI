@@ -53,6 +53,7 @@ from .exam import (
     ExamReportUpload, ExamReportUploadResponse,
     ExamReportResponse, ExamReportListResponse,
     ExamMetricResponse, ExamMetricUpdate,
+    ExamReportFollowupUpdate, ExamReportReassign,
     MetricTrendPoint, MetricTrendResponse,
     ExamSummaryResponse, ExamAdviceResponse,
 )

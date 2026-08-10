@@ -1245,6 +1245,13 @@ async def get_food_records(
         records = query.order_by(FoodRecord.record_date.desc(), FoodRecord.created_at.desc()).offset(offset).limit(
             page_size).all()
 
+        # 批量查询代记录人用户名（recorded_by_user_id -> username）
+        recorder_ids = {r.recorded_by_user_id for r in records if r.recorded_by_user_id is not None}
+        recorder_names = {}
+        if recorder_ids:
+            for recorder in db.query(User).filter(User.id.in_(recorder_ids)).all():
+                recorder_names[recorder.id] = recorder.username
+
         records_data = []
         for record in records:
             nutrition_detail = db.query(NutritionDetail).filter(
@@ -1272,6 +1279,7 @@ async def get_food_records(
                 "analysis_result": _sanitize_analysis_result(record.analysis_result),
                 "cost": float(record.cost) if record.cost else None,
                 "source_tag": record.source_tag,
+                "recorded_by_name": recorder_names.get(record.recorded_by_user_id) if record.recorded_by_user_id is not None else None,
                 "created_at": record.created_at.isoformat(),
                 "updated_at": record.updated_at.isoformat()
             }

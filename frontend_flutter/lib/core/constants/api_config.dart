@@ -8,12 +8,12 @@ class ApiConfig {
   // 开发环境配置
   static const String devBaseUrl = 'http://localhost:8000'; // 本地开发环境
   static const String devLocalNetworkUrl =
-      'http://172.30.182.232:8000'; // 局域网IP（真机调试用）
+      'http://10.195.33.8:8000'; // 局域网IP（真机调试用）
 
   // MinIO配置
   static const String devMinioUrl = 'http://localhost:9000';
   static const String devLocalNetworkMinioUrl =
-      'http://172.30.182.232:9000'; // 局域网IP（真机调试用）
+      'http://10.195.33.8:9000'; // 局域网IP（真机调试用）
 
   // 生产环境配置
   static const String prodBaseUrl = 'https://your-production-api.com';
@@ -44,14 +44,14 @@ class ApiConfig {
 
   /// 智能选择开发环境URL
   static String _getDevBaseUrl() {
-    return devLocalNetworkUrl; // 真机调试时使用局域网IP
-    //return devBaseUrl; // 本地调试使用localhost
+    // return devLocalNetworkUrl; // 真机调试时使用局域网IP
+    return devBaseUrl; // 使用 localhost（配合 adb reverse 端口转发）
   }
 
   /// 智能选择开发环境MinIO URL
   static String _getDevMinioUrl() {
-    return devLocalNetworkMinioUrl; // 真机调试时使用局域网IP
-    //return devMinioUrl; // 本地调试使用localhost
+    // return devLocalNetworkMinioUrl; // 真机调试时使用局域网IP
+    return devMinioUrl; // 使用 localhost（配合 adb reverse 端口转发）
   }
 
   /// 动态设置API基础URL（用于运行时配置）

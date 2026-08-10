@@ -148,6 +148,21 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+def _update_last_online(user_id: int):
+    """持久化用户最后在线时间（WebSocket 连接建立/断开时更新）"""
+    from shared.models.database import SessionLocal
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            user.last_online_at = datetime.now()
+            db.commit()
+    except Exception as e:
+        logger.warning(f"更新最后在线时间失败: {e}")
+    finally:
+        db.close()
+
+
 async def _notify_friends_online_status(user_id: int, is_online: bool):
     """向该用户的所有好友/家人广播在线状态变化事件"""
     from shared.models.database import SessionLocal
@@ -716,6 +731,9 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
     
     await manager.connect(websocket, user_id)
 
+    # 持久化最后在线时间
+    _update_last_online(user_id)
+
     # 广播上线事件给所有好友/家人
     await _notify_friends_online_status(user_id, True)
 
@@ -839,26 +857,45 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
     
     except WebSocketDisconnect:
         manager.disconnect(websocket, user_id)
+        # 持久化最后在线时间
+        _update_last_online(user_id)
         await _notify_friends_online_status(user_id, False)
         logger.info(f"用户 {user_id} WebSocket 连接断开")
     except Exception as e:
         logger.error(f"WebSocket 错误: {e}\n{traceback.format_exc()}")
         manager.disconnect(websocket, user_id)
+        # 持久化最后在线时间
+        _update_last_online(user_id)
         await _notify_friends_online_status(user_id, False)
 
 
 @router.get("/online-status/{user_id}", response_model=BaseResponse)
 async def get_online_status(
     user_id: int,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """检查用户是否在线"""
     try:
         is_online = manager.is_user_online(user_id)
+
+        # 获取最后在线时间
+        last_online_at = None
+        target_user = db.query(User).filter(User.id == user_id).first()
+        if target_user and target_user.last_online_at:
+            last_online_at = target_user.last_online_at
+            if last_online_at.tzinfo is None:
+                last_online_at = last_online_at.replace(tzinfo=timezone.utc)
+            last_online_at = last_online_at.isoformat()
+
         return BaseResponse(
             success=True,
             message="获取在线状态成功",
-            data={"user_id": user_id, "is_online": is_online}
+            data={
+                "user_id": user_id,
+                "is_online": is_online,
+                "last_online_at": last_online_at,
+            }
         )
     except Exception as e:
         logger.error(f"获取在线状态失败: {e}\n{traceback.format_exc()}")

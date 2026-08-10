@@ -60,6 +60,7 @@ __all__ = [
     "FastingCheckin",
     "VirtualPetState",
     "PetUnlockable",
+    "HealthAchievement",
 
     # Pydantic模型
     #"schemas"

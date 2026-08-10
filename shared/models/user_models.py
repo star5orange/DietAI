@@ -35,6 +35,7 @@ class User(Base):
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     last_login_at = Column(DateTime, nullable=True)
+    last_online_at = Column(DateTime, nullable=True)  # 最后在线时间（WebSocket 心跳持久化）
     
     # 关系
     profile = relationship("UserProfile", back_populates="user", uselist=False)

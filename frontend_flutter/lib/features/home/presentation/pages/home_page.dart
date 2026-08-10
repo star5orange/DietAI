@@ -2736,11 +2736,16 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  /// 读取上次体检拍摄对象（由上传页写入 SharedPreferences）
+  /// 读取上次体检拍摄对象与月份（由上传页写入 SharedPreferences）
+  /// 返回 "妈妈 · 2026-08" 形式
   Future<String> _getLastExamOwner() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getString('last_exam_owner_name') ?? '';
+      final owner = prefs.getString('last_exam_owner_name') ?? '';
+      if (owner.isEmpty) return '';
+      final date = prefs.getString('last_exam_owner_date');
+      if (date == null || date.isEmpty) return owner;
+      return '$owner · $date';
     } catch (_) {
       return '';
     }

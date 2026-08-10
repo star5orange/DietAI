@@ -195,6 +195,21 @@ class MessageHistoryNotifier extends StateNotifier<MessageHistoryState> {
     state = state.copyWith(messages: [...state.messages, msg]);
   }
 
+  /// 合并离线消息到消息列表（按时间排序，按 id 去重）
+  void mergeOfflineMessages(List<Message> messages) {
+    if (messages.isEmpty) return;
+    final existingIds = state.messages.map((m) => m.id).toSet();
+    final merged = [...state.messages];
+    for (final msg in messages) {
+      if (!existingIds.contains(msg.id)) {
+        merged.add(msg);
+      }
+    }
+    // 按时间正序排列
+    merged.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    state = state.copyWith(messages: merged);
+  }
+
   Future<bool> sendPoke(String pokeType) async {
     try {
       final response =

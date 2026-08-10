@@ -35,6 +35,7 @@ class WaterService {
                   notes: e['drink_type'] as String?,
                   recordedAt: e['record_time'] as String? ?? '',
                   createdAt: e['created_at'] as String? ?? '',
+                  recordedByName: e['recorded_by_name'] as String?,
                 ))
             .toList();
         return ApiResponse<List<WaterIntakeRecord>>.success(

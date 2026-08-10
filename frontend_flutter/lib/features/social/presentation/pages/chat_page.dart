@@ -10,6 +10,7 @@ import '../../data/message_api_service.dart';
 import '../../data/websocket_service.dart';
 import '../../domain/message_models.dart';
 import '../providers/message_provider.dart';
+import '../providers/social_provider.dart';
 import '../widgets/message_bubble.dart';
 
 /// 聊天页面
@@ -51,8 +52,37 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           .read(messageHistoryProvider.notifier)
           .loadHistory(widget.targetUserId);
       _connectWebSocket();
+      _loadOfflineMessages();
     });
     _scrollController.addListener(_onScroll);
+  }
+
+  /// 拉取离线消息并合并进聊天列表
+  Future<void> _loadOfflineMessages() async {
+    final response = await _messageApiService.getOfflineMessages();
+    if (!mounted) return;
+    if (response.success && response.data != null) {
+      final data = response.data!;
+      // 仅合并当前会话对方的离线消息
+      final offlineMessages = <Message>[];
+      for (final sender in data.senders) {
+        if (sender.senderId == widget.targetUserId) {
+          offlineMessages.addAll(sender.messages);
+        }
+      }
+      if (offlineMessages.isNotEmpty) {
+        ref
+            .read(messageHistoryProvider.notifier)
+            .mergeOfflineMessages(offlineMessages);
+        _scrollToBottom();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${offlineMessages.length} 条离线消息已送达'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   /// 建立 WebSocket 连接，实时接收对方消息
@@ -119,6 +149,93 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         );
       }
     });
+  }
+
+  /// 常用 emoji 列表
+  static const List<String> _commonEmojis = [
+    '😀',
+    '😄',
+    '😁',
+    '😆',
+    '😊',
+    '🙂',
+    '😍',
+    '😘',
+    '🥰',
+    '😋',
+    '😎',
+    '🤔',
+    '😴',
+    '😭',
+    '😂',
+    '🤣',
+    '👍',
+    '🙏',
+    '👏',
+    '❤️',
+    '🎉',
+    '✅',
+    '❌',
+    '💪',
+    '🔥',
+    '🌟',
+    '✨',
+    '🍚',
+    '💧',
+    '🥗',
+  ];
+
+  /// 弹出 emoji 表情面板，点击后插入到输入框末尾
+  void _showEmojiPanel() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('选择表情',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 6,
+                mainAxisSpacing: 4,
+                crossAxisSpacing: 4,
+                children: _commonEmojis.map((emoji) {
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      // 将 emoji 插入到输入框文字末尾
+                      final text = _messageController.text;
+                      final selection = _messageController.selection;
+                      final insertIndex =
+                          selection.isValid ? selection.end : text.length;
+                      final newText =
+                          '${text.substring(0, insertIndex)}$emoji${text.substring(insertIndex)}';
+                      _messageController.value = TextEditingValue(
+                        text: newText,
+                        selection: TextSelection.collapsed(
+                            offset: insertIndex + emoji.length),
+                      );
+                    },
+                    child: Center(
+                      child: Text(emoji, style: const TextStyle(fontSize: 26)),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showPokeMenu() {
@@ -354,13 +471,16 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final state = ref.watch(messageHistoryProvider);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
+  /// AppBar 标题：头像 + 名字 + 在线状态
+  Widget _buildAppBarTitle() {
+    final onlineState = ref.watch(onlineStatusProvider(widget.targetUserId));
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             if (widget.targetUserAvatar != null)
               CircleAvatar(
@@ -376,6 +496,40 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             Text(widget.targetUserName ?? '聊天'),
           ],
         ),
+        const SizedBox(height: 2),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 在线状态小圆点
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: onlineState.isOnline ? Colors.green : Colors.grey,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              onlineState.isOnline ? '在线' : '离线',
+              style: TextStyle(
+                fontSize: 11,
+                color: onlineState.isOnline ? Colors.green : Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(messageHistoryProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: _buildAppBarTitle(),
         actions: [
           IconButton(
             icon: const Icon(Icons.more_vert),
@@ -439,6 +593,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   IconButton(
                     icon: const Icon(Icons.camera_alt, color: Colors.grey),
                     onPressed: _pickAndSendImage,
+                  ),
+                  // emoji 表情按钮
+                  IconButton(
+                    icon: const Icon(Icons.emoji_emotions_outlined,
+                        color: Colors.grey),
+                    onPressed: _showEmojiPanel,
                   ),
                   // 输入框
                   Expanded(

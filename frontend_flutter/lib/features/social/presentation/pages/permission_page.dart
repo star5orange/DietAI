@@ -45,10 +45,10 @@ class _PermissionPageState extends ConsumerState<PermissionPage> {
   Future<void> _loadPermission() async {
     setState(() => _isLoading = true);
     try {
+      // getPermission 返回的是已解析好的 List<String>（visible_fields）
       final response = await _apiService.getPermission(widget.targetUserId);
       if (response.success && response.data != null) {
-        final data = response.data as Map<String, dynamic>;
-        _visibleFields = List<String>.from(data['visible_fields'] ?? []);
+        _visibleFields = List<String>.from(response.data!);
       }
     } catch (e) {
       if (mounted) {

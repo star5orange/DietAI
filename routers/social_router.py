@@ -16,7 +16,7 @@ from shared.models.schemas import (
     RelationNoteUpdate,
 )
 from shared.utils.auth import get_current_user
-from shared.models.user_models import User, UserProfile
+from shared.models.user_models import User, UserProfile, _blind_index
 from shared.models.social_models import UserRelationship, DataPermission
 from shared.models.food_models import DailyNutritionSummary
 from shared.models.water_models import WaterIntakeRecord
@@ -113,19 +113,29 @@ def _auto_sync_labels(db: Session, relation: UserRelationship):
 @router.get("/search", response_model=BaseResponse)
 async def search_users(
     keyword: str = Query(..., min_length=1, max_length=50, description="用户名/ID/手机号"),
+    phone: Optional[str] = Query(None, max_length=20, description="手机号精确搜索"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """搜索用户（通过用户名/ID/手机号）"""
     try:
+        # keyword 兼容三种匹配：username 包含、id 精确、phone 精确
+        # phone 列为加密存储（历史数据可能为明文），无法用 SQL 直接比较明文，
+        # 精确匹配统一走盲索引 phone_hash（与登录逻辑一致）
+        or_conditions = [
+            User.username.ilike(f"%{keyword}%"),
+            cast(User.id, String) == keyword,
+            User.phone_hash == _blind_index(keyword),
+        ]
+        # 显式 phone 参数：手机号精确匹配
+        if phone:
+            or_conditions.append(User.phone_hash == _blind_index(phone))
+
         # 搜索用户（排除自己）
         users = db.query(User).filter(
             User.id != current_user.id,
             User.status == 1,
-            or_(
-                User.username.ilike(f"%{keyword}%"),
-                cast(User.id, String).ilike(f"%{keyword}%")
-            )
+            or_(*or_conditions)
         ).limit(20).all()
 
         # 获取当前用户的关系（包括 pending 和 accepted）

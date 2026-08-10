@@ -1,7 +1,7 @@
 """家庭健康看板路由 - Milestone 4 家庭健康管理"""
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_, func
+from sqlalchemy import or_, and_, func, exists
 from typing import List, Optional
 from datetime import datetime, date, timedelta
 import logging
@@ -15,7 +15,9 @@ from shared.models.food_models import FoodRecord, DailyNutritionSummary
 from shared.models.water_models import WaterIntakeRecord
 from shared.models.social_models import UserRelationship
 from shared.models.pet_models import VirtualPetState, PetProfile
+from shared.models.achievement_models import HealthAchievement
 from shared.models.exercise_models import ExerciseRecord
+from shared.utils.permission import get_visible_fields, field_hidden
 
 router = APIRouter(prefix="/family", tags=["家庭健康"])
 logger = logging.getLogger(__name__)
@@ -159,7 +161,8 @@ async def _get_member_health_summary(db: Session, member_id: int, current_user_i
     try:
         from shared.models.exam_models import ExamReport, ExamMetric
         latest_exam = db.query(ExamReport).filter(
-            ExamReport.user_id == member_id
+            ExamReport.user_id == member_id,
+            exists().where(ExamMetric.report_id == ExamReport.id)
         ).order_by(ExamReport.exam_date.desc()).first()
         if latest_exam:
             exam_abnormal = db.query(func.count(ExamMetric.id)).filter(
@@ -173,6 +176,23 @@ async def _get_member_health_summary(db: Session, member_id: int, current_user_i
     except Exception as e:
         logger.warning(f"获取体检摘要失败: {e}")
 
+    # 数据权限过滤：根据 owner(member_id) 对 viewer(current_user_id) 配置的可见字段隐藏对应数据
+    visible = get_visible_fields(db, member_id, current_user_id)
+    if field_hidden(visible, "calories"):
+        total_calories = None
+        target_calories = None
+    if field_hidden(visible, "water"):
+        today_water = None
+        water_goal = None
+    if field_hidden(visible, "virtual_pet"):
+        pet_name = None
+        pet_mood = None
+        hunger_hours = None
+    if field_hidden(visible, "real_pet"):
+        pet_info = None
+    if field_hidden(visible, "exam_report"):
+        exam_summary = None
+
     return {
         "user_id": member_id,
         "username": user.username if user else "",
@@ -181,11 +201,11 @@ async def _get_member_health_summary(db: Session, member_id: int, current_user_i
         "note": note,
         "total_calories": total_calories,
         "target_calories": target_calories,
-        "water_intake": int(today_water),
+        "water_intake": int(today_water) if today_water is not None else None,
         "water_goal": water_goal,
         "virtual_pet_name": pet_name,
         "virtual_pet_mood": pet_mood,
-        "virtual_pet_body_type": _pet_body_type(pet_mood),
+        "virtual_pet_body_type": _pet_body_type(pet_mood) if pet_mood else None,
         "hunger_hours": hunger_hours,
         "real_pets": pet_info,
         "exam_summary": exam_summary
@@ -276,6 +296,16 @@ async def get_member_health_detail(
             ExerciseRecord.record_date <= end_date
         ).order_by(ExerciseRecord.record_date).all()
 
+        # 数据权限过滤：owner(member_id) 对 viewer(current_user) 配置的可见字段
+        visible = get_visible_fields(db, member_id, current_user.id)
+        show_calories = not field_hidden(visible, "calories")
+        show_water = not field_hidden(visible, "water")
+        show_weight = not field_hidden(visible, "weight")
+        show_exercise = not field_hidden(visible, "exercise")
+        show_goal = not field_hidden(visible, "health_goal")
+        show_virtual_pet = not field_hidden(visible, "virtual_pet")
+        show_real_pet = not field_hidden(visible, "real_pet")
+
         # 健康目标完成情况（进行中的目标）
         active_goal = db.query(HealthGoal).filter(
             HealthGoal.user_id == member_id,
@@ -283,7 +313,7 @@ async def get_member_health_detail(
         ).order_by(HealthGoal.created_at.desc()).first()
 
         goal_data = None
-        if active_goal:
+        if active_goal and show_goal:
             # 取第一个体重记录作为起始体重
             first_weight = db.query(WeightRecord).filter(
                 WeightRecord.user_id == member_id
@@ -309,34 +339,42 @@ async def get_member_health_detail(
             summary = next((s for s in daily_calories if s.summary_date == current_date), None)
             daily_data.append({
                 "date": current_date.isoformat(),
-                "calories": float(summary.total_calories) if summary else 0,
-                "burned": exercise_cal_dict.get(current_date, 0),
-                "protein": float(summary.total_protein) if summary else 0,
-                "fat": float(summary.total_fat) if summary else 0,
-                "carbs": float(summary.total_carbohydrates) if summary else 0,
-                "water": water_dict.get(current_date, 0)
+                "calories": float(summary.total_calories) if (summary and show_calories) else None,
+                "burned": exercise_cal_dict.get(current_date, 0) if show_exercise else None,
+                "protein": float(summary.total_protein) if (summary and show_calories) else None,
+                "fat": float(summary.total_fat) if (summary and show_calories) else None,
+                "carbs": float(summary.total_carbohydrates) if (summary and show_calories) else None,
+                "water": (water_dict.get(current_date) if show_water else None)
             })
 
-        weight_data = [
-            {
-                "date": w.measured_at.date().isoformat(),
-                "weight": float(w.weight),
-                "body_fat_percentage": float(w.body_fat_percentage) if w.body_fat_percentage else None,
-                "bmi": float(w.bmi) if w.bmi else None,
-            }
-            for w in weight_records
-        ]
+        weight_data = (
+            [
+                {
+                    "date": w.measured_at.date().isoformat(),
+                    "weight": float(w.weight),
+                    "body_fat_percentage": float(w.body_fat_percentage) if w.body_fat_percentage else None,
+                    "bmi": float(w.bmi) if w.bmi else None,
+                }
+                for w in weight_records
+            ]
+            if show_weight
+            else []
+        )
 
-        exercise_data = [
-            {
-                "date": e.record_date.isoformat(),
-                "exercise_type": e.exercise_type,
-                "exercise_name": e.exercise_name or e.exercise_type,
-                "duration_minutes": e.duration_minutes,
-                "calories_burned": float(e.calories_burned),
-            }
-            for e in exercise_records
-        ]
+        exercise_data = (
+            [
+                {
+                    "date": e.record_date.isoformat(),
+                    "exercise_type": e.exercise_type,
+                    "exercise_name": e.exercise_name or e.exercise_type,
+                    "duration_minutes": e.duration_minutes,
+                    "calories_burned": float(e.calories_burned),
+                }
+                for e in exercise_records
+            ]
+            if show_exercise
+            else []
+        )
 
         # 宠物状态（虚拟桌宠 + 真实宠物）
         pet_state = db.query(VirtualPetState).filter(
@@ -347,17 +385,21 @@ async def get_member_health_detail(
             PetProfile.is_active == True
         ).all()
         pet_data = {
-            "virtual_pet_mood": pet_state.mood if pet_state else "normal",
-            "virtual_pet_name": pet_state.pet_name if pet_state and pet_state.pet_name else "桌宠",
-            "real_pets": [
-                {
-                    "pet_id": p.id,
-                    "name": p.name,
-                    "species": p.species,
-                    "avatar_url": p.avatar_url,
-                }
-                for p in real_pets
-            ],
+            "virtual_pet_mood": pet_state.mood if (pet_state and show_virtual_pet) else None,
+            "virtual_pet_name": pet_state.pet_name if (pet_state and show_virtual_pet) else None,
+            "real_pets": (
+                [
+                    {
+                        "pet_id": p.id,
+                        "name": p.name,
+                        "species": p.species,
+                        "avatar_url": p.avatar_url,
+                    }
+                    for p in real_pets
+                ]
+                if show_real_pet
+                else None
+            ),
         }
 
         return BaseResponse(
@@ -412,6 +454,12 @@ async def get_family_alerts(
 
             real_name = profile.real_name if profile and profile.real_name else user.username
 
+            # 数据权限：仅当对应字段对 viewer 可见时才生成提醒
+            visible = get_visible_fields(db, other_id, current_user.id)
+            show_water_alert = not field_hidden(visible, "water")
+            show_calories_alert = not field_hidden(visible, "calories")
+            show_pet_alert = not field_hidden(visible, "virtual_pet")
+
             # 检查饮水不足
             today_water = db.query(func.sum(WaterIntakeRecord.amount_ml)).filter(
                 WaterIntakeRecord.user_id == other_id,
@@ -419,7 +467,7 @@ async def get_family_alerts(
             ).scalar() or 0
 
             water_goal = profile.daily_water_goal if profile and profile.daily_water_goal else 2000
-            if today_water < water_goal * 0.5:  # 饮水不足50%
+            if show_water_alert and today_water < water_goal * 0.5:  # 饮水不足50%
                 alerts.append({
                     "type": "water_insufficient",
                     "user_id": other_id,
@@ -434,7 +482,7 @@ async def get_family_alerts(
                 DailyNutritionSummary.summary_date == today
             ).first()
 
-            if today_summary:
+            if today_summary and show_calories_alert:
                 total_calories = float(today_summary.total_calories)
                 target_calories = profile.target_calories if profile and profile.target_calories else 2000
                 if total_calories > target_calories * 1.2:  # 热量超标20%
@@ -451,7 +499,7 @@ async def get_family_alerts(
                 VirtualPetState.user_id == other_id
             ).first()
 
-            if pet_state and pet_state.mood in ["hungry", "weak"]:
+            if pet_state and pet_state.mood in ["hungry", "weak"] and show_pet_alert:
                 hunger_hours = 0
                 if pet_state.last_feed_at:
                     hunger_hours = max(0, int((datetime.now() - pet_state.last_feed_at).total_seconds() // 3600))
@@ -735,7 +783,8 @@ async def proxy_record_water(
         water_record = WaterIntakeRecord(
             user_id=target_user_id,
             amount_ml=amount_ml,
-            record_time=datetime.now()
+            record_time=datetime.now(),
+            recorded_by_user_id=current_user.id,
         )
         db.add(water_record)
         db.flush()  # 先 flush 获取 water_record.id
@@ -828,6 +877,12 @@ async def get_family_weekly_report(
             user = db.query(User).filter(User.id == other_id).first()
             profile = db.query(UserProfile).filter(UserProfile.user_id == other_id).first()
 
+            # 数据权限：owner(other_id) 对 viewer(current_user.id) 配置的可见字段
+            visible = get_visible_fields(db, other_id, current_user.id)
+            show_calories = not field_hidden(visible, "calories")
+            show_water = not field_hidden(visible, "water")
+            show_exam = not field_hidden(visible, "exam_report")
+
             # 查询本周饮食数据
             weekly_summaries = db.query(DailyNutritionSummary).filter(
                 DailyNutritionSummary.user_id == other_id,
@@ -875,9 +930,9 @@ async def get_family_weekly_report(
                 ((calorie_goal_days + water_goal_days) / 14) * 100
             )
             achievements = []
-            if calorie_goal_days >= 4:
+            if calorie_goal_days >= 4 and show_calories:
                 achievements.append(f"🥗 饮食达标 {calorie_goal_days}/7 天")
-            if water_goal_days >= 4:
+            if water_goal_days >= 4 and show_water:
                 achievements.append(f"💧 饮水达标 {water_goal_days}/7 天")
 
             # 体检异常追踪（最新体检报告 + 距上次体检天数 + 建议复查倒计时）
@@ -885,9 +940,10 @@ async def get_family_weekly_report(
             try:
                 from shared.models.exam_models import ExamReport, ExamMetric
                 latest_exam = db.query(ExamReport).filter(
-                    ExamReport.user_id == other_id
+                    ExamReport.user_id == other_id,
+                    exists().where(ExamMetric.report_id == ExamReport.id)
                 ).order_by(ExamReport.exam_date.desc()).first()
-                if latest_exam:
+                if latest_exam and show_exam:
                     abnormal_metrics = db.query(ExamMetric).filter(
                         ExamMetric.report_id == latest_exam.id,
                         ExamMetric.is_abnormal == True
@@ -917,22 +973,24 @@ async def get_family_weekly_report(
                 "username": user.username if user else "",
                 "real_name": profile.real_name if profile else None,
                 "avatar_url": user.avatar_url if user else None,
-                "avg_calories": round(avg_daily_calories, 1),
-                "avg_water": round(avg_daily_water, 1),
-                "total_calories": round(total_calories, 1),
-                "total_water_ml": round(total_water, 1),
-                "avg_daily_calories": round(avg_daily_calories, 1),
-                "calorie_goal_days": calorie_goal_days,
-                "water_goal_days": water_goal_days,
-                "target_calories": target_calories,
-                "water_goal_ml": water_goal,
+                "avg_calories": round(avg_daily_calories, 1) if show_calories else None,
+                "avg_water": round(avg_daily_water, 1) if show_water else None,
+                "total_calories": round(total_calories, 1) if show_calories else None,
+                "total_water_ml": round(total_water, 1) if show_water else None,
+                "avg_daily_calories": round(avg_daily_calories, 1) if show_calories else None,
+                "calorie_goal_days": calorie_goal_days if show_calories else None,
+                "water_goal_days": water_goal_days if show_water else None,
+                "target_calories": target_calories if show_calories else None,
+                "water_goal_ml": water_goal if show_water else None,
                 "health_score": health_score,
                 "achievements": achievements,
                 "exam_summary": exam_summary,
             })
 
-            total_family_calories += total_calories
-            total_family_water += total_water
+            if show_calories:
+                total_family_calories += total_calories
+            if show_water:
+                total_family_water += total_water
             member_count += 1
 
         # 计算家庭整体数据
@@ -1059,12 +1117,20 @@ async def get_family_diet_recommendation(
                 detail="只能为家人生成饮食推荐"
             )
 
+        # 数据权限：体检报告/饮食偏好隐藏时不生成对应内容的推荐
+        visible = get_visible_fields(db, target_user_id, current_user.id)
+        show_exam_rec = not field_hidden(visible, "exam_report")
+        show_prefs = not field_hidden(visible, "dietary_preferences")
+
         # 获取目标用户的体检报告异常指标
         from shared.models.exam_models import ExamReport, ExamMetric
 
-        latest_report = db.query(ExamReport).filter(
-            ExamReport.user_id == target_user_id
-        ).order_by(ExamReport.exam_date.desc()).first()
+        latest_report = None
+        if show_exam_rec:
+            latest_report = db.query(ExamReport).filter(
+                ExamReport.user_id == target_user_id,
+                exists().where(ExamMetric.report_id == ExamReport.id)
+            ).order_by(ExamReport.exam_date.desc()).first()
 
         abnormal_metrics = []
         if latest_report:
@@ -1078,7 +1144,7 @@ async def get_family_diet_recommendation(
 
         dietary_prefs = []
         food_dislikes = []
-        if profile:
+        if profile and show_prefs:
             import json
             try:
                 dietary_prefs = json.loads(profile.dietary_preferences) if isinstance(profile.dietary_preferences, str) else profile.dietary_preferences
@@ -1155,4 +1221,204 @@ async def get_family_diet_recommendation(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="获取饮食推荐失败"
+        )
+
+
+# ============================================================
+# 健康家庭成就
+# ============================================================
+
+def _achievement_to_dict(ach: HealthAchievement) -> dict:
+    """成就对象转 dict"""
+    return {
+        "id": ach.id,
+        "achievement_type": ach.achievement_type,
+        "title": ach.title,
+        "metadata": ach.achievement_metadata,
+        "unlocked_at": ach.unlocked_at.isoformat(),
+    }
+
+
+def _get_member_display_name(db: Session, member_id: int, current_user_id: int) -> str:
+    """获取成员展示名（优先关系称谓，其次真实姓名，最后用户名）"""
+    note = _get_family_note(db, member_id, current_user_id)
+    if note:
+        return note
+    user = db.query(User).filter(User.id == member_id).first()
+    profile = db.query(UserProfile).filter(UserProfile.user_id == member_id).first()
+    if profile and profile.real_name:
+        return profile.real_name
+    return user.username if user else f"用户{member_id}"
+
+
+@router.get("/achievements", response_model=BaseResponse)
+async def get_family_achievements(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """获取当前用户的健康成就列表，及"健康家庭"是否已解锁"""
+    try:
+        achievements = db.query(HealthAchievement).filter(
+            HealthAchievement.user_id == current_user.id
+        ).order_by(HealthAchievement.unlocked_at.desc()).all()
+
+        health_family_day = db.query(HealthAchievement).filter(
+            HealthAchievement.user_id == current_user.id,
+            HealthAchievement.achievement_type == "health_family_day"
+        ).first()
+
+        return BaseResponse(
+            success=True,
+            message="获取成就列表成功",
+            data={
+                "achievements": [_achievement_to_dict(a) for a in achievements],
+                "health_family_day_unlocked": health_family_day is not None,
+            }
+        )
+    except Exception as e:
+        logger.error(f"获取成就列表失败: {e}\n{traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="获取成就列表失败"
+        )
+
+
+@router.post("/check-health-day", response_model=BaseResponse)
+async def check_health_family_day(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    判定"家庭健康日"是否达成，达成则写入成就（health_family_day，title=健康家庭）。
+
+    达成条件（当前用户 + 所有已接受家人）：
+    1. 当日饮食达标：有当日饮食记录，且热量在目标热量 ±300kcal 内
+       （无当日汇总但有当日饮食记录视为已记录饮食，也达标；当天完全没记录视为未达标）
+    2. 所有真实宠物（PetProfile is_active）健康分 > 80
+    """
+    try:
+        today = date.today()
+
+        # 需要检查的成员：自己 + 所有已接受家人
+        member_ids = [current_user.id]
+        family_relations = db.query(UserRelationship).filter(
+            or_(
+                UserRelationship.user_id == current_user.id,
+                UserRelationship.related_user_id == current_user.id
+            ),
+            UserRelationship.relationship_type == "family",
+            UserRelationship.status == "accepted"
+        ).all()
+        for rel in family_relations:
+            other_id = rel.related_user_id if rel.user_id == current_user.id else rel.user_id
+            if other_id not in member_ids:
+                member_ids.append(other_id)
+
+        # ---- 1. 检查所有人当日饮食达标 ----
+        for member_id in member_ids:
+            display_name = _get_member_display_name(db, member_id, current_user.id)
+
+            today_summary = db.query(DailyNutritionSummary).filter(
+                DailyNutritionSummary.user_id == member_id,
+                DailyNutritionSummary.summary_date == today
+            ).first()
+            has_food_record = db.query(FoodRecord).filter(
+                FoodRecord.user_id == member_id,
+                FoodRecord.record_date == today
+            ).first() is not None
+
+            # 当天完全没记录 → 未达标
+            if not today_summary and not has_food_record:
+                return BaseResponse(
+                    success=True,
+                    message="未达成家庭健康日",
+                    data={
+                        "unlocked": False,
+                        "achievement": None,
+                        "reason": f"{display_name}今天还没有饮食记录",
+                    }
+                )
+
+            # 有当日汇总 → 检查热量是否在目标 ±300kcal 内
+            if today_summary:
+                profile = db.query(UserProfile).filter(UserProfile.user_id == member_id).first()
+                target_calories = profile.target_calories if profile and profile.target_calories else 2000
+                total_calories = float(today_summary.total_calories)
+                if not (target_calories - 300 <= total_calories <= target_calories + 300):
+                    return BaseResponse(
+                        success=True,
+                        message="未达成家庭健康日",
+                        data={
+                            "unlocked": False,
+                            "achievement": None,
+                            "reason": (
+                                f"{display_name}今日热量{int(total_calories)}kcal，"
+                                f"偏离目标{target_calories}kcal（±300范围内才算达标）"
+                            ),
+                        }
+                    )
+            # 无汇总但有当日饮食记录（如汇总尚未生成）→ 视为已记录饮食，达标
+
+        # ---- 2. 检查所有真实宠物健康分 > 80 ----
+        for member_id in member_ids:
+            real_pets = db.query(PetProfile).filter(
+                PetProfile.user_id == member_id,
+                PetProfile.is_active == True
+            ).all()
+            if not real_pets:
+                continue
+            display_name = _get_member_display_name(db, member_id, current_user.id)
+            for pet in real_pets:
+                score = _pet_health_score(db, pet.id, member_id)
+                if score is None:
+                    return BaseResponse(
+                        success=True,
+                        message="未达成家庭健康日",
+                        data={
+                            "unlocked": False,
+                            "achievement": None,
+                            "reason": f"{display_name}的宠物{pet.name}健康分暂不可用",
+                        }
+                    )
+                if score <= 80:
+                    return BaseResponse(
+                        success=True,
+                        message="未达成家庭健康日",
+                        data={
+                            "unlocked": False,
+                            "achievement": None,
+                            "reason": f"{display_name}的宠物{pet.name}健康分不足80",
+                        }
+                    )
+
+        # ---- 3. 全部达成 → 写入/返回成就 ----
+        achievement = db.query(HealthAchievement).filter(
+            HealthAchievement.user_id == current_user.id,
+            HealthAchievement.achievement_type == "health_family_day"
+        ).first()
+        if not achievement:
+            achievement = HealthAchievement(
+                user_id=current_user.id,
+                achievement_type="health_family_day",
+                title="健康家庭",
+                metadata={"date": today.isoformat(), "member_count": len(member_ids)},
+            )
+            db.add(achievement)
+            db.commit()
+            db.refresh(achievement)
+
+        return BaseResponse(
+            success=True,
+            message="达成家庭健康日",
+            data={
+                "unlocked": True,
+                "achievement": _achievement_to_dict(achievement),
+                "reason": None,
+            }
+        )
+    except Exception as e:
+        logger.error(f"检查家庭健康日失败: {e}\n{traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="检查家庭健康日失败"
         )

@@ -1,3 +1,10 @@
+/// 安全解析数字：兼容后端返回的 num 或数字字符串（如 "24.10"）
+double? _toDouble(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString());
+}
+
 /// 体检报告模型
 class ExamReport {
   final int id;
@@ -8,6 +15,8 @@ class ExamReport {
   final String? photoUrl;
   final int abnormalCount;
   final DateTime createdAt;
+  final Map<String, dynamic>? comparedToLast;
+  final String? followupDate; // 复查提醒日期 YYYY-MM-DD
 
   ExamReport({
     required this.id,
@@ -18,6 +27,8 @@ class ExamReport {
     this.photoUrl,
     this.abnormalCount = 0,
     required this.createdAt,
+    this.comparedToLast,
+    this.followupDate,
   });
 
   factory ExamReport.fromJson(Map<String, dynamic> json) {
@@ -30,6 +41,8 @@ class ExamReport {
       photoUrl: json['photo_url'] as String?,
       abnormalCount: json['abnormal_count'] as int? ?? 0,
       createdAt: DateTime.parse(json['created_at'] as String),
+      comparedToLast: json['compared_to_last'] as Map<String, dynamic>?,
+      followupDate: json['followup_date'] as String?,
     );
   }
 
@@ -43,7 +56,65 @@ class ExamReport {
       'photo_url': photoUrl,
       'abnormal_count': abnormalCount,
       'created_at': createdAt.toIso8601String(),
+      'compared_to_last': comparedToLast,
+      'followup_date': followupDate,
     };
+  }
+}
+
+/// 体检报告详情（元数据，来自 GET /health/exam/reports/{userId}/{reportId}）
+class ExamReportDetail {
+  final int id;
+  final int userId;
+  final DateTime examDate;
+  final DateTime? reportDate;
+  final String? hospitalName;
+  final String reportType;
+  final String? photoUrl;
+  final int abnormalCount;
+  final String? summary;
+  final String? doctorAdvice;
+  final Map<String, dynamic>? comparedToLast;
+  final String? followupDate; // 复查提醒日期 YYYY-MM-DD
+  final int? createdBy;
+  final String? ownerName;
+
+  ExamReportDetail({
+    required this.id,
+    required this.userId,
+    required this.examDate,
+    this.reportDate,
+    this.hospitalName,
+    this.reportType = 'full',
+    this.photoUrl,
+    this.abnormalCount = 0,
+    this.summary,
+    this.doctorAdvice,
+    this.comparedToLast,
+    this.followupDate,
+    this.createdBy,
+    this.ownerName,
+  });
+
+  factory ExamReportDetail.fromJson(Map<String, dynamic> json) {
+    return ExamReportDetail(
+      id: json['id'] as int,
+      userId: json['user_id'] as int,
+      examDate: DateTime.parse(json['exam_date'] as String),
+      reportDate: json['report_date'] != null
+          ? DateTime.tryParse(json['report_date'] as String)
+          : null,
+      hospitalName: json['hospital_name'] as String?,
+      reportType: json['report_type'] as String? ?? 'full',
+      photoUrl: json['photo_url'] as String?,
+      abnormalCount: json['abnormal_count'] as int? ?? 0,
+      summary: json['summary'] as String?,
+      doctorAdvice: json['doctor_advice'] as String?,
+      comparedToLast: json['compared_to_last'] as Map<String, dynamic>?,
+      followupDate: json['followup_date'] as String?,
+      createdBy: json['created_by'] as int?,
+      ownerName: json['owner_name'] as String?,
+    );
   }
 }
 
@@ -100,11 +171,11 @@ class ExamMetric {
       reportId: json['report_id'] as int,
       category: json['category'] as String? ?? '',
       metricName: json['metric_name'] as String? ?? '',
-      metricValue: (json['metric_value'] as num?)?.toDouble(),
+      metricValue: _toDouble(json['metric_value']),
       unit: json['unit'] as String?,
       status: json['status'] as String? ?? 'normal',
-      referenceMin: (json['reference_min'] as num?)?.toDouble(),
-      referenceMax: (json['reference_max'] as num?)?.toDouble(),
+      referenceMin: _toDouble(json['reference_min']),
+      referenceMax: _toDouble(json['reference_max']),
       isAbnormal: json['is_abnormal'] as bool? ?? false,
     );
   }
@@ -142,7 +213,7 @@ class MetricTrendPoint {
   factory MetricTrendPoint.fromJson(Map<String, dynamic> json) {
     return MetricTrendPoint(
       examDate: DateTime.parse(json['exam_date'] as String),
-      metricValue: (json['metric_value'] as num).toDouble(),
+      metricValue: _toDouble(json['metric_value']) ?? 0,
       unit: json['unit'] as String?,
       reportId: json['report_id'] as int,
     );
@@ -176,8 +247,8 @@ class MetricTrendResponse {
       metricName: json['metric_name'] as String? ?? '',
       category: json['category'] as String?,
       unit: json['unit'] as String?,
-      referenceMin: (json['reference_min'] as num?)?.toDouble(),
-      referenceMax: (json['reference_max'] as num?)?.toDouble(),
+      referenceMin: _toDouble(json['reference_min']),
+      referenceMax: _toDouble(json['reference_max']),
       trend: (json['trend'] as List<dynamic>?)
               ?.map((e) => MetricTrendPoint.fromJson(e as Map<String, dynamic>))
               .toList() ??
@@ -224,6 +295,7 @@ class ExamAdvice {
   final List<String> dietRecommendations;
   final List<String> exerciseRecommendations;
   final String? followupReminder;
+  final bool suggestWeightLossGoal; // 是否建议设置减重目标
 
   ExamAdvice({
     required this.reportId,
@@ -231,6 +303,7 @@ class ExamAdvice {
     this.dietRecommendations = const [],
     this.exerciseRecommendations = const [],
     this.followupReminder,
+    this.suggestWeightLossGoal = false,
   });
 
   factory ExamAdvice.fromJson(Map<String, dynamic> json) {
@@ -241,11 +314,13 @@ class ExamAdvice {
               ?.map((e) => e as String)
               .toList() ??
           [],
-      exerciseRecommendations: (json['exercise_recommendations'] as List<dynamic>?)
-              ?.map((e) => e as String)
-              .toList() ??
-          [],
+      exerciseRecommendations:
+          (json['exercise_recommendations'] as List<dynamic>?)
+                  ?.map((e) => e as String)
+                  .toList() ??
+              [],
       followupReminder: json['followup_reminder'] as String?,
+      suggestWeightLossGoal: json['suggest_weight_loss_goal'] as bool? ?? false,
     );
   }
 }

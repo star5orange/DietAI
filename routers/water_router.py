@@ -4,6 +4,7 @@ from shared.models.database import get_db
 from shared.utils.auth import get_current_user
 from shared.models.schemas import BaseResponse
 from shared.models.schemas.water import WaterIntakeCreate
+from shared.models.user_models import User
 from shared.services.water_service import (
     create_water_record, get_water_records, get_daily_water_summary, get_water_statistics
 )
@@ -48,10 +49,26 @@ def list_records(
     user=Depends(get_current_user),
 ):
     records = get_water_records(db, user.id, start_date, end_date, skip, limit)
+
+    # 批量查询代记录人用户名（recorded_by_user_id -> username）
+    recorder_ids = {r.recorded_by_user_id for r in records if r.recorded_by_user_id is not None}
+    recorder_names = {}
+    if recorder_ids:
+        for recorder in db.query(User).filter(User.id.in_(recorder_ids)).all():
+            recorder_names[recorder.id] = recorder.username
+
+    result = []
+    for r in records:
+        item = _water_record_to_dict(r)
+        item["recorded_by_name"] = (
+            recorder_names.get(r.recorded_by_user_id) if r.recorded_by_user_id is not None else None
+        )
+        result.append(item)
+
     return BaseResponse(
         success=True,
         message="获取饮水记录成功",
-        data=[_water_record_to_dict(r) for r in records],
+        data=result,
     )
 
 

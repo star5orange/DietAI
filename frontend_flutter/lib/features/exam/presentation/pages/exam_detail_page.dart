@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/services/tts_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../social/presentation/providers/social_provider.dart';
 import '../providers/exam_provider.dart';
 import '../../domain/exam_models.dart';
 
@@ -21,6 +22,7 @@ class ExamDetailPage extends ConsumerStatefulWidget {
 class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
   final TtsService _ttsService = TtsService();
   bool _isSpeaking = false;
+  ExamReportDetail? _detail;
 
   @override
   void initState() {
@@ -28,6 +30,8 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
     Future.microtask(() {
       ref.read(examMetricsProvider.notifier).loadMetrics(widget.reportId);
       ref.read(examAdviceProvider.notifier).loadAdvice(widget.reportId);
+      ref.read(friendListProvider.notifier).loadFriendList();
+      _loadDetail();
     });
   }
 
@@ -35,6 +39,18 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
   void dispose() {
     _ttsService.dispose();
     super.dispose();
+  }
+
+  int get _effectiveUserId =>
+      widget.userId ?? ref.read(currentUserProvider)?.id ?? 0;
+
+  Future<void> _loadDetail() async {
+    final res = await ref
+        .read(examApiServiceProvider)
+        .getExamReportDetail(_effectiveUserId, widget.reportId);
+    if (mounted && res.success && res.data != null) {
+      setState(() => _detail = res.data);
+    }
   }
 
   Future<void> _speakAdvice(ExamAdvice advice) async {
@@ -86,6 +102,17 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
 
   Widget _buildBody(
       ExamMetricsState metricsState, ExamAdviceState adviceState) {
+    // 顶部固定报告信息卡，下方为指标内容区
+    return Column(
+      children: [
+        if (_detail != null) _buildReportInfoCard(_detail!),
+        Expanded(child: _buildMetricsContent(metricsState, adviceState)),
+      ],
+    );
+  }
+
+  Widget _buildMetricsContent(
+      ExamMetricsState metricsState, ExamAdviceState adviceState) {
     if (metricsState.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -131,6 +158,9 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
     for (final metric in metricsState.metrics) {
       groupedMetrics.putIfAbsent(metric.category, () => []).add(metric);
     }
+    // 异常指标（历年趋势区块）
+    final abnormalMetrics =
+        metricsState.metrics.where((m) => m.isAbnormal).toList();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -140,6 +170,14 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
           // AI 建议卡片
           if (adviceState.advice != null) _buildAdviceCard(adviceState.advice!),
           if (adviceState.advice != null) const SizedBox(height: 16),
+
+          // 历年趋势：异常指标
+          _buildTrendSection(abnormalMetrics),
+          const SizedBox(height: 8),
+
+          // 操作按钮排
+          _buildActionButtons(),
+          const SizedBox(height: 16),
 
           // 指标分组
           ...groupedMetrics.entries.map((entry) {
@@ -163,6 +201,398 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
         ],
       ),
     );
+  }
+
+  /// 顶部"报告信息"卡：体检日期 / 医院 / 原始照片 / 复查提醒
+  Widget _buildReportInfoCard(ExamReportDetail detail) {
+    final photoUrl = detail.photoUrl;
+    final followupDate = detail.followupDate;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.description_outlined,
+                  color: AppColors.primary, size: 18),
+              SizedBox(width: 8),
+              Text(
+                '报告信息',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _buildInfoRow(
+              Icons.calendar_today, '体检日期', _formatDate(detail.examDate)),
+          if (detail.hospitalName != null && detail.hospitalName!.isNotEmpty)
+            _buildInfoRow(Icons.local_hospital, '医院', detail.hospitalName!),
+          if (detail.ownerName != null && detail.ownerName!.isNotEmpty)
+            _buildInfoRow(Icons.person, '归属', detail.ownerName!),
+          if (photoUrl != null && photoUrl.isNotEmpty)
+            GestureDetector(
+              onTap: () => _showPhotoPreview(photoUrl),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.photo_camera,
+                        color: AppColors.primary, size: 16),
+                    SizedBox(width: 8),
+                    Text(
+                      '查看原始报告照片',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w500,
+                        decoration: TextDecoration.underline,
+                        decorationColor: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (followupDate != null && followupDate.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.event_note, color: Colors.orange, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '复查提醒：$followupDate',
+                      style:
+                          const TextStyle(fontSize: 13, color: Colors.orange),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: Colors.grey[600]),
+          const SizedBox(width: 8),
+          Text(
+            '$label：',
+            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 历年趋势区块：列出异常指标，点击进入趋势页
+  Widget _buildTrendSection(List<ExamMetric> abnormalMetrics) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '历年趋势',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '点击异常指标查看历年变化',
+          style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+        ),
+        const SizedBox(height: 8),
+        if (abnormalMetrics.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.green.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green, size: 16),
+                SizedBox(width: 8),
+                Text('本次体检无异常指标',
+                    style: TextStyle(fontSize: 13, color: Colors.green)),
+              ],
+            ),
+          )
+        else
+          ...abnormalMetrics.map((m) => Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.show_chart, color: Colors.orange),
+                  title:
+                      Text(m.metricName, style: const TextStyle(fontSize: 14)),
+                  subtitle: Text(
+                    '${m.metricValue?.toStringAsFixed(2) ?? '--'} ${m.unit ?? ''}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                  onTap: () => context.push(
+                    '/exam/trend/$_effectiveUserId/${Uri.encodeComponent(m.metricName)}',
+                  ),
+                ),
+              )),
+      ],
+    );
+  }
+
+  /// 操作按钮排：设置复查提醒 / 应用饮食建议 / 归属修改
+  Widget _buildActionButtons() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _showFollowupOptions,
+                icon: const Icon(Icons.event_available, size: 18),
+                label: const Text('设置复查提醒'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _openDietRecommendation,
+                icon: const Icon(Icons.restaurant_menu, size: 18),
+                label: const Text('应用饮食建议'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        GestureDetector(
+          onTap: _showReassignPicker,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+              '归属有误？修改为谁拍的',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[500],
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 复查提醒设置：选日期 / 取消提醒
+  void _showFollowupOptions() {
+    final hasFollowup = _detail?.followupDate != null;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading:
+                  const Icon(Icons.event_available, color: AppColors.primary),
+              title: const Text('设置复查提醒日期'),
+              subtitle: const Text('选择复查日期，到点提醒'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final now = DateTime.now();
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: now,
+                  firstDate: now,
+                  lastDate: now.add(const Duration(days: 365 * 3)),
+                );
+                if (picked != null && mounted) {
+                  final dateStr =
+                      '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+                  await _saveFollowup(dateStr);
+                }
+              },
+            ),
+            if (hasFollowup)
+              ListTile(
+                leading: const Icon(Icons.event_busy, color: Colors.red),
+                title: const Text('取消复查提醒'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _saveFollowup(null);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveFollowup(String? date) async {
+    final res = await ref
+        .read(examApiServiceProvider)
+        .setFollowupDate(widget.reportId, date);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res.success
+              ? (date == null ? '已取消复查提醒' : '复查提醒已设置')
+              : '设置失败：${res.message}'),
+          backgroundColor: res.success ? Colors.green : Colors.red,
+        ),
+      );
+      if (res.success) _loadDetail();
+    }
+  }
+
+  /// 应用饮食建议：跳转饮食推荐页
+  void _openDietRecommendation() {
+    final ownerName = _detail?.ownerName ?? '家人';
+    context.push(
+      '/family/diet-recommendation/$_effectiveUserId',
+      extra: {'name': ownerName},
+    );
+  }
+
+  /// 归属修改：自己 + 家人选择
+  Future<void> _showReassignPicker() async {
+    final notifier = ref.read(friendListProvider.notifier);
+    final state = ref.read(friendListProvider);
+    if (state.family.isEmpty && !state.isLoading) {
+      await notifier.loadFriendList();
+    }
+    if (!mounted) return;
+    final family = ref.read(friendListProvider).family;
+    final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                '这份报告是谁拍的？',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.person, color: AppColors.primary),
+              title: const Text('自己'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _doReassign(currentUserId);
+              },
+            ),
+            for (final f in family)
+              ListTile(
+                leading:
+                    const Icon(Icons.family_restroom, color: AppColors.primary),
+                title: Text(f.note ?? f.realName ?? f.username),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _doReassign(f.userId);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _doReassign(int targetUserId) async {
+    final res = await ref
+        .read(examApiServiceProvider)
+        .reassignExamReport(widget.reportId, targetUserId);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res.success ? '归属已修改' : '修改失败：${res.message}'),
+          backgroundColor: res.success ? Colors.green : Colors.red,
+        ),
+      );
+      if (res.success) _loadDetail();
+    }
+  }
+
+  /// 查看原始报告照片（大图预览）
+  void _showPhotoPreview(String url) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(
+          children: [
+            InteractiveViewer(
+              maxScale: 4,
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) => const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.broken_image, color: Colors.white54, size: 48),
+                      SizedBox(height: 12),
+                      Text('照片加载失败', style: TextStyle(color: Colors.white70)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 
   Widget _buildAdviceCard(ExamAdvice advice) {

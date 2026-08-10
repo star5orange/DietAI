@@ -84,11 +84,52 @@ class _SocialPageState extends ConsumerState<SocialPage>
   Widget build(BuildContext context) {
     final pendingState = ref.watch(pendingRequestsProvider);
     final pendingCount = pendingState.requests.length;
+    final chatState = ref.watch(chatListProvider);
+    // 未读消息总数
+    final totalUnread = chatState.rooms.fold<int>(
+      0,
+      (sum, room) => sum + room.unreadCount,
+    );
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('家人与好友'),
         actions: [
+          // 消息按钮（带未读总数徽标）
+          Stack(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chat_bubble_outline),
+                onPressed: () => context.push('/social/chat-list'),
+                tooltip: '消息',
+              ),
+              if (totalUnread > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      totalUnread > 99 ? '99+' : '$totalUnread',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
           // 排行榜按钮
           IconButton(
             icon: const Icon(Icons.emoji_events_outlined),

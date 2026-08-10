@@ -51,6 +51,7 @@ import '../../features/social/presentation/pages/social_page.dart';
 import '../../features/social/presentation/pages/search_user_page.dart';
 import '../../features/social/presentation/pages/friend_requests_page.dart';
 import '../../features/social/presentation/pages/chat_page.dart';
+import '../../features/social/presentation/pages/chat_list_page.dart';
 import '../../features/social/presentation/pages/family_health_page.dart';
 import '../../features/social/presentation/pages/leaderboard_page.dart';
 import '../../features/social/presentation/pages/permission_page.dart';
@@ -452,6 +453,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             },
           ),
 
+          // M4: 社交 — 会话列表页
+          GoRoute(
+            path: '/social/chat-list',
+            name: 'chat_list',
+            builder: (context, state) => const ChatListPage(),
+          ),
+
           // M4: 社交 — 家人健康详情
           GoRoute(
             path: '/social/family-health/:userId',
@@ -569,7 +577,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/exam/upload',
             name: 'exam_upload',
-            builder: (context, state) => const ExamUploadPage(),
+            builder: (context, state) {
+              final extra = state.extra as Map<String, dynamic>?;
+              return ExamUploadPage(
+                ownerUserId: extra?['ownerUserId'] as int?,
+                ownerName: extra?['ownerName'] as String?,
+              );
+            },
           ),
         ],
       ),
