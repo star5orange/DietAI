@@ -145,7 +145,7 @@ class MessageHistoryNotifier extends StateNotifier<MessageHistoryState> {
   }
 
   Future<bool> sendMessage(String content,
-      {String messageType = 'text'}) async {
+      {String messageType = 'text', int? currentUserId}) async {
     try {
       final response = await _apiService.sendMessage(
         receiverId: state.targetUserId,
@@ -161,7 +161,7 @@ class MessageHistoryNotifier extends StateNotifier<MessageHistoryState> {
         // 这样用户至少能看到自己发送的内容
         final tempMsg = Message(
           id: DateTime.now().millisecondsSinceEpoch,
-          senderId: 0, // 当前用户ID由UI层判断
+          senderId: currentUserId ?? 0,
           content: content,
           messageType: messageType,
           createdAt: DateTime.now(),
@@ -175,7 +175,7 @@ class MessageHistoryNotifier extends StateNotifier<MessageHistoryState> {
       // 即使请求失败，也添加临时消息
       final tempMsg = Message(
         id: DateTime.now().millisecondsSinceEpoch,
-        senderId: 0,
+        senderId: currentUserId ?? 0,
         content: content,
         messageType: messageType,
         createdAt: DateTime.now(),
@@ -210,7 +210,7 @@ class MessageHistoryNotifier extends StateNotifier<MessageHistoryState> {
     state = state.copyWith(messages: merged);
   }
 
-  Future<bool> sendPoke(String pokeType) async {
+  Future<bool> sendPoke(String pokeType, {int? currentUserId}) async {
     try {
       final response =
           await _apiService.sendPoke(state.targetUserId, pokeType: pokeType);
@@ -225,7 +225,7 @@ class MessageHistoryNotifier extends StateNotifier<MessageHistoryState> {
 
         final pokeMsg = Message(
           id: DateTime.now().millisecondsSinceEpoch,
-          senderId: 0, // 当前用户
+          senderId: currentUserId ?? 0,
           content: pokeContent,
           messageType: 'poke',
           extraData: {'poke_type': pokeType},

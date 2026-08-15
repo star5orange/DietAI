@@ -32,13 +32,28 @@ class ExamResultPage extends ConsumerStatefulWidget {
 }
 
 class _ExamResultPageState extends ConsumerState<ExamResultPage> {
+  ExamReportDetail? _detail;
+
   @override
   void initState() {
     super.initState();
     Future.microtask(() {
       ref.read(examMetricsProvider.notifier).loadMetrics(widget.reportId);
       ref.read(examAdviceProvider.notifier).loadAdvice(widget.reportId);
+      _loadDetail();
     });
+  }
+
+  /// 加载报告详情（医院/日期/原始照片/复查提醒日期）
+  Future<void> _loadDetail() async {
+    final userId = widget.userId;
+    if (userId == null) return;
+    final res = await ref
+        .read(examApiServiceProvider)
+        .getExamReportDetail(userId, widget.reportId);
+    if (mounted && res.success && res.data != null) {
+      setState(() => _detail = res.data);
+    }
   }
 
   @override
@@ -102,6 +117,10 @@ class _ExamResultPageState extends ConsumerState<ExamResultPage> {
         // 识别完成横幅
         _buildSuccessBanner(
             metricsState.metrics.length, abnormalMetrics.length),
+        const SizedBox(height: 12),
+
+        // 报告信息卡片：体检日期/医院/查看原始照片/复查提醒
+        if (_detail != null) _buildReportInfoCard(),
         const SizedBox(height: 20),
 
         // 历史对比趋势
@@ -277,6 +296,202 @@ class _ExamResultPageState extends ConsumerState<ExamResultPage> {
     }
   }
 
+  /// 报告信息卡片：体检日期/医院 + 查看原始照片 + 复查提醒设置
+  Widget _buildReportInfoCard() {
+    final detail = _detail!;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.assignment_outlined,
+                    color: AppColors.primary, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    detail.hospitalName?.isNotEmpty == true
+                        ? detail.hospitalName!
+                        : '体检报告',
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.event, size: 15, color: Colors.grey),
+                const SizedBox(width: 6),
+                Text(
+                  '体检日期: ${_formatDate(detail.examDate)}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            if (detail.followupDate != null)
+              Row(
+                children: [
+                  const Icon(Icons.notifications_active,
+                      size: 15, color: Colors.orange),
+                  const SizedBox(width: 6),
+                  Text(
+                    '复查提醒: ${detail.followupDate}',
+                    style: TextStyle(fontSize: 12, color: Colors.orange[700]),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                if (detail.photoUrl != null) ...[
+                  OutlinedButton.icon(
+                    onPressed: () => _showPhotoPreview(detail.photoUrl!),
+                    icon: const Icon(Icons.photo, size: 16),
+                    label: const Text('查看原始照片'),
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                OutlinedButton.icon(
+                  onPressed: _showFollowupOptions,
+                  icon: const Icon(Icons.event_available, size: 16),
+                  label:
+                      Text(detail.followupDate != null ? '修改复查提醒' : '设置复查提醒'),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 复查提醒设置：选日期 / 取消提醒
+  void _showFollowupOptions() {
+    final hasFollowup = _detail?.followupDate != null;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading:
+                  const Icon(Icons.event_available, color: AppColors.primary),
+              title: const Text('设置复查提醒日期'),
+              subtitle: const Text('选择复查日期，到点提醒'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final now = DateTime.now();
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: now,
+                  firstDate: now,
+                  lastDate: now.add(const Duration(days: 365 * 3)),
+                );
+                if (picked != null && mounted) {
+                  final dateStr =
+                      '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+                  await _saveFollowup(dateStr);
+                }
+              },
+            ),
+            if (hasFollowup)
+              ListTile(
+                leading: const Icon(Icons.event_busy, color: Colors.red),
+                title: const Text('取消复查提醒'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _saveFollowup(null);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveFollowup(String? date) async {
+    final res = await ref
+        .read(examApiServiceProvider)
+        .setFollowupDate(widget.reportId, date);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res.success
+              ? (date == null ? '已取消复查提醒' : '复查提醒已设置')
+              : '设置失败：${res.message}'),
+          backgroundColor: res.success ? Colors.green : Colors.red,
+        ),
+      );
+      if (res.success) _loadDetail();
+    }
+  }
+
+  /// 查看原始报告照片（大图预览）
+  void _showPhotoPreview(String url) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(
+          children: [
+            InteractiveViewer(
+              maxScale: 4,
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) => const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.broken_image, color: Colors.white54, size: 48),
+                      SizedBox(height: 12),
+                      Text('照片加载失败', style: TextStyle(color: Colors.white70)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
   /// 识别完成横幅
   Widget _buildSuccessBanner(int totalCount, int abnormalCount) {
     return Container(
@@ -427,6 +642,21 @@ class _ExamResultPageState extends ConsumerState<ExamResultPage> {
     );
   }
 
+  /// 指标参考范围文本（min/max/单位）
+  String _referenceRangeText(ExamMetric metric) {
+    final unit = metric.unit ?? '';
+    if (metric.referenceMin != null && metric.referenceMax != null) {
+      return '参考: ${metric.referenceMin!} - ${metric.referenceMax!}$unit';
+    }
+    if (metric.referenceMin != null) {
+      return '参考: ≥ ${metric.referenceMin!}$unit';
+    }
+    if (metric.referenceMax != null) {
+      return '参考: ≤ ${metric.referenceMax!}$unit';
+    }
+    return '';
+  }
+
   /// 指标卡片（可点击编辑）
   Widget _buildMetricCard(ExamMetric metric) {
     final isAbnormal = metric.isAbnormal;
@@ -480,6 +710,13 @@ class _ExamResultPageState extends ConsumerState<ExamResultPage> {
                     color: statusColor,
                   ),
                 ),
+                if (_referenceRangeText(metric).isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    _referenceRangeText(metric),
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
               ],
             ),
           ),

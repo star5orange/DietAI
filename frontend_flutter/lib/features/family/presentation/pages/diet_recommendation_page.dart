@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/themes/app_colors.dart';
+import '../../../social/presentation/providers/family_provider.dart';
 import '../providers/diet_recommendation_provider.dart';
 
 /// 饮食推荐页面
@@ -28,12 +29,15 @@ class _DietRecommendationPageState
       ref
           .read(dietRecommendationProvider.notifier)
           .loadRecommendations(widget.userId);
+      // 家人饮食偏好共享：加载所有家人偏好用于配餐参考
+      ref.read(familyDietPreferencesProvider.notifier).loadDietPreferences();
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(dietRecommendationProvider);
+    final prefState = ref.watch(familyDietPreferencesProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -41,11 +45,12 @@ class _DietRecommendationPageState
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
       ),
-      body: _buildBody(state),
+      body: _buildBody(state, prefState),
     );
   }
 
-  Widget _buildBody(DietRecommendationState state) {
+  Widget _buildBody(
+      DietRecommendationState state, FamilyDietPreferencesState prefState) {
     if (state.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -76,7 +81,7 @@ class _DietRecommendationPageState
       );
     }
 
-    if (state.recommendations.isEmpty) {
+    if (state.recommendations.isEmpty && prefState.members.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -99,17 +104,159 @@ class _DietRecommendationPageState
 
     return RefreshIndicator(
       onRefresh: () async {
-        await ref
-            .read(dietRecommendationProvider.notifier)
-            .loadRecommendations(widget.userId);
+        await Future.wait([
+          ref
+              .read(dietRecommendationProvider.notifier)
+              .loadRecommendations(widget.userId),
+          ref
+              .read(familyDietPreferencesProvider.notifier)
+              .loadDietPreferences(),
+        ]);
       },
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
-        itemCount: state.recommendations.length,
+        itemCount: state.recommendations.length + 1,
         itemBuilder: (context, index) {
-          final recommendation = state.recommendations[index];
+          if (index == 0) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 家人饮食偏好共享区块（配餐参考）
+                if (prefState.members.isNotEmpty)
+                  _buildFamilyPrefsSection(prefState),
+                if (prefState.members.isNotEmpty) const SizedBox(height: 16),
+              ],
+            );
+          }
+          final recommendation = state.recommendations[index - 1];
           return _buildRecommendationCard(recommendation);
         },
+      ),
+    );
+  }
+
+  /// 家人饮食偏好共享区块：展示每位家人偏好的饮食与忌口
+  Widget _buildFamilyPrefsSection(FamilyDietPreferencesState prefState) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.group, color: AppColors.primary, size: 20),
+            const SizedBox(width: 8),
+            const Text(
+              '家人饮食偏好',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '配餐时参考全家人偏好与忌口',
+          style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+        ),
+        const SizedBox(height: 12),
+        for (final member in prefState.members) ...[
+          _buildMemberPrefCard(member),
+          const SizedBox(height: 12),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildMemberPrefCard(FamilyDietPreference member) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.person,
+                    size: 18, color: Colors.grey[600]),
+                const SizedBox(width: 6),
+                Text(
+                  member.displayName,
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                if (member.constitutionType?.isNotEmpty == true) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      member.constitutionType!,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (member.dietaryPreferences.isNotEmpty) ...[
+              Text('偏好饮食',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[700])),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: member.dietaryPreferences.map((pref) {
+                  return Chip(
+                    avatar: const Icon(Icons.check_circle,
+                        size: 16, color: Colors.green),
+                    label: Text(pref),
+                    backgroundColor: Colors.green.withValues(alpha: 0.1),
+                    visualDensity: VisualDensity.compact,
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 8),
+            ],
+            if (member.foodDislikes.isNotEmpty) ...[
+              Text('忌口食物',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[700])),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: member.foodDislikes.map((food) {
+                  return Chip(
+                    avatar: const Icon(Icons.cancel,
+                        size: 16, color: Colors.red),
+                    label: Text(food),
+                    backgroundColor: Colors.red.withValues(alpha: 0.1),
+                    visualDensity: VisualDensity.compact,
+                  );
+                }).toList(),
+              ),
+            ],
+            if (member.dietaryPreferences.isEmpty &&
+                member.foodDislikes.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  '未设置饮食偏好',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

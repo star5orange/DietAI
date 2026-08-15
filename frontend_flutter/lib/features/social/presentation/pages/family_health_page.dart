@@ -87,11 +87,14 @@ class _FamilyHealthPageState extends ConsumerState<FamilyHealthPage> {
     if (state.dailyData.isEmpty &&
         state.weightData.isEmpty &&
         state.exerciseData.isEmpty &&
-        state.goal == null) {
+        state.goal == null &&
+        state.hiddenFields.isEmpty) {
       return const Center(
         child: Text('暂无健康数据', style: TextStyle(color: Colors.grey)),
       );
     }
+
+    final hidden = state.hiddenFields;
 
     return RefreshIndicator(
       onRefresh: () => ref
@@ -107,56 +110,72 @@ class _FamilyHealthPageState extends ConsumerState<FamilyHealthPage> {
             color: AppColors.primary,
             child: state.goal != null
                 ? _buildGoalCard(state.goal!)
-                : _buildEmptyHint('暂未设置健康目标'),
+                : (hidden.contains('health_goal')
+                    ? _buildHiddenHint('健康目标已被对方隐藏')
+                    : _buildEmptyHint('暂未设置健康目标')),
           ),
           const SizedBox(height: 16),
-          // 每日热量摄入/消耗卡片
-          if (state.dailyData.isNotEmpty) ...[
+          // 每日热量摄入/消耗卡片（被隐藏时显示占位而非整卡消失）
+          if (state.dailyData.isNotEmpty || hidden.contains('calories')) ...[
             _buildCard(
               title: '每日热量摄入/消耗',
               icon: Icons.local_fire_department,
               color: Colors.orange,
-              child: _buildCalorieChart(state.dailyData),
+              child: hidden.contains('calories')
+                  ? _buildHiddenHint('热量数据已被对方隐藏')
+                  : _buildCalorieChart(state.dailyData),
             ),
             const SizedBox(height: 16),
           ],
           // 宠物状态卡片
-          if (state.pet != null) ...[
+          if (state.pet != null ||
+              hidden.contains('virtual_pet') ||
+              hidden.contains('real_pet')) ...[
             _buildCard(
               title: '宠物状态',
               icon: Icons.pets,
               color: Colors.purple,
-              child: _buildPetCard(state.pet!),
+              child: (hidden.contains('virtual_pet') ||
+                      hidden.contains('real_pet') ||
+                      state.pet == null)
+                  ? _buildHiddenHint('宠物状态已被对方隐藏')
+                  : _buildPetCard(state.pet!),
             ),
             const SizedBox(height: 16),
           ],
           // 7日饮水趋势卡片
-          if (state.dailyData.isNotEmpty) ...[
+          if (state.dailyData.isNotEmpty || hidden.contains('water')) ...[
             _buildCard(
               title: '7日饮水趋势',
               icon: Icons.water_drop,
               color: Colors.blue,
-              child: _buildWaterChart(state.dailyData),
+              child: hidden.contains('water')
+                  ? _buildHiddenHint('饮水数据已被对方隐藏')
+                  : _buildWaterChart(state.dailyData),
             ),
             const SizedBox(height: 16),
           ],
           // 体重变化卡片
-          if (state.weightData.isNotEmpty) ...[
+          if (state.weightData.isNotEmpty || hidden.contains('weight')) ...[
             _buildCard(
               title: '体重变化',
               icon: Icons.monitor_weight_outlined,
               color: Colors.teal,
-              child: _buildWeightList(state.weightData),
+              child: hidden.contains('weight')
+                  ? _buildHiddenHint('体重数据已被对方隐藏')
+                  : _buildWeightList(state.weightData),
             ),
             const SizedBox(height: 16),
           ],
           // 运动记录卡片
-          if (state.exerciseData.isNotEmpty) ...[
+          if (state.exerciseData.isNotEmpty || hidden.contains('exercise')) ...[
             _buildCard(
               title: '运动记录',
               icon: Icons.directions_run,
               color: Colors.deepOrange,
-              child: _buildExerciseList(state.exerciseData),
+              child: hidden.contains('exercise')
+                  ? _buildHiddenHint('运动记录已被对方隐藏')
+                  : _buildExerciseList(state.exerciseData),
             ),
             const SizedBox(height: 16),
           ],
@@ -319,37 +338,53 @@ class _FamilyHealthPageState extends ConsumerState<FamilyHealthPage> {
     );
   }
 
-  /// 体重变化列表
+  /// 体重变化 7 日折线图
   Widget _buildWeightList(List<WeightHealthData> data) {
-    return Column(
-      children: data.reversed.map((w) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Row(
-            children: [
-              Text(
-                _formatDate(w.date),
-                style: const TextStyle(fontSize: 13, color: Colors.grey),
+    if (data.isEmpty) return const SizedBox.shrink();
+
+    final sorted = [...data]..sort((a, b) => a.date.compareTo(b.date));
+    final weights = sorted.map((w) => w.weight).toList();
+    final minW = weights.reduce((a, b) => a < b ? a : b);
+    final maxW = weights.reduce((a, b) => a > b ? a : b);
+    final range = (maxW - minW).abs() < 0.01 ? 1.0 : (maxW - minW);
+
+    return SizedBox(
+      height: 150,
+      child: Column(
+        children: [
+          Expanded(
+            child: CustomPaint(
+              painter: _WeightChartPainter(
+                weights: weights,
+                minWeight: minW,
+                range: range,
               ),
-              const Spacer(),
-              Text(
-                '${w.weight.toStringAsFixed(1)}kg',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (w.bodyFatPercentage != null) ...[
-                const SizedBox(width: 12),
-                Text(
-                  '体脂 ${w.bodyFatPercentage!.toStringAsFixed(1)}%',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
-            ],
+              child: const SizedBox.expand(),
+            ),
           ),
-        );
-      }).toList(),
+          const SizedBox(height: 4),
+          Row(
+            children: sorted.map((w) {
+              return Expanded(
+                child: Column(
+                  children: [
+                    Text(
+                      w.weight.toStringAsFixed(1),
+                      style: const TextStyle(
+                          fontSize: 9, color: Colors.grey, height: 1.2),
+                    ),
+                    Text(
+                      _formatDate(w.date),
+                      style: const TextStyle(
+                          fontSize: 10, color: Colors.grey, height: 1.2),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -504,6 +539,20 @@ class _FamilyHealthPageState extends ConsumerState<FamilyHealthPage> {
       child: Row(
         children: [
           const Icon(Icons.info_outline, size: 16, color: Colors.grey),
+          const SizedBox(width: 8),
+          Text(text, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+
+  /// 权限隐藏占位提示
+  Widget _buildHiddenHint(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.lock_outline, size: 16, color: Colors.grey),
           const SizedBox(width: 8),
           Text(text, style: const TextStyle(fontSize: 13, color: Colors.grey)),
         ],
@@ -674,5 +723,62 @@ class _LegendDot extends StatelessWidget {
         Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
       ],
     );
+  }
+}
+
+/// 体重 7 日趋势折线图绘制器
+class _WeightChartPainter extends CustomPainter {
+  final List<double> weights;
+  final double minWeight;
+  final double range;
+
+  _WeightChartPainter({
+    required this.weights,
+    required this.minWeight,
+    required this.range,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (weights.isEmpty || size.height <= 0) return;
+
+    const topPad = 10.0;
+    final chartArea = size.height - topPad;
+    final n = weights.length;
+
+    Offset pointAt(int i) {
+      final x = n == 1 ? size.width / 2 : i / (n - 1) * size.width;
+      final y = topPad + chartArea * (1 - (weights[i] - minWeight) / range);
+      return Offset(x, y.clamp(topPad, size.height));
+    }
+
+    final linePaint = Paint()
+      ..color = const Color(0xFF2BAF74)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final path = Path();
+    for (int i = 0; i < n; i++) {
+      final p = pointAt(i);
+      if (i == 0) {
+        path.moveTo(p.dx, p.dy);
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+    }
+    canvas.drawPath(path, linePaint);
+
+    final pointPaint = Paint()..color = const Color(0xFF2BAF74);
+    for (int i = 0; i < n; i++) {
+      canvas.drawCircle(pointAt(i), 3.5, pointPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WeightChartPainter oldDelegate) {
+    return oldDelegate.weights != weights ||
+        oldDelegate.minWeight != minWeight ||
+        oldDelegate.range != range;
   }
 }

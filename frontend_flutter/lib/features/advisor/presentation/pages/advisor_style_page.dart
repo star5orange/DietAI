@@ -56,12 +56,9 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
             _advisorStyles = List.from(_fallbackAdvisorStyles);
             _focusGoals = List.from(_fallbackFocusGoals);
             _focusNutrients = List.from(_fallbackFocusNutrients);
-            if (settings.focusGoal != null) {
-              _selectedFocusGoals = {settings.focusGoal!};
-            }
-            if (settings.focusNutrient != null) {
-              _selectedFocusNutrients = {settings.focusNutrient!};
-            }
+            _selectedFocusGoals = _goalsFromCode(settings.focusGoal);
+            _selectedFocusNutrients =
+                _nutrientsFromCode(settings.focusNutrient);
           }
           _selectedResponseStyle = settings.responseStyle ?? 'friendly';
           _isInitialized = true;
@@ -264,6 +261,48 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
     {'id': 'detailed', 'name': '详尽细致'},
   ];
 
+  // 英文 code -> 中文名（后端存的是英文 code，需反映射用于高亮与摘要展示）
+  static const _goalCodeToName = {
+    'fat_loss': '减脂塑形',
+    'muscle_gain': '增肌增重',
+    'sugar_control': '控糖稳糖',
+    'wellness': '养生调理',
+    'balanced': '均衡健康',
+  };
+  static const _nutrientCodeToName = {
+    'calories': '热量',
+    'protein': '蛋白质',
+    'carb': '碳水化合物',
+    'fat': '脂肪',
+    'micronutrient': '微量元素',
+  };
+  static const _responseStyleCodeToName = {
+    'professional': '专业严谨',
+    'friendly': '亲切友好',
+    'motivating': '激励鼓舞',
+    'detailed': '详尽细致',
+  };
+
+  /// 关注目标 code 串（逗号分隔）-> 中文名集合
+  Set<String> _goalsFromCode(String? code) {
+    if (code == null || code.isEmpty) return {};
+    return code
+        .split(',')
+        .map((c) => _goalCodeToName[c.trim()] ?? c.trim())
+        .where((c) => c.isNotEmpty)
+        .toSet();
+  }
+
+  /// 关注营养素 code 串（逗号分隔）-> 中文名集合
+  Set<String> _nutrientsFromCode(String? code) {
+    if (code == null || code.isEmpty) return {};
+    return code
+        .split(',')
+        .map((c) => _nutrientCodeToName[c.trim()] ?? c.trim())
+        .where((c) => c.isNotEmpty)
+        .toSet();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isPet = widget.sessionType == 6;
@@ -304,6 +343,7 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _buildCurrentSummary(),
             Text('选择顾问风格', style: AppTextStyles.h6),
             const SizedBox(height: 12),
             AdvisorStyleSelector(
@@ -361,6 +401,87 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
           ],
         ),
       ),
+    );
+  }
+
+  /// 当前顾问配置摘要卡片（顾问风格 / 关注目标 / 关注营养素 / 回复风格）
+  Widget _buildCurrentSummary() {
+    final isPet = widget.sessionType == 6;
+
+    String? styleName;
+    for (final s in _advisorStyles) {
+      if (s['id'] == _selectedStyle) {
+        styleName = s['name'] as String?;
+        break;
+      }
+    }
+    final responseName = _responseStyleCodeToName[_selectedResponseStyle] ??
+        _selectedResponseStyle;
+
+    final goalsText =
+        _selectedFocusGoals.isEmpty ? '未设置' : _selectedFocusGoals.join('、');
+    final nutrientsText = isPet
+        ? null
+        : (_selectedFocusNutrients.isEmpty
+            ? '未设置'
+            : _selectedFocusNutrients.join('、'));
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.tune, size: 16, color: AppColors.primary),
+              const SizedBox(width: 6),
+              Text('当前顾问配置', style: AppTextStyles.h6),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _summaryRow('顾问风格', styleName ?? _selectedStyle),
+          const SizedBox(height: 6),
+          _summaryRow('关注目标', goalsText),
+          if (nutrientsText != null) ...[
+            const SizedBox(height: 6),
+            _summaryRow('关注营养素', nutrientsText),
+          ],
+          const SizedBox(height: 6),
+          _summaryRow('回复风格', responseName),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryRow(String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 80,
+          child: Text(
+            label,
+            style: AppTextStyles.bodySmall
+                .copyWith(color: AppColors.textSecondary),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style:
+                AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
     );
   }
 

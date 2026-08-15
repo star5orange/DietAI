@@ -28,7 +28,7 @@ class ExamUploadPage extends ConsumerStatefulWidget {
 class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
   final _imagePicker = ImagePicker();
   final _ttsService = TtsService();
-  File? _selectedImage;
+  final List<File> _selectedImages = []; // 多页报告：一次可拍多张
   int? _selectedUserId; // null = 自己
   bool _isUploading = false;
   bool _autoCameraOpened = false;
@@ -43,7 +43,8 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
       // 普通进入时记住上次的选择（需求：上次选过就记住，顶部小字提示）
       if (widget.ownerUserId == null) {
         final prefs = await SharedPreferences.getInstance();
-        final lastId = prefs.getInt('last_exam_owner_user_id');
+        final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
+        final lastId = prefs.getInt('last_exam_owner_user_id_$currentUserId');
         if (lastId != null && mounted) {
           setState(() => _selectedUserId = lastId);
         }
@@ -64,7 +65,7 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
     super.dispose();
   }
 
-  /// 相机直拍（一步式）
+  /// 相机直拍（一步式，支持多页追加）
   Future<void> _takePhoto() async {
     try {
       final image = await _imagePicker.pickImage(
@@ -73,10 +74,13 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
         preferredCameraDevice: CameraDevice.rear,
       );
       if (image != null) {
-        setState(() => _selectedImage = File(image.path));
-        _ttsService.speak('照片已拍摄，正在分析体检报告，请稍等。').catchError((_) {});
-        // 一步式：拍照后直接自动上传分析，不需要点确认
-        _uploadReport();
+        setState(() => _selectedImages.add(File(image.path)));
+        // 语音引导：告知已拍页数与下一步操作
+        _ttsService
+            .speak(_selectedImages.length == 1
+                ? '照片已拍摄。如果报告只有一页，请点击下方的开始分析；如果还有下一页，请继续拍摄。'
+                : '第 ${_selectedImages.length} 页已拍摄。继续拍摄下一页，或点击开始分析。')
+            .catchError((_) {});
       }
     } catch (e) {
       if (mounted) {
@@ -87,7 +91,7 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
     }
   }
 
-  /// 从相册选择
+  /// 从相册选择（追加到多页列表）
   Future<void> _pickFromGallery() async {
     try {
       final image = await _imagePicker.pickImage(
@@ -95,9 +99,7 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
         imageQuality: 85,
       );
       if (image != null) {
-        setState(() => _selectedImage = File(image.path));
-        // 一步式：选择后直接自动上传分析
-        _uploadReport();
+        setState(() => _selectedImages.add(File(image.path)));
       }
     } catch (e) {
       if (mounted) {
@@ -108,35 +110,50 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
     }
   }
 
-  /// 上传并触发 AI 识别
+  /// 上传并触发 AI 识别（支持多张照片）
   Future<void> _uploadReport() async {
-    if (_selectedImage == null) return;
+    if (_selectedImages.isEmpty) return;
 
     setState(() => _isUploading = true);
     try {
       final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
       final targetUserId = _selectedUserId ?? currentUserId;
-      final report = await ref
+      final uploadResult = await ref
           .read(examReportListProvider.notifier)
-          .uploadReport(photo: _selectedImage!, userId: targetUserId);
+          .uploadReport(photos: List.of(_selectedImages), userId: targetUserId);
 
       if (!mounted) return;
       setState(() => _isUploading = false);
 
-      if (report != null) {
-        // 记住"最近为谁拍"，首页大按钮展示 + 下次进入默认选中
+      if (uploadResult != null) {
+        final report = uploadResult.report;
+        // 记住"最近为谁拍"，首页大按钮展示 + 下次进入默认选中（按登录账号隔离）
         final ownerName = _resolveOwnerName(targetUserId);
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('last_exam_owner_name', ownerName);
-        await prefs.setInt('last_exam_owner_user_id', targetUserId);
+        final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
+        await prefs.setString('last_exam_owner_name_$currentUserId', ownerName);
+        await prefs.setInt(
+            'last_exam_owner_user_id_$currentUserId', targetUserId);
         // 记住本次体检月份（首页展示"最近：$owner · YYYY-MM"）
         final now = DateTime.now();
         await prefs.setString(
-          'last_exam_owner_date',
+          'last_exam_owner_date_$currentUserId',
           '${now.year}-${now.month.toString().padLeft(2, '0')}',
         );
 
-        _ttsService.speak('体检报告上传成功，正在为您展示识别结果。').catchError((_) {});
+        // 模糊页提示：语音引导重拍（仍保留识别结果）
+        if (uploadResult.blurPages.isNotEmpty) {
+          final pagesText = uploadResult.blurPages.join('、');
+          final blurMessage = '第$pagesText页照片不太清楚，识别结果可能不准，建议重新拍摄。';
+          _ttsService.speak(blurMessage).catchError((_) {});
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(blurMessage)),
+            );
+          }
+        } else {
+          _ttsService.speak('体检报告上传成功，正在为您展示识别结果。').catchError((_) {});
+        }
         if (!mounted) return;
         // 跳转识别结果页：展示提取的指标 + AI 饮食/运动建议
         Navigator.of(context).pushReplacement(
@@ -184,7 +201,7 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
 
     return PopScope(
       // 未拍照时拦截返回，询问是否退出；已拍照/分析中不拦截
-      canPop: _selectedImage != null || _isUploading,
+      canPop: _selectedImages.isNotEmpty || _isUploading,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         final shouldExit = await _confirmExit();
@@ -219,8 +236,8 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
                     _buildOwnerBanner(),
                     const SizedBox(height: 16),
 
-                    // 一步式拍照区
-                    if (_selectedImage == null)
+                    // 一步式拍照区（支持多页：已拍 0 张显示拍摄入口，否则显示多页预览）
+                    if (_selectedImages.isEmpty)
                       _buildCameraAction()
                     else
                       _buildPreviewSection(),
@@ -373,7 +390,7 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: Image.file(
-                _selectedImage!,
+                _selectedImages.first,
                 height: 220,
                 width: double.infinity,
                 fit: BoxFit.cover,
@@ -394,7 +411,7 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              '正在为 $ownerName 上传，分析完成后自动跳转结果页',
+              '正在为 $ownerName 上传（共 ${_selectedImages.length} 张），分析完成后自动跳转结果页',
               style: TextStyle(fontSize: 12, color: Colors.grey[500]),
             ),
           ],
@@ -489,39 +506,124 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
     );
   }
 
-  /// 拍摄后的预览区
+  /// 多页预览区：缩略图 + 继续拍下一页 + 开始分析
   Widget _buildPreviewSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Image.file(
-            _selectedImage!,
-            height: 260,
-            width: double.infinity,
-            fit: BoxFit.cover,
-          ),
+        // 多页缩略图横排
+        SizedBox(
+          height: 200,
+          child: _selectedImages.length == 1
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Image.file(
+                    _selectedImages.first,
+                    height: 200,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                )
+              : ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _selectedImages.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final image = _selectedImages[index];
+                    return Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.file(
+                            image,
+                            width: 140,
+                            height: 200,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        Positioned(
+                          top: 6,
+                          left: 6,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.55),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '第${index + 1}页',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (_selectedImages.length > 1)
+                          Positioned(
+                            top: 6,
+                            right: 6,
+                            child: GestureDetector(
+                              onTap: () => setState(
+                                  () => _selectedImages.removeAt(index)),
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.55),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.close,
+                                    size: 14, color: Colors.white),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
         ),
         const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _takePhoto,
-                icon: const Icon(Icons.refresh),
-                label: const Text('重新拍摄'),
+                onPressed: _isUploading ? null : _takePhoto,
+                icon: const Icon(Icons.add_a_photo),
+                label: Text('继续拍第 ${_selectedImages.length + 1} 页'),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _pickFromGallery,
+                onPressed: _isUploading ? null : _pickFromGallery,
                 icon: const Icon(Icons.photo_library),
-                label: const Text('换一张'),
+                label: const Text('从相册选择'),
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _isUploading ? null : _uploadReport,
+            icon: const Icon(Icons.auto_awesome),
+            label: Text('开始分析（${_selectedImages.length} 张）'),
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Center(
+          child: TextButton.icon(
+            onPressed: _isUploading
+                ? null
+                : () => setState(() => _selectedImages.clear()),
+            icon: const Icon(Icons.delete_outline, size: 16),
+            label: const Text('全部重拍'),
+          ),
         ),
       ],
     );

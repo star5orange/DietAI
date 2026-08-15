@@ -10,6 +10,7 @@ from datetime import datetime, date, timedelta
 from typing import Optional, Dict, Any, List, AsyncGenerator
 import json
 import logging
+import decimal
 
 from shared.models.database import get_db
 from shared.models import schemas, user_models, conversation_models
@@ -665,6 +666,66 @@ async def get_session_context(
 
 
 # 辅助函数
+async def get_latest_exam_summary(user_id: int, db: Session) -> Dict[str, Any]:
+    """获取用户最新一份有效体检报告摘要（异常指标 + AI综述 + 医生建议），供 AI 顾问参考
+    跳过识别失败产生的 0 指标空报告（如免费额度用尽时上传的）"""
+    try:
+        from shared.models.exam_models import ExamReport, ExamMetric
+
+        # 按体检日期倒序取最近 20 份，找第一份有实际指标的报告
+        candidates = db.query(ExamReport).filter(
+            ExamReport.user_id == user_id
+        ).order_by(ExamReport.exam_date.desc(), ExamReport.id.desc()).limit(20).all()
+        report = None
+        for candidate in candidates:
+            metric_count = db.query(ExamMetric).filter(
+                ExamMetric.report_id == candidate.id
+            ).count()
+            if metric_count > 0:
+                report = candidate
+                break
+        if report is None:
+            return {}
+
+        metrics = db.query(ExamMetric).filter(
+            ExamMetric.report_id == report.id
+        ).all()
+        abnormal_metrics = []
+        for m in metrics:
+            if not m.is_abnormal:
+                continue
+            value = m.metric_value
+            if value is None:
+                # 无数值时回退原始文字，截断避免过长
+                raw = (m.raw_text or "").strip()
+                value = raw[:100] if raw else None
+            elif isinstance(value, (int, float, decimal.Decimal)):
+                value = float(value)
+            abnormal_metrics.append({
+                "name": m.metric_name,
+                "value": value,
+                "unit": m.unit,
+                "reference": m.reference_range,
+                "status": m.status or "abnormal",
+            })
+
+        return {
+            "exam_date": report.exam_date.isoformat(),
+            "abnormal_count": report.abnormal_count,
+            "abnormal_metrics": abnormal_metrics[:10],
+            "summary": report.summary,
+            "doctor_advice": report.doctor_advice,
+            "followup_date": report.followup_date.isoformat() if report.followup_date else None,
+        }
+    except Exception as e:
+        logger.warning(f"获取体检报告摘要失败: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return {}
+
+
 async def get_user_context(user_id: int, db: Session, session_type: int = 0):
     """获取用户上下文信息，根据 session_type 构建对应的 AI 顾问风格 Prompt"""
     user = db.query(user_models.User).filter(user_models.User.id == user_id).first()
@@ -740,7 +801,13 @@ async def get_user_context(user_id: int, db: Session, session_type: int = 0):
     except Exception:
         logger.warning(f"[CHAT] Failed to build advisor prompt for session_type={session_type}", exc_info=True)
         pass  # 非阻塞，获取失败不影响主流程
-    
+
+    # 注入最新体检报告摘要（宠物咨询完全隔离，不注入）
+    if not is_pet_session:
+        exam_summary = await get_latest_exam_summary(user_id, db)
+        if exam_summary:
+            context["exam_report"] = exam_summary
+
     return {k: v for k, v in context.items() if v is not None}, advisor_system_prompt
 
 

@@ -62,6 +62,26 @@ class ExamReport {
   }
 }
 
+/// 体检上传结果（报告 + 模糊页提示）
+class ExamUploadResult {
+  final ExamReport report;
+
+  /// 判定为模糊的照片页码（从 1 起），非空时提示重拍
+  final List<int> blurPages;
+
+  ExamUploadResult({required this.report, this.blurPages = const []});
+
+  factory ExamUploadResult.fromJson(Map<String, dynamic> json) {
+    return ExamUploadResult(
+      report: ExamReport.fromJson(json),
+      blurPages: (json['blur_warning'] as List<dynamic>?)
+              ?.map((e) => (e as num).toInt())
+              .toList() ??
+          const [],
+    );
+  }
+}
+
 /// 体检报告详情（元数据，来自 GET /health/exam/reports/{userId}/{reportId}）
 class ExamReportDetail {
   final int id;
@@ -71,6 +91,7 @@ class ExamReportDetail {
   final String? hospitalName;
   final String reportType;
   final String? photoUrl;
+  final List<String>? photoUrls; // 多页报告全部照片 URL
   final int abnormalCount;
   final String? summary;
   final String? doctorAdvice;
@@ -87,6 +108,7 @@ class ExamReportDetail {
     this.hospitalName,
     this.reportType = 'full',
     this.photoUrl,
+    this.photoUrls,
     this.abnormalCount = 0,
     this.summary,
     this.doctorAdvice,
@@ -107,6 +129,8 @@ class ExamReportDetail {
       hospitalName: json['hospital_name'] as String?,
       reportType: json['report_type'] as String? ?? 'full',
       photoUrl: json['photo_url'] as String?,
+      photoUrls:
+          (json['photo_urls'] as List<dynamic>?)?.whereType<String>().toList(),
       abnormalCount: json['abnormal_count'] as int? ?? 0,
       summary: json['summary'] as String?,
       doctorAdvice: json['doctor_advice'] as String?,

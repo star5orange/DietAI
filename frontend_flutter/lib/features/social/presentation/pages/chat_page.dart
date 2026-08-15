@@ -8,6 +8,7 @@ import '../../../../shared/domain/models/food_model.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/message_api_service.dart';
 import '../../data/websocket_service.dart';
+import '../../../../core/services/websocket_service.dart' as global_ws;
 import '../../domain/message_models.dart';
 import '../providers/message_provider.dart';
 import '../providers/social_provider.dart';
@@ -47,6 +48,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   @override
   void initState() {
     super.initState();
+    // 正在聊天中，抑制全局新消息本地通知
+    global_ws.WebSocketService.suppressNewMessageNotification = true;
     Future.microtask(() {
       ref
           .read(messageHistoryProvider.notifier)
@@ -120,6 +123,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   @override
   void dispose() {
+    global_ws.WebSocketService.suppressNewMessageNotification = false;
     _ws?.disconnect();
     _messageController.dispose();
     _scrollController.dispose();
@@ -137,7 +141,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final content = _messageController.text.trim();
     if (content.isEmpty) return;
 
-    ref.read(messageHistoryProvider.notifier).sendMessage(content);
+    ref
+        .read(messageHistoryProvider.notifier)
+        .sendMessage(content, currentUserId: _currentUserId);
     _messageController.clear();
     // 滚动到底部
     Future.delayed(const Duration(milliseconds: 100), () {
@@ -255,7 +261,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               title: const Text('提醒喝水'),
               onTap: () {
                 Navigator.pop(ctx);
-                ref.read(messageHistoryProvider.notifier).sendPoke('water');
+                ref
+                    .read(messageHistoryProvider.notifier)
+                    .sendPoke('water', currentUserId: _currentUserId);
               },
             ),
             ListTile(
@@ -263,7 +271,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               title: const Text('提醒吃饭'),
               onTap: () {
                 Navigator.pop(ctx);
-                ref.read(messageHistoryProvider.notifier).sendPoke('eat');
+                ref
+                    .read(messageHistoryProvider.notifier)
+                    .sendPoke('eat', currentUserId: _currentUserId);
               },
             ),
             ListTile(
@@ -271,7 +281,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               title: const Text('打个招呼'),
               onTap: () {
                 Navigator.pop(ctx);
-                ref.read(messageHistoryProvider.notifier).sendPoke('general');
+                ref
+                    .read(messageHistoryProvider.notifier)
+                    .sendPoke('general', currentUserId: _currentUserId);
               },
             ),
             const SizedBox(height: 16),
@@ -471,6 +483,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
 
+  /// 格式化"最后在线时间"为相对时间
+  String _formatLastOnline(DateTime? lastOnlineAt) {
+    if (lastOnlineAt == null) return '';
+    final diff = DateTime.now().difference(lastOnlineAt);
+    if (diff.inMinutes < 1) return '刚刚在线';
+    if (diff.inHours < 1) return '${diff.inMinutes}分钟前在线';
+    if (diff.inHours < 24) return '${diff.inHours}小时前在线';
+    if (diff.inDays < 7) return '${diff.inDays}天前在线';
+    return '${lastOnlineAt.year}-${lastOnlineAt.month.toString().padLeft(2, '0')}-${lastOnlineAt.day.toString().padLeft(2, '0')}在线';
+  }
+
   /// AppBar 标题：头像 + 名字 + 在线状态
   Widget _buildAppBarTitle() {
     final onlineState = ref.watch(onlineStatusProvider(widget.targetUserId));
@@ -511,7 +534,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             ),
             const SizedBox(width: 4),
             Text(
-              onlineState.isOnline ? '在线' : '离线',
+              onlineState.isOnline
+                  ? '在线'
+                  : (onlineState.lastOnlineAt != null
+                      ? _formatLastOnline(onlineState.lastOnlineAt)
+                      : '离线'),
               style: TextStyle(
                 fontSize: 11,
                 color: onlineState.isOnline ? Colors.green : Colors.grey,

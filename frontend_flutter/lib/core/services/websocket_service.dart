@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../constants/app_constants.dart';
+import 'notification_service.dart';
 import 'package:flutter/foundation.dart';
 
 /// WebSocket 服务 - 实时消息推送
@@ -21,6 +22,9 @@ class WebSocketService {
   static const Duration _heartbeatInterval = Duration(seconds: 30);
 
   static final _storage = FlutterSecureStorage();
+
+  /// 是否抑制新消息本地通知（聊天页/聊天列表页打开时置 true）
+  static bool suppressNewMessageNotification = false;
 
   // 消息回调
   Function(Map<String, dynamic>)? onMessageReceived;
@@ -85,7 +89,12 @@ class WebSocketService {
         }
 
         if (type == 'new_message' && data['data'] != null) {
-          onMessageReceived?.call(data['data'] as Map<String, dynamic>);
+          final msg = data['data'] as Map<String, dynamic>;
+          // 本地通知兜底（FCM 未启用时）：不在聊天页时弹系统通知提示新消息
+          if (!suppressNewMessageNotification) {
+            _showLocalNotification(msg);
+          }
+          onMessageReceived?.call(msg);
         }
 
         if (type == 'online_status' && data['data'] != null) {
@@ -102,6 +111,25 @@ class WebSocketService {
     } catch (e) {
       debugPrint('WebSocket 消息解析失败: $e');
     }
+  }
+
+  /// 弹出新消息本地通知（按消息类型生成友好文案）
+  void _showLocalNotification(Map<String, dynamic> msg) {
+    final sender = msg['sender_username'] as String? ?? '好友';
+    final type = msg['message_type'] as String? ?? 'text';
+    final content = msg['content'] as String? ?? '';
+    final body = switch (type) {
+      'image' => '[图片] 给你发了一张照片',
+      'food_card' => '[饮食记录] 分享了一条饮食记录',
+      'poke' => content.isNotEmpty ? content : '戳了戳你',
+      'emoji' => content.isNotEmpty ? content : '发来一个表情',
+      _ => content.isNotEmpty ? content : '发来一条消息',
+    };
+    NotificationService().showImmediateNotification(
+      id: (msg['id'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
+      title: '$sender 发来新消息',
+      body: body,
+    );
   }
 
   /// 处理断开连接

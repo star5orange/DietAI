@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../constants/app_constants.dart';
 import '../services/modal_tracker.dart';
+import '../utils/route_observer.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/register_page.dart';
 import '../../features/auth/presentation/pages/change_password_page.dart';
@@ -83,7 +84,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/splash',
     debugLogDiagnostics: true,
-    observers: [ModalTrackerObserver()],
+    observers: [ModalTrackerObserver(), routeObserver],
     refreshListenable: ref.watch(authNotifierProvider),
     redirect: (context, state) {
       final authState = ref.read(authStateProvider);
@@ -567,8 +568,15 @@ final routerProvider = Provider<GoRouter>((ref) {
             name: 'exam_trend',
             builder: (context, state) {
               final userId = int.parse(state.pathParameters['userId']!);
-              final metricName =
-                  Uri.decodeComponent(state.pathParameters['metricName']!);
+              // go_router 匹配 path 时已对参数 percent-decode 过一次；
+              // 再 decode 一次会导致指标名含 "%" 时抛 Illegal percent encoding，解码失败则用原始值
+              final rawMetric = state.pathParameters['metricName']!;
+              String metricName;
+              try {
+                metricName = Uri.decodeComponent(rawMetric);
+              } catch (_) {
+                metricName = rawMetric;
+              }
               return ExamTrendPage(userId: userId, metricName: metricName);
             },
           ),

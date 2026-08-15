@@ -136,6 +136,51 @@ class FoodService {
     }
   }
 
+  /// 确认创建食物记录（AI 分析结果确认后一次性落库）
+  Future<ApiResponse<FoodRecord>> confirmCreateFoodRecord(
+      Map<String, dynamic> payload) async {
+    try {
+      print('📤 确认创建食物记录请求: $payload');
+
+      final response = await _apiService.post(
+        '/foods/records/confirm-create',
+        data: payload,
+      );
+
+      print('📥 确认创建食物记录响应: success=${response.success}');
+
+      if (response.success) {
+        try {
+          final dataMap = response.data as Map<String, dynamic>;
+          final recordMap = dataMap['record'] as Map<String, dynamic>;
+          final foodRecord = FoodRecord.fromJson(recordMap);
+          return ApiResponse<FoodRecord>(
+            success: true,
+            message: response.message,
+            data: foodRecord,
+          );
+        } catch (parseError) {
+          print('❌ JSON解析错误: $parseError');
+          return ApiResponse<FoodRecord>(
+            success: false,
+            message: 'JSON解析失败: $parseError',
+          );
+        }
+      } else {
+        return ApiResponse<FoodRecord>(
+          success: false,
+          message: response.message,
+        );
+      }
+    } catch (e) {
+      print('❌ 确认创建食物记录异常: $e');
+      return ApiResponse<FoodRecord>(
+        success: false,
+        message: '确认创建食物记录失败: $e',
+      );
+    }
+  }
+
   /// 创建食物记录（传统方法）
   Future<ApiResponse<FoodRecord>> createFoodRecord(
       FoodRecordCreate foodData) async {
@@ -702,6 +747,7 @@ class FoodService {
     double? cost,
     String? sourceTag,
     int? targetUserId,
+    bool analyzeOnly = false,
   }) async* {
     try {
       print('🚀 开始创建带图片的食物记录（流式）');
@@ -748,6 +794,7 @@ class FoodService {
         cost: cost,
         sourceTag: sourceTag,
         targetUserId: targetUserId,
+        analyzeOnly: analyzeOnly,
       );
 
       print('📤 步骤2: 创建食物记录（流式）');

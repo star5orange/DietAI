@@ -301,6 +301,7 @@ class MemberHealthState {
   final List<ExerciseHealthData> exerciseData;
   final HealthGoalData? goal;
   final FamilyPetData? pet;
+  final List<String> hiddenFields; // 对方配置隐藏的字段 key
   final bool isLoading;
   final String? error;
 
@@ -310,6 +311,7 @@ class MemberHealthState {
     this.exerciseData = const [],
     this.goal,
     this.pet,
+    this.hiddenFields = const [],
     this.isLoading = false,
     this.error,
   });
@@ -320,6 +322,7 @@ class MemberHealthState {
     List<ExerciseHealthData>? exerciseData,
     HealthGoalData? goal,
     FamilyPetData? pet,
+    List<String>? hiddenFields,
     bool? isLoading,
     String? error,
   }) {
@@ -329,6 +332,7 @@ class MemberHealthState {
       exerciseData: exerciseData ?? this.exerciseData,
       goal: goal ?? this.goal,
       pet: pet ?? this.pet,
+      hiddenFields: hiddenFields ?? this.hiddenFields,
       isLoading: isLoading ?? this.isLoading,
       error: error,
     );
@@ -427,12 +431,17 @@ class MemberHealthNotifier extends StateNotifier<MemberHealthState> {
         final pet = data['pet'] is Map<String, dynamic>
             ? FamilyPetData.fromJson(data['pet'] as Map<String, dynamic>)
             : null;
+        final hiddenFields = (data['hidden_fields'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            const <String>[];
         state = state.copyWith(
           dailyData: dailyDataList,
           weightData: weightDataList,
           exerciseData: exerciseDataList,
           goal: goal,
           pet: pet,
+          hiddenFields: hiddenFields,
           isLoading: false,
         );
       } else {
@@ -599,6 +608,105 @@ final familyAchievementsProvider =
 final familyDashboardProvider =
     StateNotifierProvider<FamilyDashboardNotifier, FamilyDashboardState>((ref) {
   return FamilyDashboardNotifier();
+});
+
+/// 家庭成员饮食偏好（用于饮食推荐共享）
+class FamilyDietPreference {
+  final int userId;
+  final String username;
+  final String? realName;
+  final List<String> dietaryPreferences;
+  final List<String> foodDislikes;
+  final String? healthStatus;
+  final String? constitutionType;
+
+  FamilyDietPreference({
+    required this.userId,
+    this.username = '',
+    this.realName,
+    this.dietaryPreferences = const [],
+    this.foodDislikes = const [],
+    this.healthStatus,
+    this.constitutionType,
+  });
+
+  String get displayName => realName?.isNotEmpty == true ? realName! : username;
+
+  factory FamilyDietPreference.fromJson(Map<String, dynamic> json) {
+    return FamilyDietPreference(
+      userId: json['user_id'] as int? ?? 0,
+      username: json['username'] as String? ?? '',
+      realName: json['real_name'] as String?,
+      dietaryPreferences: (json['dietary_preferences'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      foodDislikes: (json['food_dislikes'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      healthStatus: json['health_status'] as String?,
+      constitutionType: json['constitution_type'] as String?,
+    );
+  }
+}
+
+/// 家庭饮食偏好状态
+class FamilyDietPreferencesState {
+  final List<FamilyDietPreference> members;
+  final bool isLoading;
+  final String? error;
+
+  FamilyDietPreferencesState({
+    this.members = const [],
+    this.isLoading = false,
+    this.error,
+  });
+
+  FamilyDietPreferencesState copyWith({
+    List<FamilyDietPreference>? members,
+    bool? isLoading,
+    String? error,
+  }) {
+    return FamilyDietPreferencesState(
+      members: members ?? this.members,
+      isLoading: isLoading ?? this.isLoading,
+      error: error,
+    );
+  }
+}
+
+/// 家庭饮食偏好 Provider（GET /family/diet-preferences）
+class FamilyDietPreferencesNotifier
+    extends StateNotifier<FamilyDietPreferencesState> {
+  final ApiService _api = ApiService();
+
+  FamilyDietPreferencesNotifier() : super(FamilyDietPreferencesState());
+
+  Future<void> loadDietPreferences() async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final response = await _api.get('/family/diet-preferences');
+      if (response.success && response.data is Map<String, dynamic>) {
+        final data = response.data as Map<String, dynamic>;
+        final list = (data['member_preferences'] as List<dynamic>?)
+                ?.map((e) =>
+                    FamilyDietPreference.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            [];
+        state = state.copyWith(members: list, isLoading: false);
+      } else {
+        state = state.copyWith(isLoading: false, error: response.message);
+      }
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+    }
+  }
+}
+
+final familyDietPreferencesProvider = StateNotifierProvider<
+    FamilyDietPreferencesNotifier, FamilyDietPreferencesState>((ref) {
+  return FamilyDietPreferencesNotifier();
 });
 
 final memberHealthProvider =

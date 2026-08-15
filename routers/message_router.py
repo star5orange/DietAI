@@ -8,6 +8,7 @@ import logging
 import traceback
 import json
 import uuid
+import asyncio
 
 from shared.models.database import get_db
 from shared.models.schemas import (
@@ -191,6 +192,47 @@ async def _notify_friends_online_status(user_id: int, is_online: bool):
         db.close()
 
 
+async def _push_message_event(db: Session, msg: Message, sender_user: Optional[User] = None):
+    """消息实时推送：接收者在线推 WS new_message，离线推 FCM 通知"""
+    try:
+        created_at = msg.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+
+        if manager.is_user_online(msg.receiver_id):
+            await manager.send_to_user(msg.receiver_id, {
+                "type": "new_message",
+                "data": {
+                    "id": msg.id,
+                    "sender_id": msg.sender_id,
+                    "receiver_id": msg.receiver_id,
+                    "content": msg.content,
+                    "message_type": msg.message_type,
+                    "extra_data": msg.extra_data,
+                    "read_at": msg.read_at.isoformat() if msg.read_at else None,
+                    "created_at": created_at.isoformat(),
+                    "sender_username": sender_user.username if sender_user else None,
+                    "sender_avatar_url": getattr(sender_user, "avatar_url", None) if sender_user else None,
+                }
+            })
+        else:
+            from shared.services.push_service import send_push_to_user
+            await send_push_to_user(
+                db=db,
+                user_id=msg.receiver_id,
+                title=f"{sender_user.username if sender_user else '家人'} 发来新消息",
+                body=msg.content[:50],
+                data={
+                    "type": "new_chat_message",
+                    "sender_id": msg.sender_id,
+                    "sender_username": sender_user.username if sender_user else None,
+                    "message_type": msg.message_type,
+                },
+            )
+    except Exception as e:
+        logger.warning(f"消息实时推送失败: {e}")
+
+
 # ============================================================
 # 发送消息
 # ============================================================
@@ -247,8 +289,32 @@ async def send_message(
         db.commit()
         db.refresh(msg)
 
-        # 接收者不在线时发送 FCM 推送通知
-        if not manager.is_user_online(message.receiver_id):
+        # 确保 created_at 带 UTC 时区信息
+        created_at = msg.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+
+        # 接收者在线时通过 WebSocket 实时推送；不在线时发送 FCM 推送通知
+        if manager.is_user_online(message.receiver_id):
+            try:
+                await manager.send_to_user(message.receiver_id, {
+                    "type": "new_message",
+                    "data": {
+                        "id": msg.id,
+                        "sender_id": msg.sender_id,
+                        "receiver_id": msg.receiver_id,
+                        "content": msg.content,
+                        "message_type": msg.message_type,
+                        "extra_data": msg.extra_data,
+                        "read_at": msg.read_at.isoformat() if msg.read_at else None,
+                        "created_at": created_at.isoformat(),
+                        "sender_username": current_user.username,
+                        "sender_avatar_url": getattr(current_user, "avatar_url", None),
+                    }
+                })
+            except Exception as e:
+                logger.warning(f"聊天消息 WebSocket 推送失败: {e}")
+        else:
             try:
                 from shared.services.push_service import send_push_to_user
                 await send_push_to_user(
@@ -260,16 +326,11 @@ async def send_message(
                         "type": "new_chat_message",
                         "sender_id": current_user.id,
                         "sender_username": current_user.username,
-                        "message_type": message.message_type.value,
+                        "message_type": msg.message_type,
                     },
                 )
             except Exception as e:
                 logger.warning(f"聊天消息推送失败: {e}")
-
-        # 确保 created_at 带 UTC 时区信息
-        created_at = msg.created_at
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
 
         return BaseResponse(
             success=True,
@@ -538,6 +599,9 @@ async def send_poke(
         db.commit()
         db.refresh(msg)
 
+        # 实时推送（接收者在线推 WS，离线推 FCM）
+        await _push_message_event(db, msg, current_user)
+
         # 确保 created_at 带 UTC 时区信息
         created_at = msg.created_at
         if created_at.tzinfo is None:
@@ -651,6 +715,9 @@ async def share_food_record(
         db.commit()
         db.refresh(msg)
 
+        # 实时推送（接收者在线推 WS，离线推 FCM）
+        await _push_message_event(db, msg, current_user)
+
         # 确保 created_at 带 UTC 时区信息
         created_at = msg.created_at
         if created_at.tzinfo is None:
@@ -739,8 +806,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
 
     try:
         while True:
-            # 接收客户端消息
-            data = await websocket.receive_text()
+            # 接收客户端消息（60 秒无任何消息则超时断开）
+            data = await asyncio.wait_for(websocket.receive_text(), timeout=60)
             
             try:
                 message_data = json.loads(data)
@@ -767,6 +834,38 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
                     from shared.models.database import SessionLocal
                     db = SessionLocal()
                     try:
+                        # 校验接收者存在且为好友/家人关系
+                        receiver = db.query(User).filter(
+                            User.id == receiver_id,
+                            User.status == 1
+                        ).first()
+                        if not receiver:
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": "接收者不存在"
+                            })
+                            continue
+
+                        is_related = db.query(UserRelationship).filter(
+                            or_(
+                                and_(
+                                    UserRelationship.user_id == user_id,
+                                    UserRelationship.related_user_id == receiver_id
+                                ),
+                                and_(
+                                    UserRelationship.user_id == receiver_id,
+                                    UserRelationship.related_user_id == user_id
+                                )
+                            ),
+                            UserRelationship.status == "accepted"
+                        ).first()
+                        if not is_related:
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": "只能给好友/家人发送消息"
+                            })
+                            continue
+
                         msg = Message(
                             sender_id=user_id,
                             receiver_id=receiver_id,
@@ -855,12 +954,12 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
                     "message": "Invalid JSON"
                 })
     
-    except WebSocketDisconnect:
+    except (asyncio.TimeoutError, WebSocketDisconnect):
         manager.disconnect(websocket, user_id)
         # 持久化最后在线时间
         _update_last_online(user_id)
         await _notify_friends_online_status(user_id, False)
-        logger.info(f"用户 {user_id} WebSocket 连接断开")
+        logger.info(f"用户 {user_id} WebSocket 连接断开（心跳超时或正常断开）")
     except Exception as e:
         logger.error(f"WebSocket 错误: {e}\n{traceback.format_exc()}")
         manager.disconnect(websocket, user_id)
@@ -962,6 +1061,12 @@ async def get_offline_messages(
 
         # 按消息数量降序排序
         result.sort(key=lambda x: x["unread_count"], reverse=True)
+
+        # 拉取离线消息视为已读，避免每次进入聊天页重复拉取同一批消息
+        if unread_messages:
+            for msg in unread_messages:
+                msg.read_at = datetime.now()
+            db.commit()
 
         return BaseResponse(
             success=True,

@@ -213,6 +213,56 @@ class _FamilyDashboardPageState extends ConsumerState<FamilyDashboardPage> {
     );
   }
 
+  /// 桌宠心情/饥饿文字（配合心情 emoji）
+  String _petMoodText(String? mood, int? hungerHours) {
+    if (mood == null) return '';
+    const moodMap = {
+      'happy': '😊',
+      'normal': '',
+      'hungry': '🍽️饥饿',
+      'weak': '🥺虚弱',
+    };
+    final emoji = moodMap[mood] ?? '';
+    final hours =
+        (hungerHours != null && hungerHours > 0) ? ' $hungerHours小时未喂' : '';
+    return '$emoji$hours';
+  }
+
+  /// 体检摘要文字（最新体检日期 + 异常项数 + 复查提醒）
+  String _examSummaryText(Map<String, dynamic> exam) {
+    final date = exam['latest_exam_date'] as String?;
+    final abnormal = exam['abnormal_count'] as num?;
+    final parts = <String>[];
+    if (date != null) parts.add('体检:$date');
+    if (abnormal != null && abnormal > 0) {
+      parts.add('⚠️$abnormal项异常');
+    } else if (date != null) {
+      parts.add('无异常');
+    }
+    // 复查提醒：基于 followup_date 计算剩余天数 / 是否已过
+    final followup = exam['followup_date'] as String?;
+    if (followup != null && followup.isNotEmpty) {
+      final followupDate = DateTime.tryParse(followup);
+      if (followupDate != null) {
+        final now = DateTime.now();
+        final today0 = DateTime(now.year, now.month, now.day);
+        final days = followupDate.difference(today0).inDays;
+        if (days < 0) {
+          parts.add('⚠️已过复查期');
+        } else if (days == 0) {
+          parts.add('今天复查');
+        } else {
+          parts.add('复查:$followup($days天)');
+        }
+      } else {
+        parts.add('复查:$followup');
+      }
+    } else if (abnormal != null && abnormal > 0) {
+      parts.add('请按时复查');
+    }
+    return parts.isEmpty ? '' : parts.join(' · ');
+  }
+
   Widget _buildMemberCard(BuildContext context, FamilyMemberSummary member) {
     // 数据权限隐藏：null 表示对方隐藏了该字段
     final showCalories =
@@ -356,16 +406,57 @@ class _FamilyDashboardPageState extends ConsumerState<FamilyDashboardPage> {
                 backgroundColor: Colors.grey[200],
                 valueColor: const AlwaysStoppedAnimation<Color>(Colors.blue),
               ),
-              // 宠物状态（真实宠物被隐藏时为 null，不展示）
-              if (member.realPets != null && member.realPets!.isNotEmpty) ...[
-                const SizedBox(height: 16),
+              // 宠物状态（虚拟桌宠 + 真实宠物健康分；真实宠物被隐藏时为 null，不展示）
+              if (member.virtualPetName != null ||
+                  (member.realPets != null && member.realPets!.isNotEmpty)) ...[
+                const SizedBox(height: 12),
+                if (member.virtualPetName != null)
+                  Row(
+                    children: [
+                      const Icon(Icons.smart_toy_outlined,
+                          size: 16, color: Colors.purple),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          '桌宠: ${member.virtualPetName}${_petMoodText(member.virtualPetMood, member.hungerHours)}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                if (member.realPets != null && member.realPets!.isNotEmpty) ...[
+                  if (member.virtualPetName != null) const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.pets, size: 16, color: Colors.purple),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          '宠物: ${member.realPets!.map((p) {
+                            final name = p['name'] as String? ?? '';
+                            final score = p['health_score'];
+                            return score != null ? '$name (健康分$score)' : name;
+                          }).join(', ')}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+              // 体检摘要（最新体检日期 + 异常项数）
+              if (member.examSummary != null) ...[
+                const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(Icons.pets, size: 16, color: Colors.purple),
+                    const Icon(Icons.monitor_heart_outlined,
+                        size: 16, color: Colors.teal),
                     const SizedBox(width: 4),
-                    Text(
-                      '宠物: ${member.realPets!.map((p) => p['name'] as String? ?? '').join(', ')}',
-                      style: const TextStyle(fontSize: 12),
+                    Expanded(
+                      child: Text(
+                        _examSummaryText(member.examSummary!),
+                        style: const TextStyle(fontSize: 12),
+                      ),
                     ),
                   ],
                 ),

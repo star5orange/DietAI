@@ -187,26 +187,40 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
     final principle = (_currentTerm!['principle'] as String?) ??
         (_currentTerm!['wellness'] as String?) ??
         '';
-    final foods = (_currentTerm!['foods'] as String?) ?? '';
-    final avoid = (_currentTerm!['avoid'] as String?) ?? '';
     final next = (_currentTerm!['next'] as String?) ??
         (_currentTerm!['next_term'] as String?) ??
         '';
     final color = _seasonColor(season);
 
-    // 根据人群标签差异化推荐食物和忌食
-    String displayFoods = foods;
-    String displayAvoid = avoid;
+    // 根据本地节气表计算下一节气名称与剩余天数（与数据源无关，保证一致）
+    final nowDate = DateTime.now();
+    final today = DateTime(nowDate.year, nowDate.month, nowDate.day);
+    String nextName = next;
+    int daysToNext = 0;
+    const terms = SolarTermTodayWidget._solarTermsData;
+    final currentIdx = terms.indexWhere((t) => t.$1 == name);
+    if (currentIdx >= 0) {
+      final nextTerm = terms[(currentIdx + 1) % terms.length];
+      nextName = nextTerm.$1;
+      final mm = int.parse(nextTerm.$2.substring(0, 2));
+      final dd = int.parse(nextTerm.$2.substring(3));
+      var nextDate = DateTime(nowDate.year, mm, dd);
+      // 下一节气日期已过（跨年），顺延到明年
+      if (nextDate.isBefore(today)) {
+        nextDate = DateTime(nowDate.year + 1, mm, dd);
+      }
+      daysToNext = nextDate.difference(today).inDays;
+    }
+
+    // 根据人群标签差异化提示
     String? crowdTip;
 
     switch (widget.crowdTag) {
       case '减脂':
         crowdTip = '减脂期控制总热量，优选低脂高蛋白食材';
-        displayAvoid = '$avoid、高油高糖食物';
         break;
       case '健身':
         crowdTip = '健身期增加蛋白质摄入，训练前后及时补充';
-        displayFoods = '$foods、鸡胸肉、鸡蛋';
         break;
       case '养生':
         crowdTip = '顺应节气调养，注意体质偏颇针对性食补';
@@ -216,7 +230,7 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
     return GestureDetector(
       onTap: widget.onTapDetails,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [color, color.withValues(alpha: 0.7)],
@@ -239,9 +253,9 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
             Row(
               children: [
                 Icon(_seasonIcon(season),
-                    color: AppColors.textInverse, size: 22),
-                const SizedBox(width: 10),
-                Text('今日节气：$name',
+                    color: AppColors.textInverse, size: 14),
+                const SizedBox(width: 8),
+                Text('当前节气：$name',
                     style: AppTextStyles.bodyLarge.copyWith(
                       color: AppColors.textInverse,
                       fontWeight: FontWeight.w700,
@@ -255,7 +269,9 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    '下一节气：$next',
+                    daysToNext > 0
+                        ? '距$nextName还有$daysToNext天'
+                        : '下一节气：$nextName',
                     style: AppTextStyles.labelSmall.copyWith(
                       color: AppColors.whiteWithOpacity(0.9),
                     ),
@@ -263,20 +279,17 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             // 养生原则
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: AppColors.whiteWithOpacity(0.15),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
                 children: [
-                  const Icon(LucideIcons.lightbulb,
-                      color: AppColors.textInverse, size: 14),
-                  const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       '养生原则：$principle',
@@ -289,10 +302,10 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
               ),
             ),
             if (crowdTip != null) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: AppColors.whiteWithOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
@@ -300,9 +313,6 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(LucideIcons.target,
-                        color: AppColors.textInverse, size: 14),
-                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         crowdTip!,
@@ -316,76 +326,6 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
                 ),
               ),
             ],
-            const SizedBox(height: 8),
-            // 推荐食物 + 忌食
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.whiteWithOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(LucideIcons.apple,
-                                color: AppColors.textInverse, size: 12),
-                            const SizedBox(width: 4),
-                            Text('推荐',
-                                style: AppTextStyles.labelSmall.copyWith(
-                                    color: AppColors.whiteWithOpacity(0.7))),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(displayFoods,
-                            style: AppTextStyles.bodySmall.copyWith(
-                              color: AppColors.whiteWithOpacity(0.9),
-                              height: 1.4,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.whiteWithOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(LucideIcons.alertTriangle,
-                                color: AppColors.textInverse, size: 12),
-                            const SizedBox(width: 4),
-                            Text('忌食',
-                                style: AppTextStyles.labelSmall.copyWith(
-                                    color: AppColors.whiteWithOpacity(0.7))),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(displayAvoid,
-                            style: AppTextStyles.bodySmall.copyWith(
-                              color: AppColors.whiteWithOpacity(0.9),
-                            )),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ],
         ),
       ),

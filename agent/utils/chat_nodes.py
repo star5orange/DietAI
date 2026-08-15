@@ -196,9 +196,39 @@ def analyze_conversation_context(state: ChatState) -> ChatState:
                         'constitution_type': '体质类型',
                     }
                     for k, v in uc.items():
+                        if k == 'exam_report':
+                            continue  # 体检报告单独格式化
                         label = label_map.get(k, k)
                         profile_lines.append(f"{label}: {v}")
                     context_info.append("【用户档案】\n" + "\n".join(profile_lines))
+
+                    # 最新体检报告（异常指标 + AI综述 + 医生建议）
+                    er = uc.get('exam_report')
+                    if isinstance(er, dict) and er:
+                        exam_lines = []
+                        exam_date = er.get('exam_date')
+                        if exam_date:
+                            exam_lines.append(f"体检日期: {exam_date}")
+                        abnormal_count = er.get('abnormal_count')
+                        if abnormal_count:
+                            exam_lines.append(f"异常指标数: {abnormal_count}")
+                        metrics = er.get('abnormal_metrics') or []
+                        if metrics:
+                            exam_lines.append(f"异常指标: {len(metrics)}项")
+                            for m in metrics[:10]:
+                                ref = m.get('reference')
+                                ref_txt = f" (参考范围: {ref})" if ref else ""
+                                exam_lines.append(
+                                    f"  - {m.get('name', '指标')}: {m.get('value', '')}{m.get('unit', '')}{ref_txt} [{m.get('status', '异常')}]"
+                                )
+                        if er.get('summary'):
+                            exam_lines.append(f"AI体检综述: {er['summary']}")
+                        if er.get('doctor_advice'):
+                            exam_lines.append(f"医生建议: {er['doctor_advice']}")
+                        if er.get('followup_date'):
+                            exam_lines.append(f"建议复查日期: {er['followup_date']}")
+                        if exam_lines:
+                            context_info.append("【最新体检报告】\n" + "\n".join(exam_lines))
                 else:
                     context_info.append(f"用户档案: {uc}")
             

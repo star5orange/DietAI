@@ -23,15 +23,16 @@ ALL_PERMISSION_FIELDS: Set[str] = {
 
 
 def get_visible_fields(db: Session, owner_id: int, viewer_id: int) -> Set[str]:
-    """获取 owner 允许 viewer 查看的字段集合；无配置时默认全部可见"""
+    """获取 owner 允许 viewer 查看的字段集合；无配置记录时默认全部可见"""
     from shared.models.social_models import DataPermission
 
     perm = db.query(DataPermission).filter(
         DataPermission.user_id == owner_id,
         DataPermission.target_user_id == viewer_id,
     ).first()
-    if not perm or not perm.visible_fields:
+    if not perm:
         return set(ALL_PERMISSION_FIELDS)
+    # 注意：visible_fields 为空列表表示 owner 显式配置"全部隐藏"，不能当成未配置
     return set(perm.visible_fields)
 
 

@@ -6,9 +6,11 @@ import 'package:intl/intl.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../core/utils/route_observer.dart';
 import '../../../../services/food_service.dart';
 import '../../../../services/water_service.dart';
 import '../../../../services/health_analysis_service.dart';
+import '../../../../services/goal_tracking_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/domain/models/api_response.dart';
 import '../../../../shared/domain/models/user_model.dart';
@@ -31,10 +33,11 @@ class HealthPage extends ConsumerStatefulWidget {
   ConsumerState<HealthPage> createState() => _HealthPageState();
 }
 
-class _HealthPageState extends ConsumerState<HealthPage> {
+class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
   final FoodService _foodService = FoodService();
   final WaterService _waterService = WaterService();
   final HealthAnalysisService _healthAnalysisService = HealthAnalysisService();
+  final GoalTrackingService _goalTrackingService = GoalTrackingService();
   DailyNutritionSummary? _dailySummary;
   double _waterIntake = 0.0;
   double _waterGoal = 2000.0;
@@ -81,13 +84,69 @@ class _HealthPageState extends ConsumerState<HealthPage> {
     }
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      routeObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didPopNext() {
+    // 从其他页面返回健康页时刷新（断食计划/体重/目标变更后目标自动更新）
+    if (mounted) {
+      ref.read(userProfileProvider.notifier).loadUserProfile();
+      _loadTargetCalories();
+    }
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+
   /// 从用户资料加载卡路里目标和饮水目标
-  void _loadTargetCalories() {
+  /// 与首页一致：优先用户手动设置值，未设置时回退系统计算值（含断食计划调整）
+  Future<void> _loadTargetCalories() async {
     try {
       final userProfile = ref.read(userProfileProvider).value;
       if (userProfile != null) {
-        _targetCalories = userProfile.targetCalories?.toDouble() ?? 2000.0;
+        final manual = userProfile.targetCalories?.toDouble() ?? 0.0;
+        if (manual > 0) {
+          _targetCalories = manual;
+        } else {
+          // 未手动设置：回退系统计算目标（含断食调整）
+          final result = await _goalTrackingService.getDailyStatus();
+          if (result.success && result.data != null) {
+            final targets =
+                result.data!['daily_targets'] as Map<String, dynamic>?;
+            final computed = (targets?['calories'] as num?)?.toDouble() ?? 0.0;
+            if (computed > 0) {
+              _targetCalories = computed;
+            }
+          }
+        }
         _waterGoal = userProfile.dailyWaterGoal?.toDouble() ?? 2000.0;
+        // 饮水目标优先读取每日饮水汇总（断食日自动提升），与首页饮水卡片同源
+        try {
+          final now = DateTime.now();
+          final dateStr =
+              '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+          final waterSummary = await _waterService.getDailySummary(dateStr);
+          if (waterSummary.success &&
+              waterSummary.data != null &&
+              waterSummary.data!.goalMl > 0) {
+            _waterGoal = waterSummary.data!.goalMl.toDouble();
+          }
+        } catch (e) {
+          debugPrint('[HealthPage] 加载饮水目标失败: $e');
+        }
+        if (mounted) {
+          setState(() {});
+        }
         debugPrint('[HealthPage] 加载目标: 卡路里=$_targetCalories, 饮水=$_waterGoal');
       }
     } catch (e) {

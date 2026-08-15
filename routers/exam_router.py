@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 import logging
 import traceback
+import re
 
 from shared.models.database import get_db
 from shared.models.schemas import (
@@ -26,6 +27,49 @@ from shared.utils.permission import get_visible_fields, field_hidden
 
 router = APIRouter(prefix="/health/exam", tags=["体检报告"])
 logger = logging.getLogger(__name__)
+
+
+def _normalize_status_from_range(value, reference_range):
+    """根据参考范围重算指标状态，纠正 AI 误判；无法解析时返回 None（沿用 AI 判断）。
+    支持范围格式：'3.1-5.7'、'0.200-0.430'、'≤100'、'>6.1'、'＜5.7'（含全角符号）。
+    返回值: 'low' / 'high' / 'normal' / None
+    """
+    if value is None or not reference_range:
+        return None
+    try:
+        val = float(value)
+    except (TypeError, ValueError):
+        return None
+    rr = str(reference_range).strip().replace(" ", "")
+    if not rr:
+        return None
+
+    def _lt_bound(v, bound, side):
+        # 边界带 "<"/"＜" 时按不含等号处理
+        return v <= bound if side in ("<", "＜") else v < bound
+
+    def _gt_bound(v, bound, side):
+        return v >= bound if side in (">", "＞") else v > bound
+
+    # 区间范围：3.1-5.7 / 0.200-0.430 / ≤3.5-5.7 等
+    m = re.match(r"^([<>≤≥＜＞]?)([\d.]+)\s*[-~—～]\s*([<>≤≥＜＞]?)([\d.]+)$", rr)
+    if m:
+        lo_side, lo, hi_side, hi = m.group(1), float(m.group(2)), m.group(3), float(m.group(4))
+        if _lt_bound(val, lo, lo_side):
+            return "low"
+        if _gt_bound(val, hi, hi_side):
+            return "high"
+        return "normal"
+
+    # 单边范围：≤100 / <100 / ≥1.0 / >6.1
+    m = re.match(r"^([<>≤≥＜＞])([\d.]+)$", rr)
+    if m:
+        op, bound = m.group(1), float(m.group(2))
+        if op in ("≤", "<", "＜"):
+            return "normal" if val <= bound else "high"
+        if op in ("≥", ">", "＞"):
+            return "normal" if val >= bound else "low"
+    return None
 
 
 def _check_exam_visible(db: Session, owner_id: int, viewer_id: int) -> None:
@@ -278,6 +322,29 @@ def _extract_object_name(photo_url: str) -> Optional[str]:
         return None
 
 
+def _detect_blur(image_content: bytes, threshold: float = 50.0) -> bool:
+    """使用拉普拉斯方差（Laplacian Variance）检测照片模糊度。
+
+    对图像做灰度缩放后计算 3x3 拉普拉斯核响应的方差，方差低于阈值判定为模糊。
+    清晰文档通常 >100，轻微抖动 >100，中度以上抖动 <50。失败时不误报（返回 False）。
+    """
+    try:
+        from PIL import Image
+        import io as _io
+        import numpy as np
+
+        img = Image.open(_io.BytesIO(image_content)).convert("L")
+        # 统一尺寸，避免分辨率差异影响方差比较
+        img = img.resize((200, 200), Image.LANCZOS)
+        a = np.asarray(img, dtype=np.float32)
+        lap = -4 * a[1:-1, 1:-1] + a[0:-2, 1:-1] + a[2:, 1:-1] \
+            + a[1:-1, 0:-2] + a[1:-1, 2:]
+        return float(lap.var()) < threshold
+    except Exception as e:
+        logger.warning(f"模糊检测异常，跳过: {e}")
+        return False
+
+
 # ============================================================
 # 上传体检报告
 # ============================================================
@@ -347,6 +414,8 @@ async def upload_exam_report(
         merged_metrics = {}
         ai_result = None  # 第一张照片的解析结果（exam_date/hospital_name/summary/followup_days 取它）
         photo_url = None
+        photo_urls = []  # 所有页照片 URL（供多页报告事后查看）
+        blur_pages = []  # 判定为模糊的照片页码（1 起），用于提示重拍
 
         for idx, f in enumerate(file_list):
             # 验证文件类型
@@ -360,6 +429,10 @@ async def upload_exam_report(
             file_ext = f.content_type.split("/")[-1]
             object_name = f"exam_reports/{user_id}/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{idx}.{file_ext}"
 
+            # 模糊检测：拍糊的照片识别结果不可靠，记录页码供前端提示重拍
+            if _detect_blur(content):
+                blur_pages.append(idx + 1)
+
             upload_ok = minio_client.upload_file(object_name, content, f.content_type)
             if not upload_ok:
                 raise HTTPException(
@@ -367,9 +440,11 @@ async def upload_exam_report(
                     detail="图片上传失败"
                 )
 
+            page_url = minio_client.get_file_url(object_name)
+            photo_urls.append(page_url)
             # 第一张照片的 URL 作为报告主图
             if idx == 0:
-                photo_url = minio_client.get_file_url(object_name)
+                photo_url = page_url
 
             result = await _call_qwen_vl(content, f.content_type)
             if not result:
@@ -392,6 +467,14 @@ async def upload_exam_report(
                 }
 
         extracted_metrics = list(merged_metrics.values())
+
+        # AI 返回的 status 可能存在误判，按参考范围重算，纠正后统计异常数
+        for m in extracted_metrics:
+            computed = _normalize_status_from_range(m.get("metric_value"), m.get("reference_range"))
+            if computed is not None:
+                m["status"] = computed
+                m["is_abnormal"] = computed != "normal"
+
         abnormal_count = sum(1 for m in extracted_metrics if m.get("is_abnormal"))
 
         # exam_date / hospital_name 取第一张结果（用户未手动指定时）
@@ -425,6 +508,7 @@ async def upload_exam_report(
             hospital_name=hospital_name,
             report_type=report_type,
             photo_url=photo_url,
+            photo_urls=photo_urls,
             followup_date=followup_date,
             abnormal_count=abnormal_count,
             summary=ai_result.get("summary") if ai_result else None,
@@ -503,10 +587,15 @@ async def upload_exam_report(
         db.commit()
         db.refresh(report)
 
+        data = ExamReportResponse.model_validate(report).model_dump()
+        if blur_pages:
+            # 附加模糊页提示（前端据此语音引导重拍）
+            data["blur_warning"] = blur_pages
+
         return BaseResponse(
             success=True,
             message="体检报告上传成功，AI正在分析",
-            data=ExamReportResponse.model_validate(report).model_dump()
+            data=data
         )
     except HTTPException:
         raise
@@ -634,6 +723,30 @@ async def get_latest_exam_report(
             ExamMetric.report_id == latest_report.id,
             ExamMetric.is_abnormal == True
         ).all()
+        abnormal_names = [m.metric_name for m in abnormal_metrics]
+
+        # 趋势预警：最新报告存在异常指标，且该指标在上一次报告中同样异常（持续未改善）
+        has_trend_warning = False
+        previous_report = db.query(ExamReport).filter(
+            ExamReport.user_id == user_id,
+            ExamReport.exam_date < latest_report.exam_date,
+            exists().where(ExamMetric.report_id == ExamReport.id)
+        ).order_by(desc(ExamReport.exam_date)).first()
+        if previous_report:
+            prev_abnormal = set(
+                m.metric_name for m in db.query(ExamMetric).filter(
+                    ExamMetric.report_id == previous_report.id,
+                    ExamMetric.is_abnormal == True
+                ).all()
+            )
+            if prev_abnormal.intersection(abnormal_names):
+                has_trend_warning = True
+
+        # 建议下次体检日期：优先复查日期，否则按年度体检（上次体检 + 1 年）
+        next_checkup_date = latest_report.followup_date or (
+            latest_report.exam_date + timedelta(days=365)
+            if latest_report.exam_date else None
+        )
 
         return BaseResponse(
             success=True,
@@ -642,7 +755,9 @@ async def get_latest_exam_report(
                 user_id=user_id,
                 latest_exam_date=latest_report.exam_date,
                 abnormal_count=latest_report.abnormal_count,
-                abnormal_metrics=[m.metric_name for m in abnormal_metrics],
+                abnormal_metrics=abnormal_names,
+                has_trend_warning=has_trend_warning,
+                next_checkup_date=next_checkup_date,
                 followup_date=latest_report.followup_date
             ).model_dump()
         )

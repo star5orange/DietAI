@@ -103,7 +103,7 @@ class _PermissionPageState extends ConsumerState<PermissionPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.targetUserName}的数据权限'),
+        title: Text('对${widget.targetUserName}的数据可见性'),
         actions: [
           if (!_isLoading && !_isSaving)
             TextButton(
@@ -134,8 +134,8 @@ class _PermissionPageState extends ConsumerState<PermissionPage> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '选择对 ${widget.targetUserName} 可见的数据类型',
-                      style: TextStyle(color: Colors.blue[700], fontSize: 14),
+                      '以下是你对 ${widget.targetUserName} 可见的数据，\n关闭开关 = 隐藏你的该数据，对方将无法查看',
+                      style: TextStyle(color: Colors.blue[700], fontSize: 13),
                     ),
                   ),
                 ],

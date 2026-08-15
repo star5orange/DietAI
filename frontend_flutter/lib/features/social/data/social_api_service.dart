@@ -199,14 +199,13 @@ class SocialApiService {
 
   // ==================== 在线状态 ====================
 
-  /// 获取用户在线状态
-  Future<ApiResponse<bool>> getOnlineStatus(int userId) async {
+  /// 获取用户在线状态（在线标记 + 最后在线时间）
+  Future<ApiResponse<OnlineStatusData>> getOnlineStatus(int userId) async {
     try {
       final res = await _api.get('/messages/online-status/$userId');
       if (res.success && res.data is Map<String, dynamic>) {
-        final data = res.data as Map<String, dynamic>;
-        final isOnline = data['is_online'] as bool? ?? false;
-        return ApiResponse.success(message: res.message, data: isOnline);
+        final data = OnlineStatusData.fromJson(res.data as Map<String, dynamic>);
+        return ApiResponse.success(message: res.message, data: data);
       }
       return ApiResponse.failure(message: res.message);
     } catch (e) {

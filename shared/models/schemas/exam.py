@@ -56,6 +56,7 @@ class ExamReportResponse(BaseModel):
     hospital_name: Optional[str] = None
     report_type: Optional[str] = None
     photo_url: Optional[str] = None
+    photo_urls: Optional[List[str]] = None
     abnormal_count: int = 0
     summary: Optional[str] = None
     doctor_advice: Optional[str] = None

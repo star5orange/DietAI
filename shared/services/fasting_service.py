@@ -121,6 +121,63 @@ def health_assessment_check(health_data: Dict[str, Any]) -> List[str]:
     return warnings
 
 
+def apply_fasting_target_adjustment(
+    db: Session,
+    user_id: int,
+    base_targets: Dict[str, Any],
+    today: Optional[date] = None,
+) -> Dict[str, Any]:
+    """根据活跃断食计划调整每日热量目标。
+
+    断食日语义：fasting_days 使用 isoweekday（1=周一 ... 7=周日），
+    与前端 FastingPlan.isFastingDayToday() 保持一致。
+
+    - 5_2: 断食日降至 500 kcal，非断食日保持原目标
+    - 16_8: 目标不变，附加进食窗口 note
+    - basic_fasting: 断食日降至 min(原目标, 800) kcal
+    """
+    plan = db.query(FastingPlan).filter(
+        FastingPlan.user_id == user_id,
+        FastingPlan.status.in_(["active", "paused"])
+    ).first()
+    if not plan:
+        return dict(base_targets)
+
+    result = dict(base_targets)
+    plan_type = plan.plan_type
+    current_target = float(base_targets.get("calories", 2000))
+    fasting_days = plan.fasting_days or []
+    weekday = (today or date.today()).isoweekday()
+
+    if plan_type == "5_2":
+        if weekday in fasting_days:
+            result.update({
+                "calories": 500,
+                "protein": 50,
+                "carbs": 40,
+                "fat": 15,
+                "note": "5:2 断食日（500 kcal 限额）",
+            })
+        else:
+            result["note"] = "5:2 正常进食日"
+    elif plan_type == "16_8":
+        start = plan.eating_window_start.strftime("%H:%M")
+        end = plan.eating_window_end.strftime("%H:%M")
+        result["note"] = f"16:8 进食窗口 {start}-{end}"
+    elif plan_type == "basic_fasting":
+        if weekday in fasting_days:
+            fasting_target = min(current_target, 800)
+            result.update({
+                "calories": fasting_target,
+                "protein": 60,
+                "carbs": 80,
+                "fat": 25,
+                "note": "辟谷期基础维护（800 kcal 限额）",
+            })
+
+    return result
+
+
 def create_fasting_plan(
     db: Session,
     user_id: int,
@@ -596,7 +653,7 @@ def get_progress(
         expected_fasting_days = 0
         for i in range(days_total):
             d = plan.start_date + timedelta(days=i)
-            if d.weekday() in fasting_days_list:
+            if d.isoweekday() in fasting_days_list:
                 expected_fasting_days += 1
 
     checkins = db.query(FastingCheckin).filter(

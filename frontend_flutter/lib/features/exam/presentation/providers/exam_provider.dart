@@ -56,17 +56,17 @@ class ExamReportListNotifier extends StateNotifier<ExamReportListState> {
     }
   }
 
-  /// 上传体检报告，成功返回报告对象（含 reportId），失败返回 null
-  Future<ExamReport?> uploadReport({
-    required File photo,
+  /// 上传体检报告（支持多张照片），成功返回上传结果（含报告对象与模糊页提示），失败返回 null
+  Future<ExamUploadResult?> uploadReport({
+    required List<File> photos,
     required int userId,
     String? examDate,
     String? hospitalName,
   }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final response = await _apiService.uploadExamReport(
-        photo: photo,
+      final response = await _apiService.uploadExamReports(
+        photos: photos,
         userId: userId,
         examDate: examDate,
         hospitalName: hospitalName,

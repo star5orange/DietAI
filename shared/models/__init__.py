@@ -14,7 +14,7 @@ from .fasting_models import FastingPlan, FastingCheckin
 from .pet_models import VirtualPetState, PetUnlockable
 
 # Milestone 4 新增模型
-from .social_models import UserRelationship
+from .social_models import UserRelationship, DataPermission
 from .message_models import Message
 from .exam_models import ExamReport, ExamMetric
 from .proxy_models import ProxyRecord
@@ -61,6 +61,14 @@ __all__ = [
     "VirtualPetState",
     "PetUnlockable",
     "HealthAchievement",
+
+    # Milestone 4 新增模型
+    "UserRelationship",
+    "DataPermission",
+    "Message",
+    "ExamReport",
+    "ExamMetric",
+    "ProxyRecord",
 
     # Pydantic模型
     #"schemas"

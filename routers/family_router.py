@@ -17,6 +17,7 @@ from shared.models.social_models import UserRelationship
 from shared.models.pet_models import VirtualPetState, PetProfile
 from shared.models.achievement_models import HealthAchievement
 from shared.models.exercise_models import ExerciseRecord
+from shared.models.exam_models import ExamReport
 from shared.utils.permission import get_visible_fields, field_hidden
 
 router = APIRouter(prefix="/family", tags=["家庭健康"])
@@ -172,6 +173,8 @@ async def _get_member_health_summary(db: Session, member_id: int, current_user_i
             exam_summary = {
                 "latest_exam_date": latest_exam.exam_date.isoformat() if latest_exam.exam_date else None,
                 "abnormal_count": exam_abnormal,
+                "followup_date": latest_exam.followup_date.isoformat() if latest_exam.followup_date else None,
+                "days_until_followup": max(0, (latest_exam.followup_date - today).days) if latest_exam.followup_date else None,
             }
     except Exception as e:
         logger.warning(f"获取体检摘要失败: {e}")
@@ -402,6 +405,23 @@ async def get_member_health_detail(
             ),
         }
 
+        # 被隐藏的字段清单（前端据此区分"无数据"与"已隐藏"）
+        hidden_fields = []
+        if not show_calories:
+            hidden_fields.append("calories")
+        if not show_water:
+            hidden_fields.append("water")
+        if not show_weight:
+            hidden_fields.append("weight")
+        if not show_exercise:
+            hidden_fields.append("exercise")
+        if not show_goal:
+            hidden_fields.append("health_goal")
+        if not show_virtual_pet:
+            hidden_fields.append("virtual_pet")
+        if not show_real_pet:
+            hidden_fields.append("real_pet")
+
         return BaseResponse(
             success=True,
             message="获取家人健康详情成功",
@@ -411,6 +431,7 @@ async def get_member_health_detail(
                 "exercise_data": exercise_data,
                 "goal": goal_data,
                 "pet": pet_data,
+                "hidden_fields": hidden_fields,
             }
         )
     except HTTPException:
@@ -459,6 +480,7 @@ async def get_family_alerts(
             show_water_alert = not field_hidden(visible, "water")
             show_calories_alert = not field_hidden(visible, "calories")
             show_pet_alert = not field_hidden(visible, "virtual_pet")
+            show_exam_alert = not field_hidden(visible, "exam_report")
 
             # 检查饮水不足
             today_water = db.query(func.sum(WaterIntakeRecord.amount_ml)).filter(
@@ -511,6 +533,31 @@ async def get_family_alerts(
                     "message": f"{real_name}的桌宠已饥饿{hour_text}",
                     "severity": "info"
                 })
+
+            # 检查体检异常（最新体检有异常项 / 复查日期临近）
+            if show_exam_alert:
+                latest_exam = db.query(ExamReport).filter(
+                    ExamReport.user_id == other_id
+                ).order_by(ExamReport.exam_date.desc()).first()
+                if latest_exam:
+                    if latest_exam.abnormal_count and latest_exam.abnormal_count > 0:
+                        alerts.append({
+                            "type": "exam_abnormal",
+                            "user_id": other_id,
+                            "user_name": real_name,
+                            "message": f"{real_name}最近体检有 {latest_exam.abnormal_count} 项异常（{latest_exam.exam_date.isoformat()}）",
+                            "severity": "warning"
+                        })
+                    if latest_exam.followup_date:
+                        days_until = (latest_exam.followup_date - today).days
+                        if 0 <= days_until <= 14:
+                            alerts.append({
+                                "type": "exam_followup",
+                                "user_id": other_id,
+                                "user_name": real_name,
+                                "message": f"{real_name}的体检复查日期临近（还有 {days_until} 天，{latest_exam.followup_date.isoformat()}）",
+                                "severity": "info"
+                            })
 
         return BaseResponse(
             success=True,
@@ -702,9 +749,11 @@ async def proxy_record_food(
         # 通知被记录人
         try:
             from shared.services.push_service import send_push_to_user
-            # 获取代记录人信息
+            # 获取代记录人信息（real_name 在 UserProfile 表，User 上没有该字段）
             recorder = db.query(User).filter(User.id == current_user.id).first()
-            recorder_name = recorder.real_name or recorder.username if recorder else "家人"
+            recorder_profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
+            recorder_name = (recorder_profile.real_name if recorder_profile and recorder_profile.real_name
+                             else (recorder.username if recorder else "家人"))
             
             # 构建通知内容
             food_name = food_record.food_name or "食物"
@@ -804,8 +853,11 @@ async def proxy_record_water(
         # 通知被代记录的家人
         try:
             from shared.services.push_service import send_push_to_user
+            # 获取代记录人信息（real_name 在 UserProfile 表，User 上没有该字段）
             proxy_user = db.query(User).filter(User.id == current_user.id).first()
-            proxy_name = proxy_user.real_name or proxy_user.username if proxy_user else "家人"
+            proxy_profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
+            proxy_name = (proxy_profile.real_name if proxy_profile and proxy_profile.real_name
+                          else (proxy_user.username if proxy_user else "家人"))
             await send_push_to_user(
                 db=db,
                 user_id=target_user_id,
@@ -1047,9 +1099,13 @@ async def get_family_diet_preferences(
             profile = db.query(UserProfile).filter(UserProfile.user_id == other_id).first()
 
             if profile:
+                # 数据权限：dietary_preferences 被隐藏时不返回偏好内容
+                visible = get_visible_fields(db, other_id, current_user.id)
+                show_preferences = not field_hidden(visible, "dietary_preferences")
+
                 # 解析饮食偏好（JSON 字符串）
                 dietary_prefs = []
-                if profile.dietary_preferences:
+                if show_preferences and profile.dietary_preferences:
                     import json
                     try:
                         dietary_prefs = json.loads(profile.dietary_preferences) if isinstance(profile.dietary_preferences, str) else profile.dietary_preferences
@@ -1058,7 +1114,7 @@ async def get_family_diet_preferences(
 
                 # 解析不喜欢的食物
                 food_dislikes = []
-                if profile.food_dislikes:
+                if show_preferences and profile.food_dislikes:
                     try:
                         food_dislikes = json.loads(profile.food_dislikes) if isinstance(profile.food_dislikes, str) else profile.food_dislikes
                     except:

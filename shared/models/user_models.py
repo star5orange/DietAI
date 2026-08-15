@@ -81,7 +81,9 @@ class UserProfile(Base):
     monthly_food_budget = Column(Numeric(10, 2), default=0)
 
     # 用户自定义卡路里目标 (kcal/天)
-    target_calories = Column(Integer, default=2000)
+    # 注意：不设默认值！未设置时为 NULL，前端回退到系统按 TDEE 智能计算的值
+    # 之前 default=2000 导致"从未设置"的用户也显示 2000，掩盖了智能计算
+    target_calories = Column(Integer, nullable=True)
 
 
 class HealthGoal(Base):

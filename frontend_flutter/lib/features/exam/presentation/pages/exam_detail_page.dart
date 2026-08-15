@@ -205,7 +205,12 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
 
   /// 顶部"报告信息"卡：体检日期 / 医院 / 原始照片 / 复查提醒
   Widget _buildReportInfoCard(ExamReportDetail detail) {
-    final photoUrl = detail.photoUrl;
+    // 多页照片：优先 photo_urls，兼容旧数据只有 photo_url
+    final photos = (detail.photoUrls != null && detail.photoUrls!.isNotEmpty)
+        ? detail.photoUrls!
+        : (detail.photoUrl != null && detail.photoUrl!.isNotEmpty
+            ? [detail.photoUrl!]
+            : <String>[]);
     final followupDate = detail.followupDate;
     return Container(
       width: double.infinity,
@@ -237,19 +242,21 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
             _buildInfoRow(Icons.local_hospital, '医院', detail.hospitalName!),
           if (detail.ownerName != null && detail.ownerName!.isNotEmpty)
             _buildInfoRow(Icons.person, '归属', detail.ownerName!),
-          if (photoUrl != null && photoUrl.isNotEmpty)
+          if (photos.isNotEmpty)
             GestureDetector(
-              onTap: () => _showPhotoPreview(photoUrl),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 4),
+              onTap: () => _showPhotoPreview(photos),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
                   children: [
-                    Icon(Icons.photo_camera,
+                    const Icon(Icons.photo_camera,
                         color: AppColors.primary, size: 16),
-                    SizedBox(width: 8),
+                    const SizedBox(width: 8),
                     Text(
-                      '查看原始报告照片',
-                      style: TextStyle(
+                      photos.length > 1
+                          ? '查看原始报告照片（共${photos.length}页）'
+                          : '查看原始报告照片',
+                      style: const TextStyle(
                         fontSize: 13,
                         color: AppColors.primary,
                         fontWeight: FontWeight.w500,
@@ -545,8 +552,58 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
     }
   }
 
-  /// 查看原始报告照片（大图预览）
-  void _showPhotoPreview(String url) {
+  /// 查看原始报告照片（大图预览，支持多页滑动）
+  void _showPhotoPreview(List<String> urls) {
+    final photos = urls.where((u) => u.isNotEmpty).toList();
+    if (photos.isEmpty) return;
+
+    if (photos.length == 1) {
+      _showSinglePhoto(photos.first);
+      return;
+    }
+
+    final pageController = PageController();
+    var currentPage = 0;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Dialog(
+          backgroundColor: Colors.black,
+          insetPadding: const EdgeInsets.all(12),
+          child: Stack(
+            children: [
+              PageView.builder(
+                controller: pageController,
+                itemCount: photos.length,
+                onPageChanged: (i) => setDialogState(() => currentPage = i),
+                itemBuilder: (context, index) => _buildPhotoView(photos[index]),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ),
+              Positioned(
+                bottom: 12,
+                left: 0,
+                right: 0,
+                child: Text(
+                  '${currentPage + 1} / ${photos.length}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showSinglePhoto(String url) {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -554,29 +611,7 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
         insetPadding: const EdgeInsets.all(12),
         child: Stack(
           children: [
-            InteractiveViewer(
-              maxScale: 4,
-              child: Image.network(
-                url,
-                fit: BoxFit.contain,
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) => const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.broken_image, color: Colors.white54, size: 48),
-                      SizedBox(height: 12),
-                      Text('照片加载失败', style: TextStyle(color: Colors.white70)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            _buildPhotoView(url),
             Positioned(
               top: 8,
               right: 8,
@@ -586,6 +621,32 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhotoView(String url) {
+    return InteractiveViewer(
+      maxScale: 4,
+      child: Image.network(
+        url,
+        fit: BoxFit.contain,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return const Center(
+            child: CircularProgressIndicator(color: Colors.white),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) => const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.broken_image, color: Colors.white54, size: 48),
+              SizedBox(height: 12),
+              Text('照片加载失败', style: TextStyle(color: Colors.white70)),
+            ],
+          ),
         ),
       ),
     );

@@ -196,12 +196,12 @@ class FriendList {
 /// 好友健康摘要（基础健康信息）
 class FriendHealthSummary {
   final int userId;
-  final double totalCalories;
-  final double targetCalories;
-  final int waterIntake;
-  final int waterGoal;
-  final String petMood;
-  final String petName;
+  final double? totalCalories;
+  final double? targetCalories;
+  final int? waterIntake;
+  final int? waterGoal;
+  final String? petMood;
+  final String? petName;
 
   FriendHealthSummary({
     required this.userId,
@@ -216,12 +216,12 @@ class FriendHealthSummary {
   factory FriendHealthSummary.fromJson(Map<String, dynamic> json) {
     return FriendHealthSummary(
       userId: json['user_id'] as int,
-      totalCalories: (json['total_calories'] as num?)?.toDouble() ?? 0,
-      targetCalories: (json['target_calories'] as num?)?.toDouble() ?? 0,
-      waterIntake: (json['water_intake'] as num?)?.toInt() ?? 0,
-      waterGoal: (json['water_goal'] as num?)?.toInt() ?? 0,
-      petMood: json['pet_mood'] as String? ?? 'normal',
-      petName: json['pet_name'] as String? ?? '桌宠',
+      totalCalories: (json['total_calories'] as num?)?.toDouble(),
+      targetCalories: (json['target_calories'] as num?)?.toDouble(),
+      waterIntake: (json['water_intake'] as num?)?.toInt(),
+      waterGoal: (json['water_goal'] as num?)?.toInt(),
+      petMood: json['pet_mood'] as String?,
+      petName: json['pet_name'] as String?,
     );
   }
 }
@@ -257,4 +257,19 @@ class LeaderboardItem {
   }
 
   String get displayName => realName ?? username;
+}
+
+/// 在线状态（在线标记 + 最后在线时间）
+class OnlineStatusData {
+  final bool isOnline;
+  final DateTime? lastOnlineAt;
+
+  OnlineStatusData({required this.isOnline, this.lastOnlineAt});
+
+  factory OnlineStatusData.fromJson(Map<String, dynamic> json) {
+    return OnlineStatusData(
+      isOnline: json['is_online'] as bool? ?? false,
+      lastOnlineAt: DateTime.tryParse(json['last_online_at'] as String? ?? ''),
+    );
+  }
 }

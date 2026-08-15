@@ -9,7 +9,7 @@ class ExamApiService {
   final ApiService _api = ApiService();
 
   /// 上传体检报告（多张照片，字段名 photos）
-  Future<ApiResponse<ExamReport>> uploadExamReports({
+  Future<ApiResponse<ExamUploadResult>> uploadExamReports({
     required List<File> photos,
     required int userId,
     String? examDate,
@@ -38,8 +38,9 @@ class ExamApiService {
       );
 
       if (res.success && res.data is Map<String, dynamic>) {
-        final report = ExamReport.fromJson(res.data as Map<String, dynamic>);
-        return ApiResponse.success(message: res.message, data: report);
+        final result =
+            ExamUploadResult.fromJson(res.data as Map<String, dynamic>);
+        return ApiResponse.success(message: res.message, data: result);
       }
       return ApiResponse.failure(message: res.message);
     } catch (e) {
@@ -48,7 +49,7 @@ class ExamApiService {
   }
 
   /// 上传单张体检报告（兼容原有调用）
-  Future<ApiResponse<ExamReport>> uploadExamReport({
+  Future<ApiResponse<ExamUploadResult>> uploadExamReport({
     required File photo,
     required int userId,
     String? examDate,

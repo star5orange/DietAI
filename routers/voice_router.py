@@ -148,7 +148,7 @@ async def recognize_voice(
 # 文本转语音 (TTS)
 # ============================================================
 
-# 火山引擎 TTS API
+# 火山引擎 TTS v1 API
 TTS_URL = "https://openspeech.bytedance.com/api/v1/tts"
 
 
@@ -158,33 +158,47 @@ async def text_to_speech(
     voice_type: str = Form("zh_female", description="语音类型：zh_female/zh_male"),
     current_user: User = Depends(get_current_user),
 ):
-    """将文本转换为语音并返回音频文件"""
-    api_key = settings.volc_asr_api_key
-    if not api_key:
-        raise HTTPException(status_code=500, detail="语音服务未配置")
-    
+    """将文本转换为语音并返回音频文件（火山引擎 TTS v1，Bearer appid/token 鉴权）"""
+    appid = settings.volc_tts_appid
+    token = settings.volc_tts_token
+    if not appid or not token:
+        raise HTTPException(
+            status_code=500,
+            detail="语音合成服务未配置（需设置 DIETAI_VOLC_TTS_APPID / DIETAI_VOLC_TTS_TOKEN）"
+        )
+
     # 文本长度限制
     if len(text) > 500:
         raise HTTPException(status_code=400, detail="文本过长，最多500字")
-    
-    # 构建 TTS 请求
+
+    # 音色映射：zh_female -> 通用女声 BV001_streaming，zh_male -> 通用男声 BV002_streaming
+    voice_id = {
+        "zh_female": "BV001_streaming",
+        "zh_male": "BV002_streaming",
+    }.get(voice_type, "BV001_streaming")
+
+    # 构建 TTS v1 请求（Authorization: Bearer;{appid};{token}）
     headers = {
-        "X-Api-Key": api_key,
-        "X-Api-Resource-Id": settings.volc_asr_resource_id,
+        "Authorization": f"Bearer;{appid};{token}",
         "Content-Type": "application/json",
     }
-    
+
     body = {
-        "text": text,
-        "config": {
+        "user": {"uid": f"dietai_{current_user.id}"},
+        "audio": {
+            "voice_type": voice_id,
             "encoding": "mp3",
-            "rate": 10,  # 语速 0-10
-            "volume": 10,  # 音量 0-10
-            "pitch": 10,  # 音调 0-10
+            "speed_ratio": 1.0,
+            "volume_ratio": 1.0,
+            "pitch_ratio": 1.0,
         },
-        "voice_type": voice_type,
+        "request": {
+            "reqid": str(uuid.uuid4()),
+            "text": text,
+            "operation": "query",
+        },
     }
-    
+
     try:
         resp = http_requests.post(
             TTS_URL,
@@ -192,22 +206,26 @@ async def text_to_speech(
             headers=headers,
             timeout=30,
         )
-        
+
         if resp.status_code != 200:
             raise HTTPException(
                 status_code=500,
-                detail=f"TTS 请求失败: {resp.status_code}"
+                detail=f"TTS 请求失败: HTTP {resp.status_code}"
             )
-        
-        # 检查响应
-        status_code = resp.headers.get("X-Api-Status-Code", "")
-        if status_code != "30000000":
-            message = resp.headers.get("X-Api-Message", "未知错误")
+
+        # 成功时 body 为音频二进制；失败时返回 JSON 错误体
+        content_type = resp.headers.get("Content-Type", "")
+        if "application/json" in content_type.lower():
+            try:
+                err = resp.json()
+                msg = err.get("message", err.get("msg", err.get("error", "未知错误")))
+            except Exception:
+                msg = "未知错误"
             raise HTTPException(
                 status_code=500,
-                detail=f"TTS 转换失败: [{status_code}] {message}"
+                detail=f"TTS 转换失败: {msg}"
             )
-        
+
         # 返回音频数据
         from fastapi.responses import Response
         return Response(
@@ -217,7 +235,7 @@ async def text_to_speech(
                 "Content-Disposition": "inline; filename=speech.mp3"
             }
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:

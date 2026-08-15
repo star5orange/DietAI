@@ -9,7 +9,7 @@ from .user import (
     ForgotPasswordRequest, VerifyResetCodeRequest, ResetPasswordRequest,
 )
 from .food import (
-    FoodRecordCreate, FoodRecordResponse, NutritionDetailCreate, NutritionDetailResponse,
+    FoodRecordCreate, FoodRecordConfirmCreate, FoodRecordResponse, NutritionDetailCreate, NutritionDetailResponse,
     DailyNutritionSummaryResponse, NutritionTrendParams,
 )
 from .chat import (

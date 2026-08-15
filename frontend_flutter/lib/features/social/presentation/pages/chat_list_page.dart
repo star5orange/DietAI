@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/services/websocket_service.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../data/message_api_service.dart';
 import '../../domain/message_models.dart';
@@ -18,14 +19,33 @@ class ChatListPage extends ConsumerStatefulWidget {
 
 class _ChatListPageState extends ConsumerState<ChatListPage> {
   final ChatService _chatService = ChatService(MessageApiService());
+  final WebSocketService _wsService = WebSocketService();
 
   @override
   void initState() {
     super.initState();
+    // 正在消息列表页，抑制全局新消息本地通知（列表本身会实时刷新）
+    WebSocketService.suppressNewMessageNotification = true;
+    // 订阅全局 WebSocket：收到新消息时刷新会话列表（置顶 + 未读数）
+    _wsService.onMessageReceived = (_) {
+      if (mounted) {
+        ref.read(chatListProvider.notifier).loadChatList();
+      }
+    };
     // 加载会话列表
     Future.microtask(() {
       ref.read(chatListProvider.notifier).loadChatList();
     });
+  }
+
+  @override
+  void dispose() {
+    WebSocketService.suppressNewMessageNotification = false;
+    // 清除回调，避免离开页面后仍触发刷新
+    if (_wsService.onMessageReceived != null) {
+      _wsService.onMessageReceived = null;
+    }
+    super.dispose();
   }
 
   /// 根据最后一条消息内容生成摘要（区分图片/戳一戳/食物卡片）
@@ -65,8 +85,7 @@ class _ChatListPageState extends ConsumerState<ChatListPage> {
                       const Icon(Icons.chat_bubble_outline,
                           size: 64, color: Colors.grey),
                       const SizedBox(height: 16),
-                      const Text('暂无会话',
-                          style: TextStyle(color: Colors.grey)),
+                      const Text('暂无会话', style: TextStyle(color: Colors.grey)),
                       const SizedBox(height: 16),
                       ElevatedButton.icon(
                         onPressed: () => context.push('/social/search'),
@@ -89,8 +108,8 @@ class _ChatListPageState extends ConsumerState<ChatListPage> {
                         room: room,
                         preview: _lastMessagePreview(room),
                         timeText: room.lastMessageTime != null
-                            ? _chatService.formatMessageTime(
-                                room.lastMessageTime!)
+                            ? _chatService
+                                .formatMessageTime(room.lastMessageTime!)
                             : '',
                         onTap: () {
                           // 与现有入口一致的跳转方式
@@ -176,9 +195,7 @@ class _ChatRoomTile extends ConsumerWidget {
                         minHeight: 18,
                       ),
                       child: Text(
-                        room.unreadCount > 99
-                            ? '99+'
-                            : '${room.unreadCount}',
+                        room.unreadCount > 99 ? '99+' : '${room.unreadCount}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 10,

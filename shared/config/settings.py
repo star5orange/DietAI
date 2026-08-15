@@ -184,6 +184,10 @@ class Settings(BaseSettings):
     volc_asr_api_key: str = Field(default="", description="火山引擎语音识别API密钥")
     volc_asr_resource_id: str = Field(default="volc.seedasr.auc", description="语音识别资源ID(2.0版)")
 
+    # 火山引擎语音合成配置 (TTS v1，需开通"语音技术-语音合成"服务)
+    volc_tts_appid: str = Field(default="", description="火山引擎语音合成APPID")
+    volc_tts_token: str = Field(default="", description="火山引擎语音合成Access Token")
+
     # 健康检查配置
     health_check_enabled: bool = Field(default=True, description="是否启用健康检查")
     health_check_interval: int = Field(default=30, description="健康检查间隔(秒)")
