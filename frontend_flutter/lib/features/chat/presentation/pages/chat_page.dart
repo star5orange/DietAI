@@ -371,24 +371,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         actions: [
           IconButton(
             icon: const Icon(
-              Icons.tune,
-              size: 24,
-              color: Color(0xFF2BAF74),
-            ),
-            tooltip: 'AI顾问风格设置',
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      AdvisorStylePage(sessionType: widget.sessionType),
-                ),
-              );
-              _loadAdvisorStyle();
-            },
-          ),
-          IconButton(
-            icon: const Icon(
               Icons.delete_sweep_outlined,
               size: 22,
               color: Color(0xFFE74C3C),

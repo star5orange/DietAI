@@ -8,22 +8,29 @@ import '../domain/exam_models.dart';
 class ExamApiService {
   final ApiService _api = ApiService();
 
-  /// 上传体检报告
-  Future<ApiResponse<ExamReport>> uploadExamReport({
-    required File photo,
+  /// 上传体检报告（多张照片，字段名 photos）
+  Future<ApiResponse<ExamUploadResult>> uploadExamReports({
+    required List<File> photos,
     required int userId,
     String? examDate,
     String? hospitalName,
     String reportType = 'full',
   }) async {
     try {
-      final formData = FormData.fromMap({
-        'photo': await MultipartFile.fromFile(photo.path),
-        'user_id': userId,
-        if (examDate != null) 'exam_date': examDate,
-        if (hospitalName != null) 'hospital_name': hospitalName,
-        'report_type': reportType,
-      });
+      final formData = FormData();
+      for (final photo in photos) {
+        formData.files.add(MapEntry(
+          'photos',
+          await MultipartFile.fromFile(photo.path),
+        ));
+      }
+      formData.fields.add(MapEntry('user_id', '$userId'));
+      if (examDate != null)
+        formData.fields.add(MapEntry('exam_date', examDate));
+      if (hospitalName != null) {
+        formData.fields.add(MapEntry('hospital_name', hospitalName));
+      }
+      formData.fields.add(MapEntry('report_type', reportType));
 
       final res = await _api.post(
         '/health/exam/upload',
@@ -31,12 +38,99 @@ class ExamApiService {
       );
 
       if (res.success && res.data is Map<String, dynamic>) {
-        final report = ExamReport.fromJson(res.data as Map<String, dynamic>);
-        return ApiResponse.success(message: res.message, data: report);
+        final result =
+            ExamUploadResult.fromJson(res.data as Map<String, dynamic>);
+        return ApiResponse.success(message: res.message, data: result);
       }
       return ApiResponse.failure(message: res.message);
     } catch (e) {
       return ApiResponse.failure(message: '上传体检报告失败', error: e.toString());
+    }
+  }
+
+  /// 上传单张体检报告（兼容原有调用）
+  Future<ApiResponse<ExamUploadResult>> uploadExamReport({
+    required File photo,
+    required int userId,
+    String? examDate,
+    String? hospitalName,
+    String reportType = 'full',
+  }) {
+    return uploadExamReports(
+      photos: [photo],
+      userId: userId,
+      examDate: examDate,
+      hospitalName: hospitalName,
+      reportType: reportType,
+    );
+  }
+
+  /// 获取报告详情元数据
+  Future<ApiResponse<ExamReportDetail>> getExamReportDetail(
+    int userId,
+    int reportId,
+  ) async {
+    try {
+      final res = await _api.get('/health/exam/reports/$userId/$reportId');
+      if (res.success && res.data is Map<String, dynamic>) {
+        final detail =
+            ExamReportDetail.fromJson(res.data as Map<String, dynamic>);
+        return ApiResponse.success(message: res.message, data: detail);
+      }
+      return ApiResponse.failure(message: res.message);
+    } catch (e) {
+      return ApiResponse.failure(message: '获取报告详情失败', error: e.toString());
+    }
+  }
+
+  /// 重新归属报告（修改为谁拍的）
+  Future<ApiResponse<dynamic>> reassignExamReport(
+    int reportId,
+    int targetUserId,
+  ) async {
+    try {
+      final res = await _api.post(
+        '/health/exam/reports/$reportId/reassign',
+        data: {'target_user_id': targetUserId},
+      );
+      if (res.success) {
+        return ApiResponse.success(message: res.message, data: res.data);
+      }
+      return ApiResponse.failure(message: res.message);
+    } catch (e) {
+      return ApiResponse.failure(message: '修改归属失败', error: e.toString());
+    }
+  }
+
+  /// 设置/取消复查提醒（date 传 null 表示取消）
+  Future<ApiResponse<dynamic>> setFollowupDate(
+    int reportId,
+    String? followupDate,
+  ) async {
+    try {
+      final res = await _api.put(
+        '/health/exam/reports/$reportId/followup',
+        data: {'followup_date': followupDate},
+      );
+      if (res.success) {
+        return ApiResponse.success(message: res.message, data: res.data);
+      }
+      return ApiResponse.failure(message: res.message);
+    } catch (e) {
+      return ApiResponse.failure(message: '设置复查提醒失败', error: e.toString());
+    }
+  }
+
+  /// 删除体检报告
+  Future<ApiResponse<dynamic>> deleteExamReport(int reportId) async {
+    try {
+      final res = await _api.delete('/health/exam/reports/$reportId');
+      if (res.success) {
+        return ApiResponse.success(message: res.message, data: res.data);
+      }
+      return ApiResponse.failure(message: res.message);
+    } catch (e) {
+      return ApiResponse.failure(message: '删除体检报告失败', error: e.toString());
     }
   }
 
@@ -45,7 +139,8 @@ class ExamApiService {
     try {
       final res = await _api.get('/health/exam/reports/$userId');
       if (res.success && res.data is Map<String, dynamic>) {
-        final reportList = ExamReportList.fromJson(res.data as Map<String, dynamic>);
+        final reportList =
+            ExamReportList.fromJson(res.data as Map<String, dynamic>);
         return ApiResponse.success(message: res.message, data: reportList);
       }
       return ApiResponse.failure(message: res.message);
@@ -90,6 +185,7 @@ class ExamApiService {
     double? metricValue,
     String? status,
     bool? isAbnormal,
+    String? unit,
   }) async {
     try {
       final res = await _api.put(
@@ -98,6 +194,7 @@ class ExamApiService {
           if (metricValue != null) 'metric_value': metricValue,
           if (status != null) 'status': status,
           if (isAbnormal != null) 'is_abnormal': isAbnormal,
+          if (unit != null) 'unit': unit,
         },
       );
       if (res.success && res.data is Map<String, dynamic>) {
@@ -118,7 +215,8 @@ class ExamApiService {
     try {
       final res = await _api.get('/health/exam/trend/$userId/$metricName');
       if (res.success && res.data is Map<String, dynamic>) {
-        final trend = MetricTrendResponse.fromJson(res.data as Map<String, dynamic>);
+        final trend =
+            MetricTrendResponse.fromJson(res.data as Map<String, dynamic>);
         return ApiResponse.success(message: res.message, data: trend);
       }
       return ApiResponse.failure(message: res.message);

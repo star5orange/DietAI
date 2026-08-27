@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "245740815197",
+    "project_id": "project-4894484094843983944",
+    "storage_bucket": "project-4894484094843983944.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:245740815197:android:319bee98347f2be4f11eb4",
+        "android_client_info": {
+          "package_name": "com.example.dietai_flutter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA0LT-XMhWuNAXw8xRaur-Wu0NKtG7qCKY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

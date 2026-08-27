@@ -118,10 +118,12 @@ void _handleNotificationTap(int notificationId, String? payload) {
 
     // 异步记录响应到后端
     final service = NotificationResponseService();
-    service.createResponse(
+    service
+        .createResponse(
       reminderId: idHash,
       actionType: actionType,
-    ).then((_) {
+    )
+        .then((_) {
       debugPrint('提醒响应记录成功');
     }).catchError((e) {
       debugPrint('记录提醒响应失败: $e');

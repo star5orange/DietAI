@@ -4,6 +4,7 @@ from sqlalchemy import func
 from shared.models.water_models import WaterIntakeRecord
 from shared.models.user_models import UserProfile
 from shared.models.food_models import DailyNutritionSummary
+from shared.models.fasting_models import FastingPlan
 from shared.models.schemas.water import WaterIntakeCreate
 from datetime import date, datetime, timedelta
 from typing import List, Optional
@@ -51,13 +52,30 @@ def get_water_records(
                 .offset(skip).limit(limit).all()
 
 
+def _get_daily_water_goal(db: Session, user_id: int, target_date: date, base_goal: int) -> int:
+    """断食日自动提升饮水目标：5:2 / basic_fasting 断食日建议 ≥2500ml（用户手动设置更高则保留）"""
+    try:
+        plan = db.query(FastingPlan).filter(
+            FastingPlan.user_id == user_id,
+            FastingPlan.status.in_(["active", "paused"])
+        ).first()
+        if plan and plan.plan_type in ("5_2", "basic_fasting"):
+            fasting_days = plan.fasting_days or []
+            if target_date.isoweekday() in fasting_days:
+                return max(base_goal, 2500)
+    except Exception as e:
+        logger.warning(f"断食饮水目标调整失败: {e}")
+    return base_goal
+
+
 def get_daily_water_summary(db: Session, user_id: int,
                             target_date: Optional[date] = None) -> dict:
     """获取指定日期的喝水汇总"""
     if target_date is None:
         target_date = date.today()
     profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
-    daily_goal = profile.daily_water_goal if profile else 2000
+    base_goal = (profile.daily_water_goal or 2000) if profile else 2000
+    daily_goal = _get_daily_water_goal(db, user_id, target_date, base_goal)
 
     records = db.query(WaterIntakeRecord).filter(
         WaterIntakeRecord.user_id == user_id,

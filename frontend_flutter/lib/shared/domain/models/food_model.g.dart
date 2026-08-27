@@ -200,6 +200,7 @@ FoodRecord _$FoodRecordFromJson(Map<String, dynamic> json) => FoodRecord(
       nutritionData: json['nutrition_data'] as Map<String, dynamic>?,
       cost: (json['cost'] as num?)?.toDouble(),
       sourceTag: json['source_tag'] as String?,
+      recordedBy: json['recorded_by_name'] as String?,
     );
 
 Map<String, dynamic> _$FoodRecordToJson(FoodRecord instance) =>
@@ -222,6 +223,7 @@ Map<String, dynamic> _$FoodRecordToJson(FoodRecord instance) =>
       'nutrition_data': instance.nutritionData,
       'cost': instance.cost,
       'source_tag': instance.sourceTag,
+      'recorded_by_name': instance.recordedBy,
     };
 
 FoodRecordCreate _$FoodRecordCreateFromJson(Map<String, dynamic> json) =>
@@ -237,6 +239,7 @@ FoodRecordCreate _$FoodRecordCreateFromJson(Map<String, dynamic> json) =>
       cost: (json['cost'] as num?)?.toDouble(),
       sourceTag: json['source_tag'] as String?,
       targetUserId: (json['target_user_id'] as num?)?.toInt(),
+      analyzeOnly: json['analyze_only'] as bool? ?? false,
     );
 
 Map<String, dynamic> _$FoodRecordCreateToJson(FoodRecordCreate instance) =>
@@ -252,6 +255,7 @@ Map<String, dynamic> _$FoodRecordCreateToJson(FoodRecordCreate instance) =>
       'cost': instance.cost,
       'source_tag': instance.sourceTag,
       'target_user_id': instance.targetUserId,
+      'analyze_only': instance.analyzeOnly,
     };
 
 NutritionDetailCreate _$NutritionDetailCreateFromJson(

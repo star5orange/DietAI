@@ -286,6 +286,10 @@ class AgentOrchestrator:
             goal_type = active_goal.goal_type if active_goal else GoalType.MAINTAIN
             targets = calculate_daily_targets(tdee, goal_type, profile.crowd_tag)
 
+            # 应用活跃断食计划调整（5:2 断食日 500 kcal / basic_fasting 800 kcal 等）
+            from shared.services.fasting_service import apply_fasting_target_adjustment
+            targets = apply_fasting_target_adjustment(db, user_id, targets)
+
             # Get today's consumption
             today = date.today()
             today_summary = db.query(DailyNutritionSummary).filter(

@@ -45,10 +45,10 @@ class _PermissionPageState extends ConsumerState<PermissionPage> {
   Future<void> _loadPermission() async {
     setState(() => _isLoading = true);
     try {
+      // getPermission 返回的是已解析好的 List<String>（visible_fields）
       final response = await _apiService.getPermission(widget.targetUserId);
       if (response.success && response.data != null) {
-        final data = response.data as Map<String, dynamic>;
-        _visibleFields = List<String>.from(data['visible_fields'] ?? []);
+        _visibleFields = List<String>.from(response.data!);
       }
     } catch (e) {
       if (mounted) {
@@ -103,7 +103,7 @@ class _PermissionPageState extends ConsumerState<PermissionPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.targetUserName}的数据权限'),
+        title: Text('对${widget.targetUserName}的数据可见性'),
         actions: [
           if (!_isLoading && !_isSaving)
             TextButton(
@@ -134,8 +134,8 @@ class _PermissionPageState extends ConsumerState<PermissionPage> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '选择对 ${widget.targetUserName} 可见的数据类型',
-                      style: TextStyle(color: Colors.blue[700], fontSize: 14),
+                      '以下是你对 ${widget.targetUserName} 可见的数据，\n关闭开关 = 隐藏你的该数据，对方将无法查看',
+                      style: TextStyle(color: Colors.blue[700], fontSize: 13),
                     ),
                   ),
                 ],

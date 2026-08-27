@@ -479,6 +479,20 @@ def setup_scheduler() -> AsyncIOScheduler:
     except ImportError as e:
         logger.warning(f"Exam reminder tasks not registered: {e}")
 
+    # M4: 桌宠饥饿主动推送（每天 08:30/12:30/18:30/21:30）
+    try:
+        from shared.tasks.pet_starvation_tasks import check_pet_starvation
+        _scheduler.add_job(
+            check_pet_starvation,
+            trigger=CronTrigger(hour=[8, 12, 18, 21], minute=30),
+            id="check_pet_starvation",
+            name="桌宠饥饿提醒检查",
+            replace_existing=True,
+        )
+        logger.info("Pet starvation reminder task registered (daily 08:30/12:30/18:30/21:30)")
+    except ImportError as e:
+        logger.warning(f"Pet starvation tasks not registered: {e}")
+
     _scheduler.start()
     logger.info("Background task scheduler started")
 

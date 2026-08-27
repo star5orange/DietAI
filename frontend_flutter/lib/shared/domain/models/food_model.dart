@@ -237,6 +237,8 @@ class FoodRecord {
   final double? cost;
   @JsonKey(name: 'source_tag')
   final String? sourceTag;
+  @JsonKey(name: 'recorded_by_name')
+  final String? recordedBy;
 
   const FoodRecord({
     required this.id,
@@ -257,6 +259,7 @@ class FoodRecord {
     this.nutritionData,
     this.cost,
     this.sourceTag,
+    this.recordedBy,
   });
 
   factory FoodRecord.fromJson(Map<String, dynamic> json) =>
@@ -324,6 +327,10 @@ class FoodRecordCreate {
   @JsonKey(name: 'target_user_id')
   final int? targetUserId;
 
+  // M4 增强: 仅分析不落库（拍照识别先分析、确认后再创建）
+  @JsonKey(name: 'analyze_only')
+  final bool analyzeOnly;
+
   const FoodRecordCreate({
     required this.recordDate,
     this.recordTime,
@@ -336,6 +343,7 @@ class FoodRecordCreate {
     this.cost,
     this.sourceTag,
     this.targetUserId,
+    this.analyzeOnly = false,
   });
 
   factory FoodRecordCreate.fromJson(Map<String, dynamic> json) =>

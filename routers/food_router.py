@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse, Response
 
 from shared.models.database import get_db, SessionLocal
 from shared.models.schemas import (
-    BaseResponse, FoodRecordCreate, FoodRecordResponse,
+    BaseResponse, FoodRecordCreate, FoodRecordConfirmCreate, FoodRecordResponse,
     NutritionDetailCreate, NutritionDetailResponse,
     DailyNutritionSummaryResponse, DateRangeParams,
     PaginationParams, FileUploadResponse, AgentAnalysisData, NutritionFacts, Recommendations
@@ -315,77 +315,102 @@ async def generate_sse_stream(
         # 代记录归属：target_user_id 优先，记录计入目标用户账户
         owner_user_id = food_data.target_user_id or user_id
         is_proxy = food_data.target_user_id is not None
+        analyze_only = bool(food_data.analyze_only)
 
-        # 创建食物记录
-        food_record = FoodRecord(
-            user_id=owner_user_id,
-            recorded_by_user_id=user_id if is_proxy else None,
+        # 仅分析模式不落库，food_record 保持 None（后续代码据此区分）
+        food_record = None
 
-            record_date=food_data.record_date,
-            record_time=food_data.record_time or datetime.now(),
-            meal_type=food_data.meal_type,
-            food_name=food_data.food_name,
-            description=food_data.description,
-            image_url=food_data.image_url,
-            recording_method=food_data.recording_method or 1,
-            analysis_status=1,  # 待分析
-            cost=food_data.cost,
-            source_tag=food_data.source_tag,
-        )
+        # 仅分析模式：先不落库，分析完成后由用户确认再创建记录
+        # （不发送 record_created 假事件，前端步骤显示为"先分析后确认"）
+        if analyze_only:
+            response_data = {
+                "id": 0,
+                "user_id": owner_user_id,
+                "record_date": food_data.record_date.isoformat() if food_data.record_date else None,
+                "record_time": food_data.record_time.isoformat() if food_data.record_time else None,
+                "meal_type": food_data.meal_type,
+                "food_name": food_data.food_name,
+                "description": food_data.description,
+                "image_url": food_data.image_url,
+                "recording_method": food_data.recording_method or 1,
+                "analysis_status": 2,  # 分析中
+                "cost": float(food_data.cost) if food_data.cost else None,
+                "source_tag": food_data.source_tag,
+                "target_user_id": food_data.target_user_id,
+                "created_at": "",
+            }
+        else:
+            # 创建食物记录
+            food_record = FoodRecord(
+                user_id=owner_user_id,
+                recorded_by_user_id=user_id if is_proxy else None,
+                record_date=food_data.record_date,
+                record_time=food_data.record_time or datetime.now(),
+                meal_type=food_data.meal_type,
+                food_name=food_data.food_name,
+                description=food_data.description,
+                image_url=food_data.image_url,
+                recording_method=food_data.recording_method or 1,
+                analysis_status=1,  # 待分析
+                cost=food_data.cost,
+                source_tag=food_data.source_tag,
+            )
 
-        db.add(food_record)
-        db.commit()
-        db.refresh(food_record)
+            db.add(food_record)
+            db.commit()
+            db.refresh(food_record)
 
-        # 代记录：写溯源日志 + 通知被代记录人
-        if is_proxy:
-            try:
-                proxy_record = ProxyRecord(
-                    recorded_by_user_id=user_id,
-                    target_user_id=owner_user_id,
-                    record_type="food",
-                    record_id=food_record.id
-                )
-                db.add(proxy_record)
-                db.commit()
-                await _send_proxy_food_notification(
-                    db, user_id, owner_user_id, food_record
-                )
-            except Exception as e:
-                logger.warning(f"代记录溯源/通知失败: {e}")
+            # 代记录：写溯源日志 + 通知被代记录人
+            if is_proxy:
+                try:
+                    proxy_record = ProxyRecord(
+                        recorded_by_user_id=user_id,
+                        target_user_id=owner_user_id,
+                        record_type="food",
+                        record_id=food_record.id
+                    )
+                    db.add(proxy_record)
+                    db.commit()
+                    await _send_proxy_food_notification(
+                        db, user_id, owner_user_id, food_record
+                    )
+                except Exception as e:
+                    logger.warning(f"代记录溯源/通知失败: {e}")
 
-        # 如果有图片URL，使用流式Agent分析（在下方处理）
-        if not food_data.image_url and not food_data.description:
-            # 清除相关缓存
-            cache_key = f"nutrition:daily:{owner_user_id}:{food_data.record_date}"
-            cache_service.redis.delete(cache_key)
+            # 如果有图片URL，使用流式Agent分析（在下方处理）
+            if not food_data.image_url and not food_data.description:
+                # 清除相关缓存
+                cache_key = f"nutrition:daily:{owner_user_id}:{food_data.record_date}"
+                cache_service.redis.delete(cache_key)
 
-        # 构建响应数据（直接返回完整数据）
-        response_data = {
-            "id": food_record.id,
-            "user_id": food_record.user_id,
-            "record_date": food_record.record_date.isoformat(),
-            "record_time": food_record.record_time.isoformat() if food_record.record_time else None,
-            "meal_type": food_record.meal_type,
-            "food_name": food_record.food_name,
-            "description": food_record.description,
-            "image_url": food_record.image_url,
-            "recording_method": food_record.recording_method,
-            "analysis_status": food_record.analysis_status,
-            "cost": float(food_record.cost) if food_record.cost else None,
-            "source_tag": food_record.source_tag,
-            "created_at": food_record.created_at.isoformat(),
-        }
+            # 构建响应数据（直接返回完整数据）
+            response_data = {
+                "id": food_record.id,
+                "user_id": food_record.user_id,
+                "record_date": food_record.record_date.isoformat(),
+                "record_time": food_record.record_time.isoformat() if food_record.record_time else None,
+                "meal_type": food_record.meal_type,
+                "food_name": food_record.food_name,
+                "description": food_record.description,
+                "image_url": food_record.image_url,
+                "recording_method": food_record.recording_method,
+                "analysis_status": food_record.analysis_status,
+                "cost": float(food_record.cost) if food_record.cost else None,
+                "source_tag": food_record.source_tag,
+                "target_user_id": food_data.target_user_id,
+                "created_at": food_record.created_at.isoformat(),
+            }
 
-        # 直接返回完整数据（移除中间状态）
-        yield f"data: {json.dumps({'type': 'record_created', 'data': {'record': response_data, 'status': 'created', 'message': '食物记录创建成功'}, 'success': True}, ensure_ascii=False)}\n\n"
+            # 直接返回完整数据（移除中间状态）
+            yield f"data: {json.dumps({'type': 'record_created', 'data': {'record': response_data, 'status': 'created', 'message': '食物记录创建成功'}, 'success': True}, ensure_ascii=False)}\n\n"
 
         # 3. 如果有图片URL或文字描述，则使用Agent进行分析
         if food_data.image_url or food_data.description:
             try:
-                # 设置分析状态为处理中
-                food_record.analysis_status = 2  # 分析中
-                db.commit()
+                # 设置分析状态为处理中（仅落库模式）
+                if food_record is not None:
+                    food_record.analysis_status = 2  # 分析中
+                    db.commit()
 
                 is_text_analysis = not food_data.image_url and bool(food_data.description)
                 analysis_type = "文字" if is_text_analysis else "图片"
@@ -445,61 +470,67 @@ async def generate_sse_stream(
 
                 # 如果有营养分析结果，创建营养详情记录
                 if analysis_complete_data:
-                    try:
-                        nf_data = analysis_complete_data["nutrition_facts"]
-                        # 确保是dict格式
-                        if hasattr(nf_data, 'model_dump'):
-                            nf_data = nf_data.model_dump()
-                        elif hasattr(nf_data, 'dict'):
-                            nf_data = nf_data.dict()
+                    if analyze_only:
+                        # 仅分析模式：不落库，等待用户确认后由 confirm-create 接口保存
+                        yield f"data: {json.dumps({'type': 'nutrition_saved', 'data': {'status': 'pending', 'message': '分析完成，请确认后创建记录'}, 'success': True}, ensure_ascii=False)}\n\n"
+                    else:
+                        try:
+                            nf_data = analysis_complete_data["nutrition_facts"]
+                            # 确保是dict格式
+                            if hasattr(nf_data, 'model_dump'):
+                                nf_data = nf_data.model_dump()
+                            elif hasattr(nf_data, 'dict'):
+                                nf_data = nf_data.dict()
 
-                        # ⚠️ 优先用AI识别结果更新食物名称（放在最前面，确保不被后续异常跳过）
-                        food_items = nf_data.get("food_items") or []
-                        if food_items:
-                            food_record.food_name = food_items[0] if len(food_items) == 1 else "、".join(food_items[:3])
-                            db.commit()  # 先提交食物名称更新
+                            # ⚠️ 优先用AI识别结果更新食物名称（放在最前面，确保不被后续异常跳过）
+                            food_items = nf_data.get("food_items") or []
+                            if food_items:
+                                food_record.food_name = food_items[0] if len(food_items) == 1 else "、".join(food_items[:3])
+                                db.commit()  # 先提交食物名称更新
 
-                        # 持久化AI分析结果
-                        food_record.analysis_result = {
-                            "short_comment": analysis_complete_data.get("short_comment") or "",
-                            "image_description": analysis_complete_data.get("image_description") or "",
-                            "food_items": food_items,
-                            "recommendations": analysis_complete_data.get("recommendations") or {},
-                        }
+                            # 持久化AI分析结果
+                            food_record.analysis_result = {
+                                "short_comment": analysis_complete_data.get("short_comment") or "",
+                                "image_description": analysis_complete_data.get("image_description") or "",
+                                "food_items": food_items,
+                                "recommendations": analysis_complete_data.get("recommendations") or {},
+                            }
 
-                        nutrition_facts = NutritionFacts(**nf_data)
-                        await create_nutrition_detail_from_analysis(
-                            food_record.id,
-                            nutrition_facts,
-                            db
-                        )
+                            nutrition_facts = NutritionFacts(**nf_data)
+                            await create_nutrition_detail_from_analysis(
+                                food_record.id,
+                                nutrition_facts,
+                                db
+                            )
 
-                        # 更新分析状态为完成
-                        food_record.analysis_status = 3  # 已完成
-                        db.commit()
+                            # 更新分析状态为完成
+                            food_record.analysis_status = 3  # 已完成
+                            db.commit()
 
-                        # 触发每日营养汇总更新（代记录时归属记录本人）
-                        await update_daily_nutrition_summary(owner_user_id, food_data.record_date, db)
+                            # 触发每日营养汇总更新（代记录时归属记录本人）
+                            await update_daily_nutrition_summary(owner_user_id, food_data.record_date, db)
 
-                        yield f"data: {json.dumps({'type': 'nutrition_saved', 'data': {'status': 'completed', 'message': '营养分析完成并已保存'}, 'success': True}, ensure_ascii=False)}\n\n"
-                    except Exception as save_err:
-                        print(f"保存营养详情失败: {save_err}")
-                        import traceback
-                        traceback.print_exc()
-                        # 即使保存失败，也标记为已完成（分析本身成功了）
-                        food_record.analysis_status = 3
-                        db.commit()
-                        yield f"data: {json.dumps({'type': 'nutrition_saved', 'data': {'status': 'completed', 'message': '营养分析完成'}, 'success': True}, ensure_ascii=False)}\n\n"
+                            yield f"data: {json.dumps({'type': 'nutrition_saved', 'data': {'status': 'completed', 'message': '营养分析完成并已保存'}, 'success': True}, ensure_ascii=False)}\n\n"
+                        except Exception as save_err:
+                            print(f"保存营养详情失败: {save_err}")
+                            import traceback
+                            traceback.print_exc()
+                            # 即使保存失败，也标记为已完成（分析本身成功了）
+                            food_record.analysis_status = 3
+                            db.commit()
+                            yield f"data: {json.dumps({'type': 'nutrition_saved', 'data': {'status': 'completed', 'message': '营养分析完成'}, 'success': True}, ensure_ascii=False)}\n\n"
                 else:
-                    # 如果分析失败，设置为待分析
-                    food_record.analysis_status = 1  # 待分析
-                    db.commit()
+                    # 如果分析失败，设置为待分析（仅落库模式）
+                    if food_record is not None:
+                        food_record.analysis_status = 1  # 待分析
+                        db.commit()
                     yield f"data: {json.dumps({'type': 'analysis_failed', 'data': {'status': 'failed', 'message': '分析失败，请稍后重试'}, 'success': False}, ensure_ascii=False)}\n\n"
 
             except Exception as e:
-                # 分析出错，设置为待分析状态
-                food_record.analysis_status = 1  # 待分析
-                db.commit()
+                # 分析出错，设置为待分析状态（仅落库模式）
+                if food_record is not None:
+                    food_record.analysis_status = 1  # 待分析
+                    db.commit()
                 print(f"Agent分析失败: {str(e)}")
                 yield f"data: {json.dumps({'type': 'analysis_failed', 'data': {'status': 'failed', 'message': f'分析失败: {str(e)}'}, 'success': False}, ensure_ascii=False)}\n\n"
 
@@ -510,9 +541,9 @@ async def generate_sse_stream(
         # 5. 发送完成信号（携带最终食物名称供前端刷新）
         completion_data = {
             'status': 'completed',
-            'message': '流程完成',
-            'food_name': food_record.food_name,
-            'record_id': food_record.id,
+            'message': ('分析完成，请确认后创建记录' if analyze_only else '流程完成'),
+            'food_name': (food_record.food_name if food_record else (response_data.get('food_name') or '')),
+            'record_id': (food_record.id if food_record else 0),
         }
         yield f"data: {json.dumps({'type': 'stream_complete', 'data': completion_data, 'success': True}, ensure_ascii=False)}\n\n"
 
@@ -571,6 +602,181 @@ async def create_food_record(
             "Access-Control-Allow-Headers": "*",
         }
     )
+
+
+def _build_nutrition_facts_robust(nf_data: dict) -> Optional[NutritionFacts]:
+    """宽松构造 NutritionFacts：前端回传字段缺失时用默认值补齐，避免营养详情保存失败"""
+    try:
+        return NutritionFacts(**nf_data)
+    except Exception:
+        try:
+            macro = nf_data.get("macronutrients") or {}
+            vm = nf_data.get("vitamins_minerals") or {}
+            return NutritionFacts(
+                food_items=nf_data.get("food_items") or [],
+                total_calories=nf_data.get("total_calories") or 0,
+                macronutrients={
+                    "protein": macro.get("protein") or 0,
+                    "fat": macro.get("fat") or 0,
+                    "carbohydrates": macro.get("carbohydrates") or 0,
+                    "dietary_fiber": macro.get("dietary_fiber") or 0,
+                    "sugar": macro.get("sugar") or 0,
+                },
+                vitamins_minerals={
+                    "vitamin_a": vm.get("vitamin_a") or 0,
+                    "vitamin_c": vm.get("vitamin_c") or 0,
+                    "vitamin_d": vm.get("vitamin_d") or 0,
+                    "calcium": vm.get("calcium") or 0,
+                    "iron": vm.get("iron") or 0,
+                    "sodium": vm.get("sodium") or 0,
+                    "potassium": vm.get("potassium") or 0,
+                    "cholesterol": vm.get("cholesterol") or 0,
+                },
+                health_level=nf_data.get("health_level") or 3,
+            )
+        except Exception:
+            return None
+
+
+@router.post("/records/confirm-create", response_model=BaseResponse)
+async def confirm_create_food_record(
+        confirm_data: FoodRecordConfirmCreate,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """AI 分析结果确认后创建食物记录（先分析 → 用户确认 → 落库）
+
+    前端"拍照识别"流程：analyze_only 仅分析 → 展示结果 → 用户点"确认创建"→ 调用本接口一次性落库。
+    """
+    try:
+        owner_user_id = confirm_data.target_user_id or current_user.id
+        is_proxy = confirm_data.target_user_id is not None
+
+        # 代记录：校验目标用户是否为已接受的家人关系
+        if is_proxy:
+            if not _check_family_relation(db, current_user.id, confirm_data.target_user_id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="只能为家人代记录"
+                )
+
+        # 优先用 AI 识别结果更新食物名称
+        food_name = confirm_data.food_name or ""
+        food_items = confirm_data.food_items or []
+        if not food_name and food_items:
+            food_name = food_items[0] if len(food_items) == 1 else "、".join(food_items[:3])
+
+        # 分析有效性校验：AI 未识别出任何食物且用户未手动填写名称时拒绝创建，
+        # 避免分析异常时产生 0 大卡的空记录
+        if not food_items and not food_name.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="AI分析结果无效（未识别到食物），请重新拍摄后再试"
+            )
+
+        # 创建食物记录（分析已完成状态）
+        food_record = FoodRecord(
+            user_id=owner_user_id,
+            recorded_by_user_id=current_user.id if is_proxy else None,
+            record_date=confirm_data.record_date,
+            record_time=confirm_data.record_time or datetime.now(),
+            meal_type=confirm_data.meal_type,
+            food_name=food_name,
+            description=confirm_data.description,
+            image_url=confirm_data.image_url,
+            recording_method=confirm_data.recording_method or 1,
+            from_source=confirm_data.from_source or "camera",
+            analysis_status=3,  # 已完成（分析在确认前已执行）
+            analysis_result={
+                "short_comment": confirm_data.short_comment or "",
+                "image_description": confirm_data.image_description or "",
+                "food_items": food_items,
+                "recommendations": confirm_data.recommendations or {},
+            },
+            cost=confirm_data.cost,
+            source_tag=confirm_data.source_tag,
+        )
+        db.add(food_record)
+        db.commit()
+        db.refresh(food_record)
+
+        # 代记录：写溯源日志 + 通知被代记录人
+        if is_proxy:
+            try:
+                proxy_record = ProxyRecord(
+                    recorded_by_user_id=current_user.id,
+                    target_user_id=owner_user_id,
+                    record_type="food",
+                    record_id=food_record.id
+                )
+                db.add(proxy_record)
+                db.commit()
+                await _send_proxy_food_notification(
+                    db, current_user.id, owner_user_id, food_record
+                )
+            except Exception as e:
+                logger.warning(f"代记录溯源/通知失败: {e}")
+
+        # 保存确认时携带的营养分析结果
+        if confirm_data.nutrition_facts:
+            nf_data = confirm_data.nutrition_facts
+            if hasattr(nf_data, 'model_dump'):
+                nf_data = nf_data.model_dump()
+            elif hasattr(nf_data, 'dict'):
+                nf_data = nf_data.dict()
+            nutrition_facts = _build_nutrition_facts_robust(nf_data)
+            if nutrition_facts is not None:
+                try:
+                    await create_nutrition_detail_from_analysis(
+                        food_record.id, nutrition_facts, db
+                    )
+                except Exception as nf_err:
+                    logger.warning(f"确认创建时保存营养详情失败: {nf_err}")
+            else:
+                logger.warning("确认创建时营养数据无法解析，跳过营养详情保存")
+
+        # 触发每日营养汇总更新（代记录时归属记录本人）
+        try:
+            await update_daily_nutrition_summary(owner_user_id, confirm_data.record_date, db)
+        except Exception as sum_err:
+            logger.warning(f"更新每日营养汇总失败: {sum_err}")
+
+        # 清除相关缓存
+        try:
+            cache_key = f"nutrition:daily:{owner_user_id}:{confirm_data.record_date}"
+            cache_service.redis.delete(cache_key)
+        except Exception:
+            pass
+
+        response_data = {
+            "id": food_record.id,
+            "user_id": food_record.user_id,
+            "record_date": food_record.record_date.isoformat(),
+            "record_time": food_record.record_time.isoformat() if food_record.record_time else None,
+            "meal_type": food_record.meal_type,
+            "food_name": food_record.food_name,
+            "description": food_record.description,
+            "image_url": food_record.image_url,
+            "recording_method": food_record.recording_method,
+            "analysis_status": food_record.analysis_status,
+            "cost": float(food_record.cost) if food_record.cost else None,
+            "source_tag": food_record.source_tag,
+            "created_at": food_record.created_at.isoformat(),
+        }
+        return BaseResponse(
+            success=True,
+            message="食物记录创建成功",
+            data={"record": response_data}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"确认创建食物记录失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"创建食物记录失败: {str(e)}"
+        )
 
 
 #
@@ -1001,6 +1207,24 @@ async def confirm_food_record(
         db.close()
 
 
+# Agent 分析各节点对应的真实完成度（状态名取自 nutrition_agent 实际输出 current_step）
+AGENT_STEP_PERCENTAGE = {
+    "starting": 0.30,
+    "image_analyzed": 0.45,
+    "nutrition_extracted": 0.65,
+    "retrieve_nutrition_knowledge": 0.78,
+    "advice_generated": 0.88,
+    "allergy_checked": 0.95,
+    # 兼容旧图节点名
+    "state_init": 0.30,
+    "analyze_image": 0.45,
+    "analyze_text": 0.45,
+    "extract_nutrition": 0.65,
+    "generate_advice": 0.88,
+    "format_response": 0.95,
+}
+
+
 async def analyze_food_image_with_agent(image_url: str, user_id: int, db: Session):
     """使用Langgraph Agent分析食物图片（流式输出）"""
 
@@ -1054,10 +1278,12 @@ async def analyze_food_image_with_agent(image_url: str, user_id: int, db: Sessio
                     print(f"Agent正在分析: {chunk.data}")
                     print("===================")
                     print(chunk.data.get("current_step"))
+                    _step = chunk.data.get("current_step")
                     yield {
                         "type": "analysis_progress",
                         "data": {
-                            "current_step": chunk.data.get("current_step")
+                            "current_step": _step,
+                            "percentage": AGENT_STEP_PERCENTAGE.get(_step, 0.30)
                         }
                     }
     except Exception as e:
@@ -1119,10 +1345,12 @@ async def analyze_food_text_with_agent(text_description: str, user_id: int, db: 
                     }
                 else:
                     print(f"Agent正在文字分析: {chunk.data}")
+                    _step = chunk.data.get("current_step")
                     yield {
                         "type": "analysis_progress",
                         "data": {
-                            "current_step": chunk.data.get("current_step")
+                            "current_step": _step,
+                            "percentage": AGENT_STEP_PERCENTAGE.get(_step, 0.30)
                         }
                     }
     except Exception as e:
@@ -1344,12 +1572,6 @@ async def create_nutrition_detail_from_analysis(food_record_id: int, nutrition_f
         try:
             db.add(nutrition_detail)
             db.commit()
-
-            # 同步更新 FoodRecord 的热量值（首页展示用）
-            food_record = db.query(FoodRecord).filter(FoodRecord.id == food_record_id).first()
-            if food_record and food_record.total_calories == 0:
-                food_record.total_calories = nutrition_facts.total_calories or 0
-                db.commit()
         except Exception as e:
             db.rollback()
             print(f"添加数据库失败: {str(e)}")
@@ -1395,6 +1617,13 @@ async def get_food_records(
         records = query.order_by(FoodRecord.record_date.desc(), FoodRecord.created_at.desc()).offset(offset).limit(
             page_size).all()
 
+        # 批量查询代记录人用户名（recorded_by_user_id -> username）
+        recorder_ids = {r.recorded_by_user_id for r in records if r.recorded_by_user_id is not None}
+        recorder_names = {}
+        if recorder_ids:
+            for recorder in db.query(User).filter(User.id.in_(recorder_ids)).all():
+                recorder_names[recorder.id] = recorder.username
+
         records_data = []
         for record in records:
             nutrition_detail = db.query(NutritionDetail).filter(
@@ -1422,6 +1651,7 @@ async def get_food_records(
                 "analysis_result": _sanitize_analysis_result(record.analysis_result),
                 "cost": float(record.cost) if record.cost else None,
                 "source_tag": record.source_tag,
+                "recorded_by_name": recorder_names.get(record.recorded_by_user_id) if record.recorded_by_user_id is not None else None,
                 "created_at": record.created_at.isoformat(),
                 "updated_at": record.updated_at.isoformat()
             }

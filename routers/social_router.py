@@ -16,12 +16,13 @@ from shared.models.schemas import (
     RelationNoteUpdate,
 )
 from shared.utils.auth import get_current_user
-from shared.models.user_models import User, UserProfile
+from shared.models.user_models import User, UserProfile, _blind_index
 from shared.models.social_models import UserRelationship, DataPermission
 from shared.models.food_models import DailyNutritionSummary
 from shared.models.water_models import WaterIntakeRecord
 from shared.models.pet_models import VirtualPetState
 from shared.models.exercise_models import ExerciseRecord
+from shared.utils.permission import get_visible_fields, field_hidden
 
 router = APIRouter(prefix="/social", tags=["社交关系"])
 logger = logging.getLogger(__name__)
@@ -106,6 +107,28 @@ def _auto_sync_labels(db: Session, relation: UserRelationship):
             relation.note_from_user = inverse
 
 
+async def _notify_relation_request(db: Session, target_user_id: int, from_user: User, relation_type: str):
+    """向目标用户推送好友/家人申请通知（FCM）"""
+    try:
+        from shared.services.push_service import send_push_to_user
+        type_text = "家人" if relation_type == "family" else "好友"
+        await send_push_to_user(
+            db=db,
+            user_id=target_user_id,
+            title=f"新的{type_text}申请",
+            body=f"{from_user.username} 请求添加您为{type_text}",
+            data={
+                "type": "relation_request",
+                "relation_type": relation_type,
+                "from_user_id": from_user.id,
+                "from_username": from_user.username,
+            },
+            reminder_type="relation_request"
+        )
+    except Exception as e:
+        logger.warning(f"发送申请通知失败: {e}")
+
+
 # ============================================================
 # 搜索用户
 # ============================================================
@@ -113,19 +136,29 @@ def _auto_sync_labels(db: Session, relation: UserRelationship):
 @router.get("/search", response_model=BaseResponse)
 async def search_users(
     keyword: str = Query(..., min_length=1, max_length=50, description="用户名/ID/手机号"),
+    phone: Optional[str] = Query(None, max_length=20, description="手机号精确搜索"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """搜索用户（通过用户名/ID/手机号）"""
     try:
+        # keyword 兼容三种匹配：username 包含、id 精确、phone 精确
+        # phone 列为加密存储（历史数据可能为明文），无法用 SQL 直接比较明文，
+        # 精确匹配统一走盲索引 phone_hash（与登录逻辑一致）
+        or_conditions = [
+            User.username.ilike(f"%{keyword}%"),
+            cast(User.id, String) == keyword,
+            User.phone_hash == _blind_index(keyword),
+        ]
+        # 显式 phone 参数：手机号精确匹配
+        if phone:
+            or_conditions.append(User.phone_hash == _blind_index(phone))
+
         # 搜索用户（排除自己）
         users = db.query(User).filter(
             User.id != current_user.id,
             User.status == 1,
-            or_(
-                User.username.ilike(f"%{keyword}%"),
-                cast(User.id, String).ilike(f"%{keyword}%")
-            )
+            or_(*or_conditions)
         ).limit(20).all()
 
         # 获取当前用户的关系（包括 pending 和 accepted）
@@ -251,6 +284,9 @@ async def send_friend_request(
         # 我方确认称谓后，自动同步对方的互逆称谓（参考我方性别）
         _auto_sync_labels(db, relation)
         db.commit()
+
+        # 通知目标用户（FCM 推送）
+        await _notify_relation_request(db, request.target_user_id, current_user, "friend")
 
         return BaseResponse(
             success=True,
@@ -426,6 +462,9 @@ async def add_family_member(
         _auto_sync_labels(db, relation)
         db.commit()
 
+        # 通知目标用户（FCM 推送）
+        await _notify_relation_request(db, request.target_user_id, current_user, "family")
+
         return BaseResponse(
             success=True,
             message="家人申请已发送，等待对方确认",
@@ -574,6 +613,9 @@ async def upgrade_friend_to_family(
         _auto_sync_labels(db, upgrade_relation)
         db.commit()
 
+        # 通知目标用户（FCM 推送）
+        await _notify_relation_request(db, target_user_id, current_user, "family")
+
         return BaseResponse(
             success=True,
             message="已发送家人邀请，等待对方确认",
@@ -713,6 +755,19 @@ async def get_friend_health_summary(
         pet_mood = pet_state.mood if pet_state else "normal"
         pet_name = pet_state.pet_name if pet_state and pet_state.pet_name else "桌宠"
 
+        # 数据权限过滤：若 target 对 current_user 配置了字段隐藏（家人升级后保留好友关系时可能配置），
+        # 好友通道同样遵守权限配置，被隐藏字段返回 None
+        visible = get_visible_fields(db, target_user_id, current_user.id)
+        if field_hidden(visible, "calories"):
+            total_calories = None
+            target_calories = None
+        if field_hidden(visible, "water"):
+            today_water = None
+            water_goal = None
+        if field_hidden(visible, "virtual_pet"):
+            pet_mood = None
+            pet_name = None
+
         return BaseResponse(
             success=True,
             message="获取好友健康信息成功",
@@ -720,7 +775,7 @@ async def get_friend_health_summary(
                 "user_id": target_user_id,
                 "total_calories": total_calories,
                 "target_calories": target_calories,
-                "water_intake": int(today_water),
+                "water_intake": int(today_water) if today_water is not None else None,
                 "water_goal": water_goal,
                 "pet_mood": pet_mood,
                 "pet_name": pet_name,
@@ -782,17 +837,27 @@ async def get_friend_leaderboard(
                 ExerciseRecord.record_date <= date.today()
             ).scalar() or 0
 
+            # 数据权限过滤：对方隐藏"运动记录"时，不显示其运动消耗数据
+            visible = get_visible_fields(db, other_id, current_user.id)
+            if field_hidden(visible, "exercise"):
+                weekly_burned = None
+                exercise_count = None
+
             leaderboard.append({
                 "user_id": other_id,
                 "username": user.username if user else "",
                 "real_name": profile.real_name if profile and profile.real_name else None,
                 "avatar_url": user.avatar_url if user else None,
-                "weekly_burned_calories": round(float(weekly_burned), 1),
+                "weekly_burned_calories": round(float(weekly_burned), 1) if weekly_burned is not None else None,
                 "exercise_count": exercise_count,
             })
 
-        # 按消耗热量降序排名
-        leaderboard.sort(key=lambda x: x["weekly_burned_calories"], reverse=True)
+        # 按消耗热量降序排名（权限隐藏的数据排末尾）
+        leaderboard.sort(
+            key=lambda x: x["weekly_burned_calories"]
+            if x["weekly_burned_calories"] is not None else -1,
+            reverse=True
+        )
 
         return BaseResponse(
             success=True,
@@ -1160,22 +1225,16 @@ async def join_family_by_invite(
             UserRelationship.status == "accepted"
         ).first()
 
-        # 创建家人关系（双向）
-        # 发起方 = 邀请码持有者，接收方 = 当前用户
+        # 创建家人关系（单向记录）
+        # 与好友/家人申请流程一致：仅创建一条记录，双方通过 or_(user_id, related_user_id) 查询可见
+        # 注意：不能创建双向两条记录，否则 /friends、/dashboard、/alerts 中同一成员会重复出现
         relation1 = UserRelationship(
             user_id=invite_user.id,
             related_user_id=current_user.id,
             relationship_type="family",
             status="accepted"
         )
-        relation2 = UserRelationship(
-            user_id=current_user.id,
-            related_user_id=invite_user.id,
-            relationship_type="family",
-            status="accepted"
-        )
         db.add(relation1)
-        db.add(relation2)
 
         # 如果之前是好友，删除好友记录
         if friend_relation:

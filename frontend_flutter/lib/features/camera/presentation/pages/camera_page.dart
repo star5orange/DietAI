@@ -8,6 +8,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../../services/food_service.dart';
 import '../../../../core/themes/app_colors.dart';
+import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/presentation/widgets/error_handler.dart';
 import 'food_analysis_page.dart';
 
@@ -148,7 +149,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       // 立即跳转到分析页面，并传递流式数据
       final recordDate = widget.recordDate;
 
-      // 创建流式数据源
+      // 创建流式数据源（仅分析不落库，用户确认后再创建记录）
       final analysisStream = _foodService.createFoodRecordWithImageStream(
         imageFile: imageFile,
         recordDate: recordDate,
@@ -159,10 +160,28 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         cost: widget.costAmount,
         sourceTag: widget.costSource,
         targetUserId: widget.proxyTargetUserId,
+        analyzeOnly: true,
+      );
+
+      // 记录原始创建数据，供用户确认后落库使用
+      final pendingData = FoodRecordCreate(
+        recordDate: recordDate,
+        recordTime: widget.recordTime,
+        mealType: widget.mealType ?? 1,
+        foodName: '',
+        description: '通过AI扫描识别',
+        recordingMethod: 1, // AI扫描
+        cost: widget.costAmount,
+        sourceTag: widget.costSource,
+        targetUserId: widget.proxyTargetUserId,
       );
 
       // 立即跳转到分析页面并传递流式数据
-      _navigateToAnalysisPageWithStream(analysisStream, imageFile);
+      _navigateToAnalysisPageWithStream(
+        analysisStream,
+        imageFile,
+        pendingData: pendingData,
+      );
     } catch (e) {
       NetworkErrorHandler.handleApiError(context, e);
     }
@@ -178,13 +197,18 @@ class _CameraPageState extends ConsumerState<CameraPage> {
   }
 
   void _navigateToAnalysisPageWithStream(
-      Stream<Map<String, dynamic>> analysisStream, File imageFile) {
+    Stream<Map<String, dynamic>> analysisStream,
+    File imageFile, {
+    FoodRecordCreate? pendingData,
+  }) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => FoodAnalysisPage(
           analysisStream: analysisStream,
           imageFile: imageFile,
+          analyzeOnly: true,
+          pendingFoodData: pendingData,
         ),
       ),
     ).then((result) {

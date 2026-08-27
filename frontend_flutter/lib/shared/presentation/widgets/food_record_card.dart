@@ -338,6 +338,23 @@ class FoodRecordCard extends StatelessWidget {
             fontSize: 12,
           ),
         ),
+        // 代记录溯源：显示记录人（家人/自己记录的食物记录）
+        if (foodRecord.recordedBy != null && foodRecord.recordedBy!.isNotEmpty) ...[
+          const SizedBox(width: 8),
+          Icon(
+            Icons.person_outline,
+            size: 14,
+            color: Colors.grey[500],
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '由${foodRecord.recordedBy}记录',
+            style: TextStyle(
+              color: Colors.grey[500],
+              fontSize: 12,
+            ),
+          ),
+        ],
         const Spacer(),
         if (foodRecord.nutritionDetail != null)
           Row(

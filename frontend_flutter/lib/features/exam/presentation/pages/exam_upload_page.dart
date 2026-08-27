@@ -9,10 +9,17 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../social/presentation/providers/social_provider.dart';
 import '../../../social/domain/social_models.dart';
 import '../providers/exam_provider.dart';
+import 'exam_result_page.dart';
 
 /// 体检报告上传页面（一步式拍照 + AI 自动识别 + 语音引导）
+///
+/// 从家庭看板点 📸 进入时传入 [ownerUserId]（为谁拍），
+/// 进入后直接打开相机，拍照后自动上传分析并跳转结果页。
 class ExamUploadPage extends ConsumerStatefulWidget {
-  const ExamUploadPage({super.key});
+  final int? ownerUserId; // null = 自己
+  final String? ownerName;
+
+  const ExamUploadPage({super.key, this.ownerUserId, this.ownerName});
 
   @override
   ConsumerState<ExamUploadPage> createState() => _ExamUploadPageState();
@@ -21,18 +28,34 @@ class ExamUploadPage extends ConsumerStatefulWidget {
 class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
   final _imagePicker = ImagePicker();
   final _ttsService = TtsService();
-  File? _selectedImage;
+  final List<File> _selectedImages = []; // 多页报告：一次可拍多张
   int? _selectedUserId; // null = 自己
   bool _isUploading = false;
+  bool _autoCameraOpened = false;
 
   @override
   void initState() {
     super.initState();
-    Future.microtask(() {
-      // 加载家人列表（用于"为谁拍"）
+    _selectedUserId = widget.ownerUserId;
+    Future.microtask(() async {
+      // 加载家人列表（用于"为谁拍"切换）
       ref.read(friendListProvider.notifier).loadFriendList();
+      // 普通进入时记住上次的选择（需求：上次选过就记住，顶部小字提示）
+      if (widget.ownerUserId == null) {
+        final prefs = await SharedPreferences.getInstance();
+        final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
+        final lastId = prefs.getInt('last_exam_owner_user_id_$currentUserId');
+        if (lastId != null && mounted) {
+          setState(() => _selectedUserId = lastId);
+        }
+      }
       // 语音引导：一步式拍照
       _ttsService.speak('您好，请把体检报告平放在桌面上，保证光线充足，然后拍摄照片。').catchError((_) {});
+      // 从家庭看板 📸 进入：直接打开相机
+      if (widget.ownerUserId != null && !_autoCameraOpened) {
+        _autoCameraOpened = true;
+        _takePhoto();
+      }
     });
   }
 
@@ -42,7 +65,7 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
     super.dispose();
   }
 
-  /// 相机直拍（一步式）
+  /// 相机直拍（一步式，支持多页追加）
   Future<void> _takePhoto() async {
     try {
       final image = await _imagePicker.pickImage(
@@ -51,8 +74,13 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
         preferredCameraDevice: CameraDevice.rear,
       );
       if (image != null) {
-        setState(() => _selectedImage = File(image.path));
-        _ttsService.speak('照片已拍摄，正在分析体检报告，请稍等。').catchError((_) {});
+        setState(() => _selectedImages.add(File(image.path)));
+        // 语音引导：告知已拍页数与下一步操作
+        _ttsService
+            .speak(_selectedImages.length == 1
+                ? '照片已拍摄。如果报告只有一页，请点击下方的开始分析；如果还有下一页，请继续拍摄。'
+                : '第 ${_selectedImages.length} 页已拍摄。继续拍摄下一页，或点击开始分析。')
+            .catchError((_) {});
       }
     } catch (e) {
       if (mounted) {
@@ -63,7 +91,7 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
     }
   }
 
-  /// 从相册选择
+  /// 从相册选择（追加到多页列表）
   Future<void> _pickFromGallery() async {
     try {
       final image = await _imagePicker.pickImage(
@@ -71,7 +99,7 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
         imageQuality: 85,
       );
       if (image != null) {
-        setState(() => _selectedImage = File(image.path));
+        setState(() => _selectedImages.add(File(image.path)));
       }
     } catch (e) {
       if (mounted) {
@@ -82,32 +110,62 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
     }
   }
 
-  /// 上传并触发 AI 识别
+  /// 上传并触发 AI 识别（支持多张照片）
   Future<void> _uploadReport() async {
-    if (_selectedImage == null) return;
+    if (_selectedImages.isEmpty) return;
 
     setState(() => _isUploading = true);
     try {
       final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
       final targetUserId = _selectedUserId ?? currentUserId;
-      final success = await ref
+      final uploadResult = await ref
           .read(examReportListProvider.notifier)
-          .uploadReport(photo: _selectedImage!, userId: targetUserId);
+          .uploadReport(photos: List.of(_selectedImages), userId: targetUserId);
 
       if (!mounted) return;
       setState(() => _isUploading = false);
 
-      if (success) {
-        // 记住"最近为谁拍"，首页大按钮展示
+      if (uploadResult != null) {
+        final report = uploadResult.report;
+        // 记住"最近为谁拍"，首页大按钮展示 + 下次进入默认选中（按登录账号隔离）
         final ownerName = _resolveOwnerName(targetUserId);
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('last_exam_owner_name', ownerName);
-
-        _ttsService.speak('体检报告上传成功，AI 正在识别指标。').catchError((_) {});
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('上传成功，AI 正在识别指标')),
+        final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
+        await prefs.setString('last_exam_owner_name_$currentUserId', ownerName);
+        await prefs.setInt(
+            'last_exam_owner_user_id_$currentUserId', targetUserId);
+        // 记住本次体检月份（首页展示"最近：$owner · YYYY-MM"）
+        final now = DateTime.now();
+        await prefs.setString(
+          'last_exam_owner_date_$currentUserId',
+          '${now.year}-${now.month.toString().padLeft(2, '0')}',
         );
-        Navigator.pop(context);
+
+        // 模糊页提示：语音引导重拍（仍保留识别结果）
+        if (uploadResult.blurPages.isNotEmpty) {
+          final pagesText = uploadResult.blurPages.join('、');
+          final blurMessage = '第$pagesText页照片不太清楚，识别结果可能不准，建议重新拍摄。';
+          _ttsService.speak(blurMessage).catchError((_) {});
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(blurMessage)),
+            );
+          }
+        } else {
+          _ttsService.speak('体检报告上传成功，正在为您展示识别结果。').catchError((_) {});
+        }
+        if (!mounted) return;
+        // 跳转识别结果页：展示提取的指标 + AI 饮食/运动建议
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => ExamResultPage(
+              reportId: report.id,
+              userId: targetUserId,
+              ownerName: ownerName,
+              comparedToLast: report.comparedToLast,
+            ),
+          ),
+        );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('上传失败，请重试')),
@@ -141,152 +199,220 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
     final friendState = ref.watch(friendListProvider);
     final family = friendState.family;
 
-    return Scaffold(
-      backgroundColor: AppColors.backgroundSecondary,
-      appBar: AppBar(
-        title: const Text('拍体检报告'),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 为谁拍
-            _buildOwnerSelector(family,
-                showNoFamilyHint: family.isEmpty && !friendState.isLoading),
-            const SizedBox(height: 20),
-
-            // 一步式拍照区
-            if (_selectedImage == null)
-              _buildCameraAction()
-            else
-              _buildPreviewSection(),
-
-            const SizedBox(height: 24),
-
-            // 开始识别按钮
-            if (_selectedImage != null)
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isUploading ? null : _uploadReport,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: _isUploading
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Text(
-                          '开始识别',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w600),
-                        ),
-                ),
-              ),
-            const SizedBox(height: 24),
-
-            // 提示信息
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.blue.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.info_outline, color: Colors.blue, size: 20),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '拍摄时请确保报告平铺、光线充足、字迹清晰。AI 会自动识别体检日期、医院和各项指标，异常项目会标红并给出建议。',
-                      style: TextStyle(fontSize: 13, color: Colors.blue),
-                    ),
-                  ),
-                ],
-              ),
+    return PopScope(
+      // 未拍照时拦截返回，询问是否退出；已拍照/分析中不拦截
+      canPop: _selectedImages.isNotEmpty || _isUploading,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldExit = await _confirmExit();
+        if (shouldExit && mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.backgroundSecondary,
+        appBar: AppBar(
+          title: const Text('拍体检报告'),
+          actions: [
+            // ❓ 重播语音引导
+            IconButton(
+              icon: const Icon(Icons.help_outline),
+              tooltip: '重播语音引导',
+              onPressed: () => _ttsService
+                  .speak('请把体检报告平放在桌面上，保证光线充足，然后拍摄照片。')
+                  .catchError((_) {}),
             ),
           ],
+        ),
+        // 拍照后：分析中全屏卡片
+        body: _isUploading
+            ? _buildAnalyzingCard()
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 顶部小字提示"为谁拍"：正在为 妈妈 拍照
+                    _buildOwnerBanner(),
+                    const SizedBox(height: 16),
+
+                    // 一步式拍照区（支持多页：已拍 0 张显示拍摄入口，否则显示多页预览）
+                    if (_selectedImages.isEmpty)
+                      _buildCameraAction()
+                    else
+                      _buildPreviewSection(),
+
+                    // 底部小字切换：不点就不管
+                    const SizedBox(height: 12),
+                    _buildSwitchRow(family),
+                    const SizedBox(height: 16),
+
+                    // 提示信息
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.info_outline,
+                              color: Colors.blue, size: 20),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              '打开 → 对准报告 → 按快门 → 完事。日期、医院由 AI 自动识别，拍照后自动分析，不需要点确认。',
+                              style:
+                                  TextStyle(fontSize: 13, color: Colors.blue),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
+
+  /// 未拍照退出确认弹窗
+  Future<bool> _confirmExit() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('还没有拍照'),
+        content: const Text('还没有拍照，确定要退出吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('继续拍照'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确定退出'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  /// 顶部小字提示"为谁拍"：正在为 妈妈 拍照
+  Widget _buildOwnerBanner() {
+    final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
+    final ownerName = _resolveOwnerName(_selectedUserId ?? currentUserId);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        '正在为 $ownerName 拍照',
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: AppColors.primary,
         ),
       ),
     );
   }
 
-  /// 为谁拍：自己 + 家人选择
-  Widget _buildOwnerSelector(List<UserRelation> family,
-      {required bool showNoFamilyHint}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  /// 底部小字切换"为谁拍"：不点就不管
+  Widget _buildSwitchRow(List<UserRelation> family) {
+    final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
+    final selectedId = _selectedUserId ?? currentUserId;
+
+    final targets = <({String label, int? userId})>[
+      (label: '自己', userId: null),
+      ...family.map((f) => (
+            label: f.note ?? f.realName ?? f.username,
+            userId: f.userId,
+          )),
+    ];
+    final others = targets
+        .where((t) => (t.userId ?? currentUserId) != selectedId)
+        .toList();
+    if (others.isEmpty) return const SizedBox.shrink();
+
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 20,
+      runSpacing: 4,
       children: [
-        const Text(
-          '为谁拍',
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            _buildOwnerChip('我自己', null),
-            ...family.map((f) {
-              final label = f.note ?? f.realName ?? f.username;
-              return _buildOwnerChip(label, f.userId);
-            }),
-          ],
-        ),
-        if (showNoFamilyHint)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              '（暂无可选的家人，将默认拍给自己）',
-              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+        for (final t in others)
+          GestureDetector(
+            onTap: () => setState(() => _selectedUserId = t.userId),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                '切换为 ${t.label}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w500,
+                  decoration: TextDecoration.underline,
+                  decorationColor: AppColors.primary,
+                ),
+              ),
             ),
           ),
       ],
     );
   }
 
-  Widget _buildOwnerChip(String label, int? userId) {
-    final selected = _selectedUserId == userId;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedUserId = userId),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primary : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? AppColors.primary : AppColors.borderLight,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+  /// 拍照后分析中界面：✅ 已开始分析 → 缩略图 → ⏳ AI 正在提取
+  Widget _buildAnalyzingCard() {
+    final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
+    final ownerName = _resolveOwnerName(_selectedUserId ?? currentUserId);
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              userId == null ? Icons.person : Icons.family_restroom,
-              size: 15,
-              color: selected ? Colors.white : AppColors.textSecondary,
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.check_circle, color: Colors.green, size: 18),
+                SizedBox(width: 6),
+                Text(
+                  '已开始分析...',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+              ],
             ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? Colors.white : AppColors.textPrimary,
+            const SizedBox(height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.file(
+                _selectedImages.first,
+                height: 220,
+                width: double.infinity,
+                fit: BoxFit.cover,
               ),
+            ),
+            const SizedBox(height: 20),
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 10),
+                Text('AI 正在提取体检指标...', style: TextStyle(fontSize: 14)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '正在为 $ownerName 上传（共 ${_selectedImages.length} 张），分析完成后自动跳转结果页',
+              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
             ),
           ],
         ),
@@ -380,39 +506,124 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
     );
   }
 
-  /// 拍摄后的预览区
+  /// 多页预览区：缩略图 + 继续拍下一页 + 开始分析
   Widget _buildPreviewSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Image.file(
-            _selectedImage!,
-            height: 260,
-            width: double.infinity,
-            fit: BoxFit.cover,
-          ),
+        // 多页缩略图横排
+        SizedBox(
+          height: 200,
+          child: _selectedImages.length == 1
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Image.file(
+                    _selectedImages.first,
+                    height: 200,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                )
+              : ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _selectedImages.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final image = _selectedImages[index];
+                    return Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.file(
+                            image,
+                            width: 140,
+                            height: 200,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        Positioned(
+                          top: 6,
+                          left: 6,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.55),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '第${index + 1}页',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (_selectedImages.length > 1)
+                          Positioned(
+                            top: 6,
+                            right: 6,
+                            child: GestureDetector(
+                              onTap: () => setState(
+                                  () => _selectedImages.removeAt(index)),
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.55),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.close,
+                                    size: 14, color: Colors.white),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
         ),
         const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _takePhoto,
-                icon: const Icon(Icons.refresh),
-                label: const Text('重新拍摄'),
+                onPressed: _isUploading ? null : _takePhoto,
+                icon: const Icon(Icons.add_a_photo),
+                label: Text('继续拍第 ${_selectedImages.length + 1} 页'),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _pickFromGallery,
+                onPressed: _isUploading ? null : _pickFromGallery,
                 icon: const Icon(Icons.photo_library),
-                label: const Text('换一张'),
+                label: const Text('从相册选择'),
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _isUploading ? null : _uploadReport,
+            icon: const Icon(Icons.auto_awesome),
+            label: Text('开始分析（${_selectedImages.length} 张）'),
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Center(
+          child: TextButton.icon(
+            onPressed: _isUploading
+                ? null
+                : () => setState(() => _selectedImages.clear()),
+            icon: const Icon(Icons.delete_outline, size: 16),
+            label: const Text('全部重拍'),
+          ),
         ),
       ],
     );

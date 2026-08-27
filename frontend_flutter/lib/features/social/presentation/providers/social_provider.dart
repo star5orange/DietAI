@@ -282,19 +282,23 @@ final userSearchProvider =
 /// 在线状态
 class OnlineStatusState {
   final bool isOnline;
+  final DateTime? lastOnlineAt;
   final bool isLoading;
 
   OnlineStatusState({
     this.isOnline = false,
+    this.lastOnlineAt,
     this.isLoading = false,
   });
 
   OnlineStatusState copyWith({
     bool? isOnline,
+    DateTime? lastOnlineAt,
     bool? isLoading,
   }) {
     return OnlineStatusState(
       isOnline: isOnline ?? this.isOnline,
+      lastOnlineAt: lastOnlineAt ?? this.lastOnlineAt,
       isLoading: isLoading ?? this.isLoading,
     );
   }
@@ -314,7 +318,10 @@ class OnlineStatusNotifier extends StateNotifier<OnlineStatusState> {
     try {
       final response = await _apiService.getOnlineStatus(_userId);
       if (response.success && response.data != null) {
-        state = OnlineStatusState(isOnline: response.data!);
+        state = OnlineStatusState(
+          isOnline: response.data!.isOnline,
+          lastOnlineAt: response.data!.lastOnlineAt,
+        );
       } else {
         state = OnlineStatusState(isOnline: false);
       }
@@ -331,7 +338,7 @@ class OnlineStatusNotifier extends StateNotifier<OnlineStatusState> {
 
   /// 直接设置在线状态（由 WebSocket 在线状态推送触发，无需重新请求）
   void setOnline(bool isOnline) {
-    state = OnlineStatusState(isOnline: isOnline);
+    state = OnlineStatusState(isOnline: isOnline, lastOnlineAt: state.lastOnlineAt);
   }
 }
 

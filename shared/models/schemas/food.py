@@ -25,6 +25,19 @@ class FoodRecordCreate(BaseModel):
     target_user_id: Optional[int] = Field(None, description="代记录目标用户ID（仅家人关系可用）")
     # 硬件端传入的预估卡路里 (ESP32 AI 分析结果)
     estimated_calories: Optional[int] = Field(None, ge=0, description="硬件端AI预估卡路里")
+    # M4 增强: 仅分析不落库（AI 拍照识别"先分析、用户确认后再创建记录"）
+    analyze_only: Optional[bool] = Field(False, description="仅分析不落库：SSE 只返回分析结果，由用户确认后调用 confirm-create 落库")
+
+
+class FoodRecordConfirmCreate(FoodRecordCreate):
+    """AI 分析结果确认后创建食物记录（先分析 → 用户确认 → 落库）"""
+
+    nutrition_facts: Optional[Dict[str, Any]] = Field(None, description="AI 识别的完整营养数据")
+    recommendations: Optional[Dict[str, Any]] = Field(None, description="AI 建议")
+    short_comment: Optional[str] = Field(None, description="AI 简短点评")
+    image_description: Optional[str] = Field(None, description="图片描述")
+    food_items: Optional[List[str]] = Field(None, description="识别出的食物名称列表")
+    analyze_only: Optional[bool] = False
 
 
 class FoodRecordResponse(BaseModel):
@@ -41,6 +54,7 @@ class FoodRecordResponse(BaseModel):
     from_source: Optional[str]
     cost: Optional[float] = None
     source_tag: Optional[str] = None
+    recorded_by_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

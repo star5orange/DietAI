@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'dart:async';
 import '../../../../services/food_service.dart';
@@ -9,24 +10,35 @@ import '../../../../shared/presentation/widgets/error_handler.dart';
 import '../../../chat/presentation/pages/chat_page.dart';
 import '../../../home/presentation/widgets/cost_input_widget.dart'; // 导入消费输入组件
 import '../../../../services/saved_meal_service.dart';
+import '../../../../shared/domain/models/saved_meal_model.dart';
+import '../../../../shared/domain/models/api_response.dart';
+import '../../../profile/presentation/providers/profile_provider.dart';
 
-class FoodAnalysisPage extends StatefulWidget {
+class FoodAnalysisPage extends ConsumerStatefulWidget {
   final FoodRecord? foodRecord;
   final Stream<Map<String, dynamic>>? analysisStream;
   final File? imageFile;
+
+  /// 仅分析模式：不落库，展示结果后由用户点"确认创建记录"再落库
+  final bool analyzeOnly;
+
+  /// 仅分析模式下，确认落库所需的原始创建数据
+  final FoodRecordCreate? pendingFoodData;
 
   const FoodAnalysisPage({
     super.key,
     this.foodRecord,
     this.analysisStream,
     this.imageFile,
+    this.analyzeOnly = false,
+    this.pendingFoodData,
   });
 
   @override
-  State<FoodAnalysisPage> createState() => _FoodAnalysisPageState();
+  ConsumerState<FoodAnalysisPage> createState() => _FoodAnalysisPageState();
 }
 
-class _FoodAnalysisPageState extends State<FoodAnalysisPage>
+class _FoodAnalysisPageState extends ConsumerState<FoodAnalysisPage>
     with TickerProviderStateMixin {
   int _servingCount = 1;
   final FoodService _foodService = FoodService();
@@ -62,6 +74,9 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
   // 从分析数据中提取营养信息
   Map<String, dynamic> _nutritionFacts = {};
   Map<String, dynamic> _recommendations = {};
+
+  // 完整的 AI 营养分析结果（确认落库时原样回传）
+  Map<String, dynamic> _rawAnalysisData = {};
   String _imageDescription = '';
   String _shortComment = '';
   String _foodName = '分析中...';
@@ -78,18 +93,27 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
   late bool _isTextAnalysis;
   int _currentStepIndex = 0;
 
-  /// 文字分析比图片分析少"上传图片"和"上传完成"两步，索引偏移-2
-  int _stepIndex(int imageBaseIndex) =>
-      _isTextAnalysis ? imageBaseIndex - 2 : imageBaseIndex;
+  // 上传成功后的图片 object_name（仅分析模式下 _currentRecord 为空，确认时回传）
+  String? _uploadedImageUrl;
+
+  /// 文字分析比图片分析少"上传图片"和"上传完成"两步，索引偏移-2；
+  /// 仅分析模式比完整流程少"创建记录/保存数据"两步，索引再偏移-1
+  int _stepIndex(int imageBaseIndex) {
+    if (_isTextAnalysis) return imageBaseIndex - 2;
+    if (widget.analyzeOnly) return imageBaseIndex - 1;
+    return imageBaseIndex;
+  }
 
   @override
   void initState() {
     super.initState();
-    // 根据是否有图片决定分析步骤
+    // 根据是否有图片决定分析步骤；仅分析模式：先分析、确认后再创建记录
     _isTextAnalysis = widget.imageFile == null && widget.foodRecord == null;
     _analysisSteps = _isTextAnalysis
         ? ['创建记录', '分析食物', '提取营养', '生成建议', '保存数据']
-        : ['上传图片', '创建记录', '识别食物', '提取营养', '生成建议', '保存数据'];
+        : (widget.analyzeOnly
+            ? ['上传图片', '识别食物', '提取营养', '生成建议', '等待确认']
+            : ['上传图片', '创建记录', '识别食物', '提取营养', '生成建议', '保存数据']);
     _initializeAnimations();
     _initializeAnalysis();
   }
@@ -115,12 +139,27 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
 
   Future<void> _loadDailyTarget() async {
     try {
+      // 与首页一致：优先使用用户手动设置的卡路里目标，
+      // 未设置时才回退到系统按 TDEE 计算的值（daily_targets.calories）
+      final userProfile =
+          await ref.read(userProfileProvider.notifier).loadUserProfileAndGet();
+      final userTarget = userProfile?.targetCalories;
+      if (userTarget != null && userTarget > 0) {
+        if (mounted) {
+          setState(() {
+            _targetCalories = userTarget.toDouble();
+          });
+        }
+      }
+
       final result = await _goalService.getDailyStatus();
       if (result.success && result.data != null) {
         final targets = result.data!['daily_targets'] as Map<String, dynamic>?;
         if (targets != null && mounted) {
           setState(() {
-            _targetCalories = (targets['calories'] as num?)?.toDouble() ?? 0;
+            if (_targetCalories <= 0) {
+              _targetCalories = (targets['calories'] as num?)?.toDouble() ?? 0;
+            }
           });
         }
       }
@@ -152,14 +191,23 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
             case 'upload_complete':
               _currentStep = 'upload_complete';
               _currentMessage = data['message'] ?? '图片上传完成';
+              // 保存图片 object_name（仅分析模式确认创建时回传）
+              if (data['object_name'] != null) {
+                _uploadedImageUrl = data['object_name'].toString();
+              }
               _currentStepIndex = 1;
               _analysisProgress = 0.32;
               _updateProgressAnimation();
               break;
             case 'record_created':
               if (data['record'] != null) {
-                _currentRecord = FoodRecord.fromJson(data['record']);
-                _foodName = _currentRecord!.foodName ?? '';
+                try {
+                  _currentRecord = FoodRecord.fromJson(data['record']);
+                  _foodName = _currentRecord!.foodName ?? '';
+                } catch (parseErr) {
+                  // 防御：临时记录字段异常时不阻断后续分析流程
+                  print('⚠️ record_created 解析失败: $parseErr');
+                }
               }
               _currentStep = 'record_created';
               _currentMessage = data['message'] ?? '记录创建成功';
@@ -171,20 +219,23 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
               _currentStep = 'analysis_started';
               _currentMessage = data['message'] ?? '开始AI分析...';
               _currentStepIndex = _stepIndex(2);
-              _analysisProgress = 0.48;
+              _analysisProgress = 0.30;
               _updateProgressAnimation();
               break;
             case 'analysis_progress':
               _currentStep = data['current_step'] ?? 'analyzing';
               _currentMessage = _getStepMessage(_currentStep);
-              _updateAnalysisProgress(_currentStep);
+              _updateAnalysisProgress(
+                _currentStep,
+                data['percentage'] as double?,
+              );
               break;
             case 'analysis_complete':
               _parseAnalysisDataFromResponse(data);
               _currentStep = 'analysis_complete';
               _currentMessage = '分析完成';
               _currentStepIndex = _stepIndex(4);
-              _analysisProgress = 0.85;
+              _analysisProgress = 0.95;
               _updateProgressAnimation();
               break;
             case 'nutrition_saved':
@@ -199,7 +250,8 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
               _currentMessage = '分析完成';
               _analysisProgress = 1.0;
               // 用后端返回的最终食物名更新（兜底确保不空白）
-              if (data['food_name'] != null && data['food_name'].toString().isNotEmpty) {
+              if (data['food_name'] != null &&
+                  data['food_name'].toString().isNotEmpty) {
                 _foodName = data['food_name'].toString();
               }
               _updateProgressAnimation();
@@ -236,30 +288,48 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
     );
   }
 
-  void _updateAnalysisProgress(String step) {
+  /// 根据 Agent 实际推进的节点更新进度。
+  /// [percentage] 为后端按实际完成度下发的值（0.30-0.95），只增不减避免进度回退；
+  /// 缺省时回退到按步骤的估算值。
+  void _updateAnalysisProgress(String step, [double? percentage]) {
     switch (step) {
+      case 'starting':
       case 'state_init':
         _currentStepIndex = _stepIndex(2);
-        _analysisProgress = 0.50;
+        if (percentage == null) _analysisProgress = 0.35;
         break;
+      case 'image_analyzed':
       case 'analyze_image':
       case 'analyze_text':
       case 'text_analyzed':
-        _currentStepIndex = _stepIndex(3);
-        _analysisProgress = 0.65;
+        _currentStepIndex = _stepIndex(2);
+        if (percentage == null) _analysisProgress = 0.50;
         break;
+      case 'nutrition_extracted':
       case 'extract_nutrition':
         _currentStepIndex = _stepIndex(3);
-        _analysisProgress = 0.75;
+        if (percentage == null) _analysisProgress = 0.70;
         break;
+      case 'retrieve_nutrition_knowledge':
+        _currentStepIndex = _stepIndex(3);
+        if (percentage == null) _analysisProgress = 0.78;
+        break;
+      case 'advice_generated':
       case 'generate_advice':
         _currentStepIndex = _stepIndex(4);
-        _analysisProgress = 0.80;
+        if (percentage == null) _analysisProgress = 0.88;
         break;
+      case 'allergy_checked':
       case 'format_response':
         _currentStepIndex = _stepIndex(4);
-        _analysisProgress = 0.85;
+        if (percentage == null) _analysisProgress = 0.95;
         break;
+    }
+    if (percentage != null) {
+      final p = percentage.clamp(0.0, 0.95);
+      if (p > _analysisProgress) {
+        _analysisProgress = p;
+      }
     }
     _updateProgressAnimation();
   }
@@ -270,25 +340,34 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
 
   String _getStepMessage(String step) {
     switch (step) {
+      case 'starting':
       case 'state_init':
-        return '初始化AI分析系统...';
+        return '🚀 初始化AI分析系统...';
+      case 'image_analyzed':
       case 'analyze_image':
-        return '🔍 AI正在识别食物种类...';
       case 'analyze_text':
       case 'text_analyzed':
-        return '📝 AI正在分析食物描述...';
+        return '🔍 AI正在识别食物种类...';
+      case 'nutrition_extracted':
       case 'extract_nutrition':
         return '🧮 计算营养成分和卡路里...';
+      case 'retrieve_nutrition_knowledge':
+        return '📚 检索营养知识库...';
+      case 'advice_generated':
       case 'generate_advice':
         return '💡 生成个性化健康建议...';
+      case 'allergy_checked':
       case 'format_response':
-        return '📊 整理分析结果...';
+        return '⚖️ 检查过敏与饮食禁忌...';
       default:
         return '正在处理...';
     }
   }
 
   void _parseAnalysisDataFromResponse(Map<String, dynamic> data) {
+    // 保存完整分析结果，供"确认创建记录"时原样回传后端落库
+    _rawAnalysisData = Map<String, dynamic>.of(data);
+
     if (data['image_description'] != null) {
       _imageDescription = data['image_description'];
     }
@@ -476,6 +555,58 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
       }
     } catch (e) {
       print('更新消费信息异常: $e');
+    }
+  }
+
+  /// 仅分析模式：用户确认后一次性创建记录
+  Future<void> _confirmCreateRecord() async {
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
+    try {
+      final pending = widget.pendingFoodData;
+      final nfRaw = _rawAnalysisData['nutrition_facts'];
+      final nfMap =
+          nfRaw is Map ? Map<String, dynamic>.from(nfRaw) : <String, dynamic>{};
+      final foodItems = (nfMap['food_items'] as List?) ?? [];
+
+      final payload = <String, dynamic>{
+        'record_date': pending?.recordDate ?? _currentRecord?.recordDate,
+        'record_time': pending?.recordTime ?? _currentRecord?.recordTime,
+        'meal_type': pending?.mealType ?? _currentRecord?.mealType ?? 1,
+        'food_name': _foodName == '分析中...' ? '' : _foodName,
+        'description': pending?.description ?? _currentRecord?.description,
+        'image_url':
+            _uploadedImageUrl ?? _currentRecord?.imageUrl ?? pending?.imageUrl,
+        'recording_method': 1, // AI扫描
+        'from_source': 'camera',
+        'cost': _costAmount ?? pending?.cost,
+        'source_tag': _costSource ?? pending?.sourceTag,
+        'target_user_id': pending?.targetUserId,
+        'nutrition_facts': nfMap,
+        'recommendations': _recommendations,
+        'short_comment': _shortComment,
+        'image_description': _imageDescription,
+        'food_items': foodItems,
+      };
+
+      final result = await _foodService.confirmCreateFoodRecord(payload);
+      if (!mounted) return;
+      if (result.success) {
+        Navigator.of(context).pop(true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('创建失败: ${result.message}')),
+        );
+      }
+    } catch (e) {
+      print('❌ 确认创建食物记录异常: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('创建失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -935,22 +1066,28 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                       AnimatedBuilder(
                         animation: _progressAnimation,
                         builder: (context, child) {
-                          return LinearProgressIndicator(
-                            value: _progressAnimation.value,
-                            backgroundColor: const Color(0xFFE6FAF0),
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                                Color(0xFF2BAF74)),
-                            minHeight: 6,
+                          final progress = _progressAnimation.value;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              LinearProgressIndicator(
+                                value: progress,
+                                backgroundColor: const Color(0xFFE6FAF0),
+                                valueColor: const AlwaysStoppedAnimation<Color>(
+                                    Color(0xFF2BAF74)),
+                                minHeight: 6,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '${(progress * 100).round()}% 完成',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF666666),
+                                ),
+                              ),
+                            ],
                           );
                         },
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${(_analysisProgress * 100).round()}% 完成',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF666666),
-                        ),
                       ),
                     ],
                   ),
@@ -1126,7 +1263,20 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
   }
 
   Future<void> _saveToFavorites() async {
-    if (_isSaving || _currentRecord == null) return;
+    if (_isSaving) return;
+
+    // 分析未完成时给出反馈，而不是静默无响应
+    final bool analysisReady = _currentRecord != null ||
+        (widget.analyzeOnly && _foodName.isNotEmpty && _foodName != '分析中...');
+    if (!analysisReady) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('分析未完成，暂无法收藏'), duration: Duration(seconds: 2)),
+        );
+      }
+      return;
+    }
     setState(() => _isSaving = true);
 
     if (_hasSaved) {
@@ -1166,15 +1316,52 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
     } else {
       // 保存收藏
       try {
-        final result = await _savedMealService.createSavedMealFromRecord(
-          foodRecordId: _currentRecord!.id,
-          mealName: _foodName != '分析中...' ? _foodName : 'AI分析菜品',
-          description: _imageDescription.isNotEmpty
-              ? (_imageDescription.length > 200
-                  ? _imageDescription.substring(0, 200)
-                  : _imageDescription)
-              : null,
-        );
+        final String mealName = _foodName.isNotEmpty && _foodName != '分析中...'
+            ? _foodName
+            : 'AI分析菜品';
+        final String? description = _imageDescription.isNotEmpty
+            ? (_imageDescription.length > 200
+                ? _imageDescription.substring(0, 200)
+                : _imageDescription)
+            : null;
+
+        final ApiResponse<SavedMeal> result;
+        if (_currentRecord != null) {
+          // 有真实食物记录：走 from-food-record 接口
+          result = await _savedMealService.createSavedMealFromRecord(
+            foodRecordId: _currentRecord!.id,
+            mealName: mealName,
+            description: description,
+          );
+        } else {
+          // 仅分析模式：_currentRecord 为 null，用内存中的分析结果直接创建收藏
+          result = await _savedMealService.createSavedMeal(
+            SavedMealCreate(
+              mealName: mealName,
+              description: description,
+              imageUrl: _uploadedImageUrl,
+              nutrition: SavedMealNutrition(
+                servingSize: _servingCount.toDouble(),
+                servingUnit: '份',
+                calories: _totalCalories,
+                protein: _macronutrients['protein'] ?? 0,
+                fat: _macronutrients['fat'] ?? 0,
+                carbohydrates: _macronutrients['carbohydrates'] ?? 0,
+                dietaryFiber: 0,
+                sugar: 0,
+                sodium: 0,
+                cholesterol: 0,
+                vitaminA: 0,
+                vitaminC: 0,
+                vitaminD: 0,
+                calcium: 0,
+                iron: 0,
+                potassium: 0,
+              ),
+            ),
+          );
+        }
+
         if (result.success && result.data != null) {
           setState(() {
             _hasSaved = true;
@@ -1971,14 +2158,19 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
             onPressed: _isLoading
                 ? null
                 : () async {
-                    // 更新消费信息
-                    if (_currentRecord != null &&
-                        (_costAmount != null || _costSource != null)) {
-                      await _updateRecordCost();
-                    }
+                    if (widget.analyzeOnly) {
+                      // 仅分析模式：展示结果后由用户确认，再创建记录
+                      await _confirmCreateRecord();
+                    } else {
+                      // 更新消费信息
+                      if (_currentRecord != null &&
+                          (_costAmount != null || _costSource != null)) {
+                        await _updateRecordCost();
+                      }
 
-                    if (mounted) {
-                      Navigator.of(context).pop(true);
+                      if (mounted) {
+                        Navigator.of(context).pop(true);
+                      }
                     }
                   },
             style: ElevatedButton.styleFrom(
@@ -2016,9 +2208,9 @@ class _FoodAnalysisPageState extends State<FoodAnalysisPage>
                       ),
                     ],
                   )
-                : const Text(
-                    '记录餐食',
-                    style: TextStyle(
+                : Text(
+                    widget.analyzeOnly ? '确认创建记录' : '记录餐食',
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),

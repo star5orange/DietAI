@@ -145,7 +145,7 @@ class MessageHistoryNotifier extends StateNotifier<MessageHistoryState> {
   }
 
   Future<bool> sendMessage(String content,
-      {String messageType = 'text'}) async {
+      {String messageType = 'text', int? currentUserId}) async {
     try {
       final response = await _apiService.sendMessage(
         receiverId: state.targetUserId,
@@ -161,7 +161,7 @@ class MessageHistoryNotifier extends StateNotifier<MessageHistoryState> {
         // 这样用户至少能看到自己发送的内容
         final tempMsg = Message(
           id: DateTime.now().millisecondsSinceEpoch,
-          senderId: 0, // 当前用户ID由UI层判断
+          senderId: currentUserId ?? 0,
           content: content,
           messageType: messageType,
           createdAt: DateTime.now(),
@@ -175,7 +175,7 @@ class MessageHistoryNotifier extends StateNotifier<MessageHistoryState> {
       // 即使请求失败，也添加临时消息
       final tempMsg = Message(
         id: DateTime.now().millisecondsSinceEpoch,
-        senderId: 0,
+        senderId: currentUserId ?? 0,
         content: content,
         messageType: messageType,
         createdAt: DateTime.now(),
@@ -195,7 +195,22 @@ class MessageHistoryNotifier extends StateNotifier<MessageHistoryState> {
     state = state.copyWith(messages: [...state.messages, msg]);
   }
 
-  Future<bool> sendPoke(String pokeType) async {
+  /// 合并离线消息到消息列表（按时间排序，按 id 去重）
+  void mergeOfflineMessages(List<Message> messages) {
+    if (messages.isEmpty) return;
+    final existingIds = state.messages.map((m) => m.id).toSet();
+    final merged = [...state.messages];
+    for (final msg in messages) {
+      if (!existingIds.contains(msg.id)) {
+        merged.add(msg);
+      }
+    }
+    // 按时间正序排列
+    merged.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    state = state.copyWith(messages: merged);
+  }
+
+  Future<bool> sendPoke(String pokeType, {int? currentUserId}) async {
     try {
       final response =
           await _apiService.sendPoke(state.targetUserId, pokeType: pokeType);
@@ -210,7 +225,7 @@ class MessageHistoryNotifier extends StateNotifier<MessageHistoryState> {
 
         final pokeMsg = Message(
           id: DateTime.now().millisecondsSinceEpoch,
-          senderId: 0, // 当前用户
+          senderId: currentUserId ?? 0,
           content: pokeContent,
           messageType: 'poke',
           extraData: {'poke_type': pokeType},

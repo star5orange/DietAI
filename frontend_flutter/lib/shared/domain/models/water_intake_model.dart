@@ -7,6 +7,7 @@ class WaterIntakeRecord {
   final String? notes;
   final String recordedAt;
   final String createdAt;
+  final String? recordedByName;
 
   WaterIntakeRecord({
     required this.id,
@@ -14,6 +15,7 @@ class WaterIntakeRecord {
     this.notes,
     required this.recordedAt,
     required this.createdAt,
+    this.recordedByName,
   });
 
   factory WaterIntakeRecord.fromJson(Map<String, dynamic> json) {
@@ -23,6 +25,7 @@ class WaterIntakeRecord {
       notes: json['notes'] as String?,
       recordedAt: json['recorded_at'] as String,
       createdAt: json['created_at'] as String,
+      recordedByName: json['recorded_by_name'] as String?,
     );
   }
 
@@ -33,6 +36,7 @@ class WaterIntakeRecord {
       'notes': notes,
       'recorded_at': recordedAt,
       'created_at': createdAt,
+      'recorded_by_name': recordedByName,
     };
   }
 

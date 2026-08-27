@@ -56,10 +56,12 @@ class ExamReportResponse(BaseModel):
     hospital_name: Optional[str] = None
     report_type: Optional[str] = None
     photo_url: Optional[str] = None
+    photo_urls: Optional[List[str]] = None
     abnormal_count: int = 0
     summary: Optional[str] = None
     doctor_advice: Optional[str] = None
     compared_to_last: Optional[Dict[str, Any]] = None
+    followup_date: Optional[date] = None
     created_at: datetime
     created_by: Optional[int] = None
 
@@ -104,6 +106,16 @@ class ExamMetricUpdate(BaseModel):
     is_abnormal: Optional[bool] = Field(None, description="是否异常")
 
 
+class ExamReportFollowupUpdate(BaseModel):
+    """设置复查提醒请求"""
+    followup_date: Optional[date] = Field(None, description="建议复查日期，传 null 清除")
+
+
+class ExamReportReassign(BaseModel):
+    """体检报告归属修正请求"""
+    target_user_id: int = Field(..., description="目标用户ID（本人或当前用户的家人）")
+
+
 # ============================================================
 # 指标趋势
 # ============================================================
@@ -140,6 +152,7 @@ class ExamSummaryResponse(BaseModel):
     abnormal_metrics: List[str] = Field(default_factory=list, description="异常指标名称列表")
     has_trend_warning: bool = Field(False, description="是否有趋势预警")
     next_checkup_date: Optional[date] = Field(None, description="建议下次体检日期")
+    followup_date: Optional[date] = Field(None, description="报告建议复查日期")
 
 
 # ============================================================
@@ -153,3 +166,6 @@ class ExamAdviceResponse(BaseModel):
     diet_recommendations: List[str] = Field(default_factory=list, description="饮食建议")
     exercise_recommendations: List[str] = Field(default_factory=list, description="运动建议")
     followup_reminder: Optional[str] = Field(None, description="复查提醒")
+    suggest_weight_loss_goal: bool = Field(
+        False, description="是否建议设置减重目标（BMI > 24 或 超重/肥胖 异常时为 true）"
+    )

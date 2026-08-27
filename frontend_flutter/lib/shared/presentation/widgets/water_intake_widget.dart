@@ -357,9 +357,25 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                                child: Text(record.formattedAmount,
-                                    style: AppTextStyles.bodyMedium.copyWith(
-                                        fontWeight: FontWeight.w500))),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(record.formattedAmount,
+                                      style: AppTextStyles.bodyMedium.copyWith(
+                                          fontWeight: FontWeight.w500)),
+                                  // 代记录溯源：显示记录人
+                                  if (record.recordedByName != null &&
+                                      record.recordedByName!.isNotEmpty)
+                                    Text(
+                                      '由${record.recordedByName}记录',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.grey[500],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
                             Text(record.formattedTime,
                                 style: AppTextStyles.bodySmall),
                           ],
@@ -453,11 +469,11 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           _isLoading
               ? SizedBox(
-                  width: 140,
-                  height: 140,
+                  width: 110,
+                  height: 110,
                   child: Center(
                       child: CircularProgressIndicator(
                           valueColor: AlwaysStoppedAnimation<Color>(
@@ -467,7 +483,7 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
                   onTap: _showTodayRecordsSheet,
                   child: AnimatedProgressCircle(
                     progress: progress,
-                    size: 140,
+                    size: 110,
                     strokeWidth: 10,
                     progressColor: AppColors.textInverse,
                     backgroundColor: AppColors.whiteWithOpacity(0.25),
@@ -496,7 +512,7 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
                     ),
                   ),
                 ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [

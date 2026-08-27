@@ -9,7 +9,7 @@ from .user import (
     ForgotPasswordRequest, VerifyResetCodeRequest, ResetPasswordRequest,
 )
 from .food import (
-    FoodRecordCreate, FoodRecordResponse, NutritionDetailCreate, NutritionDetailResponse,
+    FoodRecordCreate, FoodRecordConfirmCreate, FoodRecordResponse, NutritionDetailCreate, NutritionDetailResponse,
     DailyNutritionSummaryResponse, NutritionTrendParams,
 )
 from .chat import (
@@ -53,6 +53,7 @@ from .exam import (
     ExamReportUpload, ExamReportUploadResponse,
     ExamReportResponse, ExamReportListResponse,
     ExamMetricResponse, ExamMetricUpdate,
+    ExamReportFollowupUpdate, ExamReportReassign,
     MetricTrendPoint, MetricTrendResponse,
     ExamSummaryResponse, ExamAdviceResponse,
 )

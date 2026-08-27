@@ -15,6 +15,7 @@ class WaterIntakeOut(BaseModel):
     amount_ml: int
     record_time: datetime
     drink_type: Optional[str]
+    recorded_by_name: Optional[str] = None
     created_at: datetime
 
     class Config:

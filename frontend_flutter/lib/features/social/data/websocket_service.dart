@@ -26,6 +26,10 @@ class WebSocketChatService {
   bool _isConnected = false;
   int? _currentUserId;
   Timer? _pingTimer;
+  Timer? _reconnectTimer;
+  bool _manualClose = false;
+  int _reconnectAttempts = 0;
+  static const int _maxReconnectAttempts = 5;
 
   WebSocketChatService({
     required this.onNewMessage,
@@ -50,6 +54,7 @@ class WebSocketChatService {
       final token = await _apiService.getAccessToken();
       if (token == null) {
         print(' WebSocket 连接失败：没有 access token');
+        _scheduleReconnect();
         return;
       }
 
@@ -73,18 +78,23 @@ class WebSocketChatService {
       _startPing();
 
       _isConnected = true;
+      _reconnectAttempts = 0;
       onConnectionChanged?.call(true);
       print('✅ WebSocket 连接成功');
     } catch (e) {
       print('❌ WebSocket 连接失败: $e');
       _isConnected = false;
       onConnectionChanged?.call(false);
+      _scheduleReconnect();
     }
   }
 
   /// 断开连接
   Future<void> disconnect() async {
+    _manualClose = true;
     _stopPing();
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     await _subscription?.cancel();
     await _channel?.sink.close();
     _channel = null;
@@ -93,6 +103,23 @@ class WebSocketChatService {
     _currentUserId = null;
     onConnectionChanged?.call(false);
     print('🔌 WebSocket 已断开');
+  }
+
+  /// 断线后自动重连（最多 5 次，间隔 3 秒）
+  void _scheduleReconnect() {
+    if (_manualClose || _reconnectAttempts >= _maxReconnectAttempts) {
+      return;
+    }
+    _reconnectAttempts++;
+    final attempt = _reconnectAttempts;
+    print('🔄 WebSocket 断线，${attempt}/$_maxReconnectAttempts 秒后重连...');
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(const Duration(seconds: 3), () {
+      if (_manualClose || _currentUserId == null) return;
+      print('🔄 尝试重连 WebSocket...');
+      _isConnected = false;
+      connect(_currentUserId!);
+    });
   }
 
   /// 通过 WebSocket 发送消息
@@ -178,12 +205,15 @@ class WebSocketChatService {
     print('❌ WebSocket 错误: $error');
     _isConnected = false;
     onConnectionChanged?.call(false);
+    _scheduleReconnect();
   }
 
   void _onDone() {
     print('🔌 WebSocket 连接关闭');
     _isConnected = false;
+    _stopPing();
     onConnectionChanged?.call(false);
+    _scheduleReconnect();
   }
 
   /// 启动心跳

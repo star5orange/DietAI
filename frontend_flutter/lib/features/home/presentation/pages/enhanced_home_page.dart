@@ -247,7 +247,9 @@ class _EnhancedHomePageState extends ConsumerState<EnhancedHomePage>
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${member.totalCalories.toInt()} kcal',
+                          member.totalCalories != null
+                              ? '${member.totalCalories!.toInt()} kcal'
+                              : '已隐藏',
                           style: TextStyle(
                             fontSize: 10,
                             color: Colors.white.withValues(alpha: 0.8),

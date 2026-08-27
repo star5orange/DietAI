@@ -76,7 +76,9 @@ class MinioManager:
             )
             
             return True
-        except S3Error as e:
+        except Exception as e:
+            # 只捕获 S3Error 会漏掉连接类异常（MinioConnectionError 等），
+            # 导致上传接口冒出笼统的 500。这里统一兜底为 False。
             print(f"Error uploading file: {e}")
             return False
     
