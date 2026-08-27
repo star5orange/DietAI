@@ -709,7 +709,11 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
         await websocket.close(code=4001, reason="Invalid token")
         return
     
-    user_id = int(payload.get("sub"))
+    # device token: sub=device_id, user_id=绑定的用户; user token: sub=user_id
+    if payload.get("type") == "device":
+        user_id = int(payload.get("user_id"))
+    else:
+        user_id = int(payload.get("sub"))
     if not user_id:
         await websocket.close(code=4001, reason="Invalid token payload")
         return

@@ -44,14 +44,14 @@ class ApiConfig {
 
   /// 智能选择开发环境URL
   static String _getDevBaseUrl() {
-    return devLocalNetworkUrl; // 真机调试时使用局域网IP
-    //return devBaseUrl; // 本地调试使用localhost
+    return devBaseUrl; // 使用localhost，真机通过 adb reverse 连接
+    //return devLocalNetworkUrl; // 真机调试时使用局域网IP
   }
 
   /// 智能选择开发环境MinIO URL
   static String _getDevMinioUrl() {
-    return devLocalNetworkMinioUrl; // 真机调试时使用局域网IP
-    //return devMinioUrl; // 本地调试使用localhost
+    return devMinioUrl; // 使用localhost，真机通过 adb reverse 连接
+    //return devLocalNetworkMinioUrl; // 真机调试时使用局域网IP
   }
 
   /// 动态设置API基础URL（用于运行时配置）

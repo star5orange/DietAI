@@ -161,6 +161,12 @@ try:
 except ImportError:
     pass
 
+try:
+    from routers.device_router import router as device_router
+    _device_router = device_router
+except ImportError:
+    _device_router = None
+
 settings = get_settings()
 
 # 配置日志
@@ -434,6 +440,8 @@ if _family_router is not None:
     app.include_router(_family_router, prefix="/api", tags=["家庭健康"])
 if _exam_router is not None:
     app.include_router(_exam_router, prefix="/api", tags=["体检报告"])
+if _device_router is not None:
+    app.include_router(_device_router, tags=["设备绑定"])
 
 # 启动服务器
 if __name__ == "__main__":

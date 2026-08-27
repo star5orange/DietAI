@@ -20,6 +20,7 @@ import 'about_us_page.dart';
 import 'my_pet_page.dart';
 import 'settings_page.dart';
 import '../../../advisor/presentation/pages/advisor_style_page.dart';
+import 'device_binding_page.dart';
 import '../../../../core/services/api_service.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
@@ -427,6 +428,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => const AdvisorStylePage(),
+                ),
+              );
+            },
+          ),
+          _buildMenuItem(
+            icon: LucideIcons.cpu,
+            title: '设备绑定',
+            subtitle: '绑定或管理您的智能硬件设备',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const DeviceBindingPage(),
                 ),
               );
             },

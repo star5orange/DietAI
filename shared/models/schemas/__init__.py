@@ -56,3 +56,9 @@ from .exam import (
     MetricTrendPoint, MetricTrendResponse,
     ExamSummaryResponse, ExamAdviceResponse,
 )
+
+# 设备绑定
+from .device import (
+    RequestPairingRequest, PollPairingRequest, ConfirmPairingRequest,
+    PairingCodeResponse, DeviceTokenResponse, DeviceStatusResponse,
+)

@@ -33,6 +33,113 @@ settings = get_settings()
 logger = logging.getLogger("food_router")
 
 
+# --- 自动从食物数据库填充营养信息 ---
+# 常见食物默认份量估算 (克)
+_DEFAULT_PORTION_GRAMS = {
+    "西瓜": 300, "米饭": 200, "面条": 200, "馒头": 100, "包子": 100,
+    "饺子": 200, "牛奶": 250, "豆浆": 300, "鸡蛋": 50, "苹果": 200,
+    "香蕉": 100, "橙子": 200, "酸奶": 200, "面包": 50, "粥": 300,
+    "粉": 200, "米粉": 200, "豆腐": 100, "鸡肉": 100, "猪肉": 100,
+    "牛肉": 100, "鱼": 100, "虾": 100, "蔬菜": 200, "青菜": 200,
+}
+
+def _auto_fill_nutrition(db: Session, food_record: FoodRecord):
+    """从 FoodDatabase 查找匹配食物, 自动创建 NutritionDetail 并更新日汇总"""
+    food_name = food_record.food_name
+    if not food_name:
+        return
+
+    # 模糊查找食物数据库 (先精确, 再模糊)
+    fd = db.query(FoodDatabase).filter(
+        FoodDatabase.food_name == food_name
+    ).first()
+    if not fd:
+        fd = db.query(FoodDatabase).filter(
+            FoodDatabase.food_name.ilike(f"%{food_name}%")
+        ).first()
+    if not fd:
+        logger.info(f"[营养填充] 食物数据库未找到: {food_name}")
+        return
+
+    # 估算份量 (克)
+    portion_g = _DEFAULT_PORTION_GRAMS.get(food_name, 100)
+
+    # 按份量换算营养
+    ratio = portion_g / 100.0
+    nutrition = NutritionDetail(
+        food_record_id=food_record.id,
+        calories=round(float(fd.calories_per_100g or 0) * ratio, 2),
+        protein=round(float(fd.protein_per_100g or 0) * ratio, 2),
+        fat=round(float(fd.fat_per_100g or 0) * ratio, 2),
+        carbohydrates=round(float(fd.carbohydrates_per_100g or 0) * ratio, 2),
+        dietary_fiber=round(float(fd.fiber_per_100g or 0) * ratio, 2),
+        sodium=round(float(fd.sodium_per_100g or 0) * ratio, 2),
+        confidence_score=0.80,  # 数据库匹配, 置信度 0.8
+    )
+    db.add(nutrition)
+
+    # 更新记录状态为已分析
+    food_record.analysis_status = 3  # 3=已分析完成
+
+    # 更新日汇总
+    try:
+        _update_daily_summary(db, food_record.user_id, food_record.record_date)
+    except Exception as e:
+        logger.warning(f"更新日汇总失败: {e}")
+
+    db.commit()
+    logger.info(f"[营养填充] {food_name}: {nutrition.calories}kcal (份量{portion_g}g)")
+
+
+def _update_daily_summary(db: Session, user_id: int, record_date):
+    """重新计算并更新某天的营养汇总"""
+    from shared.utils.model import decimal_to_float
+
+    # 查该天所有已分析的食物记录
+    records = db.query(FoodRecord).filter(
+        FoodRecord.user_id == user_id,
+        FoodRecord.record_date == record_date,
+        FoodRecord.analysis_status == 3,
+    ).all()
+
+    total_cal = total_pro = total_fat = total_carb = total_fib = total_sod = 0.0
+    meal_count = 0
+    seen_meals = set()
+    for r in records:
+        nd = db.query(NutritionDetail).filter(NutritionDetail.food_record_id == r.id).first()
+        if nd:
+            total_cal += float(nd.calories or 0)
+            total_pro += float(nd.protein or 0)
+            total_fat += float(nd.fat or 0)
+            total_carb += float(nd.carbohydrates or 0)
+            total_fib += float(nd.dietary_fiber or 0)
+            total_sod += float(nd.sodium or 0)
+        if r.meal_type not in seen_meals:
+            seen_meals.add(r.meal_type)
+            meal_count += 1
+
+    # 查或创建汇总
+    summary = db.query(DailyNutritionSummary).filter(
+        DailyNutritionSummary.user_id == user_id,
+        DailyNutritionSummary.summary_date == record_date,
+    ).first()
+    if not summary:
+        summary = DailyNutritionSummary(
+            user_id=user_id,
+            summary_date=record_date,
+        )
+        db.add(summary)
+
+    summary.total_calories = round(total_cal, 2)
+    summary.total_protein = round(total_pro, 2)
+    summary.total_fat = round(total_fat, 2)
+    summary.total_carbohydrates = round(total_carb, 2)
+    summary.total_fiber = round(total_fib, 2)
+    summary.total_sodium = round(total_sod, 2)
+    summary.meal_count = meal_count
+    db.commit()
+
+
 def _check_family_relation(db: Session, user_id: int, target_user_id: int) -> bool:
     """校验 user_id 与 target_user_id 是否为已接受的家人关系"""
     return db.query(UserRelationship).filter(
@@ -434,10 +541,11 @@ async def create_food_record(
         raise HTTPException(status_code=401, detail="未提供有效的认证令牌")
     token = auth_header[7:]  # 去掉 "Bearer " 前缀
     payload = AuthService.verify_token(token)
-    user_id = int(payload.get("sub"))
-
-
-    # 代记录：校验目标用户是否为已接受的家人关系
+    # device token: sub=device_id, user_id=绑定的用户; user token: sub=user_id
+    if payload.get("type") == "device":
+        user_id = int(payload.get("user_id"))
+    else:
+        user_id = int(payload.get("sub"))
     if food_data.target_user_id is not None:
         db = SessionLocal()
         try:
@@ -486,7 +594,11 @@ async def create_food_record_traditional(
             raise HTTPException(status_code=401, detail="未提供有效的认证令牌")
         token = auth_header[7:]
         payload = AuthService.verify_token(token)
-        user_id = int(payload.get("sub"))
+        # device token: sub=device_id, user_id=绑定的用户; user token: sub=user_id
+        if payload.get("type") == "device":
+            user_id = int(payload.get("user_id"))
+        else:
+            user_id = int(payload.get("sub"))
 
         sys.stderr.write(f"[TRACE-v3] user_id={user_id}\n")
         sys.stderr.flush()
@@ -535,6 +647,32 @@ async def create_food_record_traditional(
 
         sys.stderr.write(f"[TRACE-v3] commit done, record id={food_record.id}\n")
         sys.stderr.flush()
+
+        # --- 自动填充营养信息 ---
+        # 优先: 硬件端传来的 estimated_calories (AI 分析结果)
+        # 其次: 从 FoodDatabase 查找
+        if food_data.estimated_calories and food_data.estimated_calories > 0:
+            try:
+                nutrition = NutritionDetail(
+                    food_record_id=food_record.id,
+                    calories=float(food_data.estimated_calories),
+                    confidence_score=0.85,  # 硬件 AI 分析, 置信度 0.85
+                )
+                db.add(nutrition)
+                food_record.analysis_status = 3  # 已分析完成
+                db.commit()  # 先落库, 确保 _update_daily_summary 能查到 analysis_status=3 的记录
+                try:
+                    _update_daily_summary(db, food_record.user_id, food_record.record_date)
+                except Exception as e:
+                    logger.warning(f"更新日汇总失败: {e}")
+                logger.info(f"[营养填充] 硬件AI: {food_record.food_name}={food_data.estimated_calories}kcal")
+            except Exception as e:
+                logger.warning(f"硬件卡路里填充失败: {e}")
+        else:
+            try:
+                _auto_fill_nutrition(db, food_record)
+            except Exception as e:
+                logger.warning(f"自动营养填充失败: {e}")
 
         # 代记录：写溯源日志 + 通知被代记录人
         if is_proxy:
@@ -1228,12 +1366,18 @@ async def get_food_records(
         db: Session = Depends(get_db),
         start_date: Optional[date] = Query(None, description="开始日期"),
         end_date: Optional[date] = Query(None, description="结束日期"),
+        record_date: Optional[date] = Query(None, description="单日日期(兼容硬件端 record_date 参数)"),
         meal_type: Optional[int] = Query(None, description="餐次类型"),
         page: int = Query(1, ge=1, description="页码"),
         page_size: int = Query(20, ge=1, le=100, description="每页大小")
 ):
     """获取食物记录列表"""
     try:
+        # 兼容硬件端: record_date 等价于 start_date=end_date
+        if record_date:
+            start_date = record_date
+            end_date = record_date
+
         query = db.query(FoodRecord).filter(FoodRecord.user_id == current_user.id)
 
         if start_date:

@@ -153,25 +153,20 @@ async def upload_exam_report(
             )
 
         # 上传到 MinIO
-        from shared.config.minio_config import get_minio_client
-        minio_client = get_minio_client()
+        from shared.config.minio_config import minio_client
         file_ext = photo.content_type.split("/")[-1]
         object_name = f"exam_reports/{user_id}/{datetime.now().strftime('%Y%m%d_%H%M%S')}.{file_ext}"
 
         content = await photo.read()
-        minio_client.upload_file(
-            bucket_name="dietai",
-            object_name=object_name,
-            data=content,
-            content_type=photo.content_type
-        )
+        success = minio_client.upload_file(object_name, content, photo.content_type)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="体检报告图片上传失败"
+            )
 
         # 获取预签名URL
-        photo_url = minio_client.get_presigned_url(
-            bucket_name="dietai",
-            object_name=object_name,
-            expires=24 * 60 * 60  # 24小时
-        )
+        photo_url = minio_client.get_file_url(object_name)
 
         # 解析体检日期
         parsed_exam_date = None

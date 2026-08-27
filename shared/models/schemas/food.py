@@ -23,6 +23,8 @@ class FoodRecordCreate(BaseModel):
     source_tag: Optional[str] = Field(None, max_length=50, description="来源标签")
     # Milestone 4: 代记录
     target_user_id: Optional[int] = Field(None, description="代记录目标用户ID（仅家人关系可用）")
+    # 硬件端传入的预估卡路里 (ESP32 AI 分析结果)
+    estimated_calories: Optional[int] = Field(None, ge=0, description="硬件端AI预估卡路里")
 
 
 class FoodRecordResponse(BaseModel):

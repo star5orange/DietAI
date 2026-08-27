@@ -12,6 +12,7 @@ from .wellness_models import WellnessKnowledge
 from .advisor_models import AiAdvisorSettings
 from .fasting_models import FastingPlan, FastingCheckin
 from .pet_models import VirtualPetState, PetUnlockable
+from .device_models import Device
 
 # Milestone 4 新增模型
 from .social_models import UserRelationship
@@ -60,6 +61,7 @@ __all__ = [
     "FastingCheckin",
     "VirtualPetState",
     "PetUnlockable",
+    "Device",
 
     # Pydantic模型
     #"schemas"

@@ -8,6 +8,7 @@ import '../../../../shared/domain/models/user_model.dart';
 import '../../../health/presentation/pages/reminder_settings_page.dart';
 import '../../../advisor/presentation/pages/advisor_style_page.dart';
 import '../widgets/budget_setting_sheet.dart';
+import 'device_binding_page.dart';
 
 /// 系统设置页面
 ///
@@ -76,6 +77,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   context,
                   MaterialPageRoute(
                     builder: (context) => const ReminderSettingsPage(),
+                  ),
+                );
+              },
+            ),
+            _buildSettingsCard(
+              icon: LucideIcons.cpu,
+              title: '设备绑定',
+              subtitle: '绑定或管理您的智能硬件设备',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const DeviceBindingPage(),
                   ),
                 );
               },
