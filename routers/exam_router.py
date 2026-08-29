@@ -557,14 +557,22 @@ async def upload_exam_report(
                 current_val = m.get("metric_value")
                 if name in last_metrics and current_val is not None:
                     last_val = last_metrics[name].metric_value
-                    if last_val and current_val != last_val:
-                        change = current_val - last_val
-                        pct = (change / last_val * 100) if last_val != 0 else 0
+                    if last_val is None:
+                        continue
+                    # 数据库 Numeric 返回 Decimal、AI 分析返回 float，统一转 float 再比较
+                    try:
+                        current_f = float(current_val)
+                        last_f = float(last_val)
+                    except (TypeError, ValueError):
+                        continue
+                    if current_f != last_f:
+                        change = current_f - last_f
+                        pct = (change / last_f * 100) if last_f != 0 else 0
                         direction = "↑" if change > 0 else "↓"
                         trend_summary.append({
                             "metric": name,
-                            "last_value": last_val,
-                            "current_value": current_val,
+                            "last_value": last_f,
+                            "current_value": current_f,
                             "change": round(change, 2),
                             "change_pct": round(pct, 1),
                             "direction": direction
@@ -578,7 +586,11 @@ async def upload_exam_report(
             if last_abnormal or trend_summary:
                 compared_to_last = {
                     "last_exam_date": last_report.exam_date.isoformat() if last_report.exam_date else None,
-                    "abnormal_metrics": {m.metric_name: m.metric_value for m in last_abnormal if m.metric_value},
+                    # Decimal 无法 JSON 序列化，统一转 float
+                    "abnormal_metrics": {
+                        m.metric_name: float(m.metric_value)
+                        for m in last_abnormal if m.metric_value is not None
+                    },
                     "trends": trend_summary[:10]  # 最多10项趋势
                 }
 

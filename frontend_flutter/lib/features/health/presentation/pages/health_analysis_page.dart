@@ -355,31 +355,33 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
 
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('基础代谢率 (BMR)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  Text('${_bmrResult!.bmr.round()} ${_bmrResult!.unit}', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  Text('计算方法: ${_bmrResult!.method}'),
-                  if (_bmrResult!.description.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(_bmrResult!.description, style: const TextStyle(color: Colors.grey)),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('基础代谢率 (BMR)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    Text('${_bmrResult!.bmr.round()} ${_bmrResult!.unit}', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    Text('计算方法: ${_bmrResult!.method}'),
+                    if (_bmrResult!.description.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(_bmrResult!.description, style: const TextStyle(color: Colors.grey)),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          _buildAiSection('bmr'),
-        ],
+            const SizedBox(height: 8),
+            _buildAiSection('bmr'),
+          ],
+        ),
       ),
     );
   }
@@ -391,34 +393,36 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
 
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('每日总能量消耗 (TDEE)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  Text('${_tdeeResult!.tdee.round()} ${_tdeeResult!.unit}', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  Text('活动系数: ${_tdeeResult!.activityFactor}'),
-                  Text('活动水平: ${_tdeeResult!.activityDescription}'),
-                  const SizedBox(height: 8),
-                  Text('基础代谢: ${_tdeeResult!.bmr.round()} ${_tdeeResult!.unit}'),
-                  if (_tdeeResult!.description.isNotEmpty) ...[
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('每日总能量消耗 (TDEE)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    Text('${_tdeeResult!.tdee.round()} ${_tdeeResult!.unit}', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    Text('活动系数: ${_tdeeResult!.activityFactor}'),
+                    Text('活动水平: ${_tdeeResult!.activityDescription}'),
                     const SizedBox(height: 8),
-                    Text(_tdeeResult!.description, style: const TextStyle(color: Colors.grey)),
+                    Text('基础代谢: ${_tdeeResult!.bmr.round()} ${_tdeeResult!.unit}'),
+                    if (_tdeeResult!.description.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(_tdeeResult!.description, style: const TextStyle(color: Colors.grey)),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          _buildAiSection('tdee'),
-        ],
+            const SizedBox(height: 8),
+            _buildAiSection('tdee'),
+          ],
+        ),
       ),
     );
   }
@@ -549,28 +553,30 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
 
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('体重趋势', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  Text('趋势: ${_weightTrendResult!.trend}'),
-                  Text('体重变化: ${_weightTrendResult!.weightChange.toStringAsFixed(2)} kg'),
-                  Text('变化率: ${_weightTrendResult!.weightChangePercentage.toStringAsFixed(2)}%'),
-                  const SizedBox(height: 8),
-                  Text('分析: ${_weightTrendResult!.analysis}'),
-                  if (_weightTrendResult!.records.isNotEmpty) ...[
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('体重趋势', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 16),
-                    const Text('历史记录：', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    Text('趋势: ${_weightTrendResult!.trend}'),
+                    Text('体重变化: ${_weightTrendResult!.weightChange.toStringAsFixed(2)} kg'),
+                    Text('变化率: ${_weightTrendResult!.weightChangePercentage.toStringAsFixed(2)}%'),
                     const SizedBox(height: 8),
-                    Expanded(
-                      child: ListView.builder(
+                    Text('分析: ${_weightTrendResult!.analysis}'),
+                    if (_weightTrendResult!.records.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      const Text('历史记录：', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
                         itemCount: _weightTrendResult!.records.length,
                         itemBuilder: (context, index) {
                           final record = _weightTrendResult!.records[index];
@@ -580,15 +586,15 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
                           );
                         },
                       ),
-                    ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          _buildAiSection('weight-trend'),
-        ],
+            const SizedBox(height: 8),
+            _buildAiSection('weight-trend'),
+          ],
+        ),
       ),
     );
   }
