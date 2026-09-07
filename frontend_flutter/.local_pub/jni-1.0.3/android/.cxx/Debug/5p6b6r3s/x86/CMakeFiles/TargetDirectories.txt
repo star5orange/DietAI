@@ -1,0 +1,3 @@
+D:/克隆/DietAI/frontend_flutter/.local_pub/jni-1.0.3/android/.cxx/Debug/5p6b6r3s/x86/CMakeFiles/jni.dir
+D:/克隆/DietAI/frontend_flutter/.local_pub/jni-1.0.3/android/.cxx/Debug/5p6b6r3s/x86/CMakeFiles/edit_cache.dir
+D:/克隆/DietAI/frontend_flutter/.local_pub/jni-1.0.3/android/.cxx/Debug/5p6b6r3s/x86/CMakeFiles/rebuild_cache.dir

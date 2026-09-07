@@ -53,6 +53,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
   List<FoodRecord> _todayRecords = [];
   DailyNutritionSummary? _dailySummary;
   bool _isLoading = true;
+  bool _macroNutrientsExpanded = false;
   DateTime _selectedDate = DateTime.now();
   double _targetCalories = 2000.0;
   double _targetProtein = 150.0;
@@ -1290,33 +1291,44 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                               _buildCalorieCard(
                                   remainingCalories, currentCalories, crowdTag),
                               const SizedBox(height: 14),
-                              SizedBox(
-                                height: 250,
-                                child: WaterIntakeWidget(
-                                  onTapDetails: () {},
-                                  onWaterRecorded: _onWaterRecorded,
-                                  selectedDate: _selectedDate,
-                                ),
+                              WaterIntakeWidget(
+                                onTapDetails: () {},
+                                onWaterRecorded: _onWaterRecorded,
+                                selectedDate: _selectedDate,
+                                collapsible: true,
+                                initiallyCollapsed: true,
                               ),
                               const SizedBox(height: 14),
-                              // 节气切换通知横幅
-                              if (_solarTermChanged != null) ...[
-                                _buildSolarTermChangeBanner(),
-                                const SizedBox(height: 12),
-                              ],
-                              // 节气预告横幅（3天内即将到来）
-                              if (_upcomingSolarTerm != null) ...[
-                                _buildUpcomingSolarTermBanner(),
-                                const SizedBox(height: 12),
-                              ],
-                              SolarTermTodayWidget(
-                                onTapDetails: () => context.push('/wellness'),
-                                crowdTag: crowdTag,
+                              // 节气相关（横幅 + 今日节气卡，默认收起的折叠区）
+                              _FoldSection(
+                                icon: LucideIcons.leaf,
+                                color: const Color(0xFF43A047),
+                                title: '节气养生',
+                                subtitle:
+                                    '${SolarTermTodayWidget.getCurrentSolarTermName()} · 应季养生建议',
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (_solarTermChanged != null) ...[
+                                      _buildSolarTermChangeBanner(),
+                                      const SizedBox(height: 12),
+                                    ],
+                                    if (_upcomingSolarTerm != null) ...[
+                                      _buildUpcomingSolarTermBanner(),
+                                      const SizedBox(height: 12),
+                                    ],
+                                    SolarTermTodayWidget(
+                                      onTapDetails: () =>
+                                          context.push('/wellness'),
+                                      crowdTag: crowdTag,
+                                    ),
+                                  ],
+                                ),
                               ),
-                              const SizedBox(height: 24),
-                              // M2: 消费概览卡片
+                              const SizedBox(height: 12),
+                              // 消费概览（默认收起）
                               _buildCostOverviewCard(),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 12),
                               if (_favoriteMeals.isNotEmpty) ...[
                                 _buildFavoriteMealsSection(),
                                 const SizedBox(height: 24),
@@ -1800,38 +1812,32 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
   }
 
   Widget _buildFavoriteMealsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('常用餐食', style: AppTextStyles.h5),
-            GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SavedMealsPage()),
-              ),
-              child: Text('查看全部',
-                  style: AppTextStyles.bodySmall
-                      .copyWith(color: AppColors.primary)),
-            ),
-          ],
+    return _FoldSection(
+      icon: LucideIcons.star,
+      color: const Color(0xFFF59E0B),
+      title: '常用餐食',
+      subtitle: '${_favoriteMeals.length} 个常吃，点按可快捷记录',
+      trailing: GestureDetector(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SavedMealsPage()),
         ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 90,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: _favoriteMeals.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
-            itemBuilder: (context, index) {
-              final meal = _favoriteMeals[index];
-              return _buildFavoriteMealCard(meal);
-            },
-          ),
+        child: Text('查看全部',
+            style: AppTextStyles.bodySmall
+                .copyWith(color: AppColors.primary, fontSize: 12)),
+      ),
+      child: SizedBox(
+        height: 90,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: _favoriteMeals.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 10),
+          itemBuilder: (context, index) {
+            final meal = _favoriteMeals[index];
+            return _buildFavoriteMealCard(meal);
+          },
         ),
-      ],
+      ),
     );
   }
 
@@ -3152,74 +3158,109 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-              crowdTag == '健身'
-                  ? '今日营养重点'
-                  : crowdTag == '减脂'
-                      ? '热量来源分析'
-                      : '今日宏观营养素',
-              style: AppTextStyles.h5),
-          const SizedBox(height: 8),
-          // 营养素比例环形图
-          if (protein + carbs + fat > 0) ...[
-            Center(
-              child: SizedBox(
-                height: 88,
-                width: 88,
-                child: CustomPaint(
-                  painter: _MacroDonutPainter(
-                    protein: protein,
-                    carbs: carbs,
-                    fat: fat,
-                    totalCalories: totalCalories,
-                    proteinColor: AppColors.proteinColor,
-                    carbsColor: AppColors.carbsColor,
-                    fatColor: AppColors.fatColor,
-                  ),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '${totalCalories.round()}',
-                          style: AppTextStyles.numberMedium.copyWith(
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        Text('kcal',
-                            style: AppTextStyles.bodySmall
-                                .copyWith(color: AppColors.textTertiary)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            // 图例
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 16,
-              runSpacing: 4,
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(
+                () => _macroNutrientsExpanded = !_macroNutrientsExpanded),
+            child: Row(
               children: [
-                _buildLegend('蛋白质', protein, AppColors.proteinColor),
-                _buildLegend('碳水', carbs, AppColors.carbsColor),
-                _buildLegend('脂肪', fat, AppColors.fatColor),
-                if (otherCal > 0) _buildOtherLegend(totalCalories, otherCal),
+                Expanded(
+                  child: Text(
+                      crowdTag == '健身'
+                          ? '今日营养重点'
+                          : crowdTag == '减脂'
+                              ? '热量来源分析'
+                              : '今日宏观营养素',
+                      style: AppTextStyles.h5),
+                ),
+                AnimatedRotation(
+                  turns: _macroNutrientsExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: const Icon(LucideIcons.chevronDown,
+                      size: 18, color: AppColors.textTertiary),
+                ),
               ],
             ),
-            const SizedBox(height: 8),
-          ],
-          ...nutrientList.map((n) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _buildNutrientProgress(
-                  n['name'] as String? ?? '',
-                  (n['current'] as num?)?.toDouble() ?? 0,
-                  (n['target'] as num?)?.toDouble() ?? 0,
-                  n['color'] as Color? ?? AppColors.primary,
-                  isHighlight: n['highlight'] as bool? ?? false,
-                ),
-              )),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: _macroNutrientsExpanded
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 营养素比例环形图
+                        if (protein + carbs + fat > 0) ...[
+                          Center(
+                            child: SizedBox(
+                              height: 88,
+                              width: 88,
+                              child: CustomPaint(
+                                painter: _MacroDonutPainter(
+                                  protein: protein,
+                                  carbs: carbs,
+                                  fat: fat,
+                                  totalCalories: totalCalories,
+                                  proteinColor: AppColors.proteinColor,
+                                  carbsColor: AppColors.carbsColor,
+                                  fatColor: AppColors.fatColor,
+                                ),
+                                child: Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        '${totalCalories.round()}',
+                                        style: AppTextStyles.numberMedium
+                                            .copyWith(
+                                                color: AppColors.textPrimary),
+                                      ),
+                                      Text('kcal',
+                                          style: AppTextStyles.bodySmall
+                                              .copyWith(
+                                                  color:
+                                                      AppColors.textTertiary)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          // 图例
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 16,
+                            runSpacing: 4,
+                            children: [
+                              _buildLegend(
+                                  '蛋白质', protein, AppColors.proteinColor),
+                              _buildLegend('碳水', carbs, AppColors.carbsColor),
+                              _buildLegend('脂肪', fat, AppColors.fatColor),
+                              if (otherCal > 0)
+                                _buildOtherLegend(totalCalories, otherCal),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        ...nutrientList.map((n) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _buildNutrientProgress(
+                                n['name'] as String? ?? '',
+                                (n['current'] as num?)?.toDouble() ?? 0,
+                                (n['target'] as num?)?.toDouble() ?? 0,
+                                n['color'] as Color? ?? AppColors.primary,
+                                isHighlight: n['highlight'] as bool? ?? false,
+                              ),
+                            )),
+                      ],
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
         ],
       ),
     );
@@ -3327,7 +3368,6 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     );
   }
 
-  /// 宠物卡片
   /// 消费概览卡片
   Widget _buildCostOverviewCard() {
     // 计算今日消费（从今日记录中汇总）
@@ -3338,58 +3378,68 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
 
     final weekCost = _weekCostStats?.totalCost ?? 0.0;
 
-    return GestureDetector(
-      onTap: () => context.push('/cost-statistics'),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              AppColors.success.withValues(alpha: 0.1),
-              AppColors.success.withValues(alpha: 0.05)
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+    return _FoldSection(
+      icon: LucideIcons.wallet,
+      color: const Color(0xFF2BAF74),
+      title: '消费概览',
+      subtitle: '今日 ¥${todayCost.toStringAsFixed(1)}',
+      child: GestureDetector(
+        onTap: () => context.push('/cost-statistics'),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.success.withValues(alpha: 0.1),
+                AppColors.success.withValues(alpha: 0.05)
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: AppColors.success.withValues(alpha: 0.3),
+            ),
           ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: AppColors.success.withValues(alpha: 0.3),
-          ),
-          boxShadow: AppColors.lightShadow,
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [const Color(0xFF2BAF74), const Color(0xFF4ECDC4)],
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('本周消费',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary)),
+                    const SizedBox(height: 4),
+                    Text('¥${weekCost.toStringAsFixed(1)}',
+                        style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF2BAF74))),
+                  ],
                 ),
-                borderRadius: BorderRadius.circular(12),
               ),
-              child:
-                  const Icon(LucideIcons.wallet, color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('消费概览', style: AppTextStyles.h5.copyWith(fontSize: 15)),
-                  const SizedBox(height: 2),
-                  Text(
-                    '本周 ¥${weekCost.toStringAsFixed(1)} | 今日 ¥${todayCost.toStringAsFixed(1)}',
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('今日消费',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary)),
+                    const SizedBox(height: 4),
+                    Text('¥${todayCost.toStringAsFixed(1)}',
+                        style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary)),
+                  ],
+                ),
               ),
-            ),
-            const Icon(LucideIcons.chevronRight,
-                color: AppColors.textTertiary, size: 20),
-          ],
+              const Icon(LucideIcons.chevronRight,
+                  color: AppColors.textTertiary, size: 20),
+            ],
+          ),
         ),
       ),
     );
@@ -3400,6 +3450,105 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     routeObserver.unsubscribe(this);
     _ttsService.dispose();
     super.dispose();
+  }
+}
+
+/// 首页可折叠区块：默认收起只显示一行头部，点击展开/收起
+class _FoldSection extends StatefulWidget {
+  const _FoldSection({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.child,
+    this.subtitle,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final Widget child;
+
+  @override
+  State<_FoldSection> createState() => _FoldSectionState();
+}
+
+class _FoldSectionState extends State<_FoldSection> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: widget.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(widget.icon, color: widget.color, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    if (widget.subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (widget.trailing != null) widget.trailing!,
+              const SizedBox(width: 4),
+              AnimatedRotation(
+                turns: _expanded ? 0.5 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: const Icon(LucideIcons.chevronDown,
+                    size: 18, color: AppColors.textTertiary),
+              ),
+            ],
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: _expanded
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: widget.child,
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+      ],
+    );
   }
 }
 

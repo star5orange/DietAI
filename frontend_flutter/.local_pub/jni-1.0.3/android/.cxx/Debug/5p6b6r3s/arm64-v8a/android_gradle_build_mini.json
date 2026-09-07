@@ -1,0 +1,27 @@
+{
+  "buildFiles": [
+    "D:\\克隆\\DietAI\\frontend_flutter\\.local_pub\\jni-1.0.3\\src\\CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "D:\\克隆\\DietAI\\android_sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+      "-C",
+      "D:\\克隆\\DietAI\\frontend_flutter\\.local_pub\\jni-1.0.3\\android\\.cxx\\Debug\\5p6b6r3s\\arm64-v8a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "D:\\克隆\\DietAI\\android_sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+    "-C",
+    "D:\\克隆\\DietAI\\frontend_flutter\\.local_pub\\jni-1.0.3\\android\\.cxx\\Debug\\5p6b6r3s\\arm64-v8a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "jni::@6890427a1f51a3e7e1df": {
+      "artifactName": "jni",
+      "abi": "arm64-v8a",
+      "output": "D:\\克隆\\DietAI\\frontend_flutter\\build\\jni\\intermediates\\cxx\\Debug\\5p6b6r3s\\obj\\arm64-v8a\\libdartjni.so",
+      "runtimeFiles": []
+    }
+  }
+}

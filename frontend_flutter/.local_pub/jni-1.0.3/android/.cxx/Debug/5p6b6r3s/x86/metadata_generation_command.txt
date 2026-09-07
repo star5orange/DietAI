@@ -1,0 +1,18 @@
+                        -HD:\克隆\DietAI\frontend_flutter\.local_pub\jni-1.0.3\src
+-DCMAKE_SYSTEM_NAME=Android
+-DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+-DCMAKE_SYSTEM_VERSION=21
+-DANDROID_PLATFORM=android-21
+-DANDROID_ABI=x86
+-DCMAKE_ANDROID_ARCH_ABI=x86
+-DANDROID_NDK=D:\克隆\DietAI\android_sdk\ndk\28.2.13676358
+-DCMAKE_ANDROID_NDK=D:\克隆\DietAI\android_sdk\ndk\28.2.13676358
+-DCMAKE_TOOLCHAIN_FILE=D:\克隆\DietAI\android_sdk\ndk\28.2.13676358\build\cmake\android.toolchain.cmake
+-DCMAKE_MAKE_PROGRAM=D:\克隆\DietAI\android_sdk\cmake\3.22.1\bin\ninja.exe
+-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=D:\克隆\DietAI\frontend_flutter\build\jni\intermediates\cxx\Debug\5p6b6r3s\obj\x86
+-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=D:\克隆\DietAI\frontend_flutter\build\jni\intermediates\cxx\Debug\5p6b6r3s\obj\x86
+-DCMAKE_BUILD_TYPE=Debug
+-BD:\克隆\DietAI\frontend_flutter\.local_pub\jni-1.0.3\android\.cxx\Debug\5p6b6r3s\x86
+-GNinja
+                        Build command args: []
+                        Version: 2

@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DietAI 系统架构图</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+            background: #f0f4f8;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .diagram {
+            width: 1000px;
+            position: relative;
+        }
+
+        /* 通用框 */
+        .box {
+            border: 2px solid #333;
+            border-radius: 8px;
+            background: white;
+            padding: 16px 20px;
+            position: relative;
+        }
+        .box-title {
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .box-subtitle {
+            font-size: 13px;
+            color: #555;
+            text-align: center;
+            margin-bottom: 12px;
+        }
+
+        /* Flutter APP 层 */
+        .flutter-box {
+            border-color: #1976d2;
+            background: #e3f2fd;
+        }
+        .flutter-box .box-title { color: #1565c0; }
+
+        /* 核心基础设施 */
+        .infra-box {
+            border: 1.5px solid #1976d2;
+            border-radius: 6px;
+            background: #bbdefb;
+            padding: 12px 16px;
+            margin-top: 10px;
+        }
+        .infra-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: #1565c0;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        .infra-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px 16px;
+            font-size: 12px;
+            color: #333;
+        }
+
+        /* FastAPI 层 */
+        .fastapi-box {
+            border-color: #f57c00;
+            background: #fff3e0;
+        }
+        .fastapi-box .box-title { color: #e65100; }
+
+        /* LangGraph 层 */
+        .langgraph-box {
+            border-color: #8e24aa;
+            background: #f3e5f5;
+        }
+        .langgraph-box .box-title { color: #6a1b9a; }
+
+        /* 记忆系统 */
+        .memory-box {
+            border-color: #43a047;
+            background: #e8f5e9;
+        }
+        .memory-box .box-title { color: #2e7d32; }
+
+        /* 数据库 */
+        .db-box {
+            border: 2px solid #1976d2;
+            background: #e3f2fd;
+            border-radius: 8px;
+            padding: 16px 20px;
+            text-align: center;
+        }
+        .db-box .db-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #1565c0;
+        }
+        .db-box .db-sub {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .chroma-box {
+            border: 2px solid #43a047;
+            background: #e8f5e9;
+            border-radius: 8px;
+            padding: 16px 20px;
+            text-align: center;
+        }
+        .chroma-box .db-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #2e7d32;
+        }
+
+        /* 箭头区域 */
+        .arrow-section {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 0;
+            position: relative;
+        }
+        .arrow-down {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .arrow-line {
+            width: 2px;
+            height: 30px;
+            background: #333;
+        }
+        .arrow-head {
+            width: 0; height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 12px solid #333;
+        }
+        .arrow-label {
+            font-size: 13px;
+            color: #333;
+            margin: 4px 0;
+            white-space: nowrap;
+        }
+
+        /* 分叉箭头 */
+        .fork-section {
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 8px 0;
+            position: relative;
+            height: 80px;
+        }
+        .fork-center-line {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            width: 2px;
+            height: 30px;
+            background: #333;
+            transform: translateX(-50%);
+        }
+        .fork-horizontal {
+            position: absolute;
+            left: 25%;
+            top: 30px;
+            width: 50%;
+            height: 2px;
+            background: #333;
+        }
+        .fork-left-line {
+            position: absolute;
+            left: 25%;
+            top: 30px;
+            width: 2px;
+            height: 40px;
+            background: #333;
+        }
+        .fork-right-line {
+            position: absolute;
+            left: 75%;
+            top: 30px;
+            width: 2px;
+            height: 40px;
+            background: #333;
+        }
+        .fork-left-head {
+            position: absolute;
+            left: 25%;
+            top: 68px;
+            transform: translateX(-50%);
+            width: 0; height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 12px solid #333;
+        }
+        .fork-right-head {
+            position: absolute;
+            left: 75%;
+            top: 68px;
+            transform: translateX(-50%);
+            width: 0; height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 12px solid #333;
+        }
+        .fork-left-label {
+            position: absolute;
+            left: 10%;
+            top: 38px;
+            font-size: 12px;
+            color: #333;
+            white-space: nowrap;
+        }
+        .fork-right-label {
+            position: absolute;
+            left: 62%;
+            top: 38px;
+            font-size: 12px;
+            color: #333;
+            white-space: nowrap;
+        }
+
+        /* 内部列表 */
+        .item-row {
+            font-size: 13px;
+            color: #333;
+            padding: 3px 0;
+            display: flex;
+            align-items: center;
+        }
+        .item-row .icon {
+            margin-right: 6px;
+            font-size: 14px;
+        }
+        .item-row .label {
+            font-weight: 500;
+        }
+        .item-row .desc {
+            color: #666;
+            margin-left: 4px;
+        }
+
+        .section-divider {
+            border-top: 1px dashed #ccc;
+            margin: 10px 0;
+        }
+
+        /* 路由模块行 */
+        .router-row {
+            font-size: 13px;
+            color: #333;
+            text-align: center;
+            padding: 4px 0;
+        }
+        .router-row span {
+            margin: 0 2px;
+        }
+
+        /* 服务行 */
+        .service-row {
+            font-size: 13px;
+            color: #333;
+            padding: 3px 0;
+        }
+
+        /* 记忆系统内部 */
+        .memory-section-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: #2e7d32;
+            margin-top: 10px;
+            margin-bottom: 6px;
+        }
+        .memory-item {
+            font-size: 12px;
+            color: #333;
+            padding: 2px 0 2px 16px;
+        }
+
+        /* 底部两列 */
+        .bottom-row {
+            display: flex;
+            gap: 40px;
+            margin-top: 10px;
+            align-items: flex-start;
+        }
+        .bottom-left {
+            width: 220px;
+        }
+        .bottom-right {
+            flex: 1;
+        }
+
+        /* LangGraph 内部 agent 列表 */
+        .agent-row {
+            display: flex;
+            align-items: center;
+            font-size: 13px;
+            color: #333;
+            padding: 4px 0;
+        }
+        .agent-name {
+            font-weight: bold;
+            min-width: 180px;
+            color: #6a1b9a;
+        }
+        .agent-arrow {
+            margin: 0 8px;
+            color: #999;
+        }
+        .agent-desc {
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="diagram">
+
+        <!-- Flutter APP -->
+        <div class="box flutter-box">
+            <div class="box-title">📱 Flutter APP</div>
+            <div class="box-subtitle">用户界面层：登录/首页/拍照/聊天/健康/个人中心</div>
+            <div class="infra-box">
+                <div class="infra-title">┌─ 核心基础设施 ──────────────────────────────────┐</div>
+                <div class="infra-grid">
+                    <div>Riverpod (状态管理)</div>
+                    <div>GoRouter (路由+认证)</div>
+                    <div>Dio (HTTP请求)</div>
+                    <div>CacheManager (三层缓存)</div>
+                    <div>FlutterSecureStorage (安全存储)</div>
+                    <div>ApiService</div>
+                </div>
+                <div style="text-align:center; font-size:12px; color:#1565c0; margin-top:6px;">└──────────────────────────────────────────────────┘</div>
+            </div>
+        </div>
+
+        <!-- 箭头 1: 向下 -->
+        <div class="arrow-section">
+            <div class="arrow-down">
+                <div class="arrow-line"></div>
+                <div class="arrow-label">REST (一问一答) + SSE (逐步推送)</div>
+                <div class="arrow-line"></div>
+                <div class="arrow-head"></div>
+            </div>
+        </div>
+
+        <!-- FastAPI 后端 -->
+        <div class="box fastapi-box">
+            <div class="box-title">🖥️ FastAPI 后端 (端口 8000)</div>
+
+            <div class="item-row" style="margin-top:10px;">
+                <span class="icon"></span>
+                <span class="label">中间件链：</span>
+                <span class="desc">CORS → TrustedHost → 计时 → 日志</span>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <div class="item-row">
+                <span class="icon">🔐</span>
+                <span class="label">认证：</span>
+                <span class="desc">JWT 双令牌（access 30分钟 + refresh 7天）</span>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <div class="item-row">
+                <span class="icon">📦</span>
+                <span class="label">9个路由模块：</span>
+            </div>
+            <div class="router-row">
+                <span>认证</span>│<span>用户</span>│<span>食物</span>│<span>健康</span>│<span>对话</span>│<span>分析</span>│<span>目标</span>│<span>深度</span>│<span>收藏</span>
+            </div>
+
+            <div class="section-divider"></div>
+
+            <div class="item-row">
+                <span class="icon">🔧</span>
+                <span class="label">核心服务：</span>
+            </div>
+            <div class="service-row">AuthService (认证) │ AgentOrchestrator (AI调度) │ NutritionCalc (营养计算)</div>
+            <div class="service-row">SyncService (记忆同步) │ MinioManager (图片上传→MinIO) │ APScheduler (定时任务)</div>
+
+            <div class="section-divider"></div>
+
+            <div class="item-row">
+                <span class="icon"></span>
+                <span class="label">数据库：</span>
+                <span class="desc">16张表 (用户/食物/对话/收藏...)</span>
+            </div>
+        </div>
+
+        <!-- 分叉箭头 -->
+        <div class="fork-section">
+            <div class="fork-center-line"></div>
+            <div class="fork-horizontal"></div>
+            <div class="fork-left-line"></div>
+            <div class="fork-right-line"></div>
+            <div class="fork-left-head"></div>
+            <div class="fork-right-head"></div>
+            <div class="fork-left-label">直接访问数据库</div>
+            <div class="fork-right-label">HTTP调用 (SDK)</div>
+        </div>
+
+        <!-- 底部两列 -->
+        <div class="bottom-row">
+            <!-- PostgreSQL -->
+            <div class="bottom-left">
+                <div class="db-box">
+                    <div class="db-title">🐘 PostgreSQL</div>
+                    <div class="db-sub">(主数据库)</div>
+                </div>
+            </div>
+
+            <!-- 右侧：LangGraph + 记忆系统 -->
+            <div class="bottom-right">
+                <div class="box langgraph-box">
+                    <div class="box-title">🤖 LangGraph Agent 服务 (端口 2024)</div>
+                    <div class="agent-row">
+                        <span class="agent-name">nutrition_agent</span>
+                        <span class="agent-arrow">→</span>
+                        <span class="agent-desc">拍照识别+营养分析 (支持用户记忆)</span>
+                    </div>
+                    <div class="agent-row">
+                        <span class="agent-name">chat_agent</span>
+                        <span class="agent-arrow">→</span>
+                        <span class="agent-desc">AI聊天 (4类)</span>
+                    </div>
+                    <div class="agent-row">
+                        <span class="agent-name">goal_tracking</span>
+                        <span class="agent-arrow">→</span>
+                        <span class="agent-desc">目标追踪+建议</span>
+                    </div>
+                    <div class="agent-row">
+                        <span class="agent-name">diet_deep_agent</span>
+                        <span class="agent-arrow">→</span>
+                        <span class="agent-desc">深度营养师 (总调度)</span>
+                    </div>
+                </div>
+
+                <div style="height: 20px;"></div>
+
+                <div class="box memory-box">
+                    <div class="box-title">🧠 AI 记忆系统</div>
+
+                    <div class="memory-section-title">共享工作区 (4个MD文件):</div>
+                    <div class="memory-item">shared/ → 用户档案 (从DB同步)</div>
+                    <div class="memory-item">goal_tracking/ → 目标追踪信息</div>
+                    <div class="memory-item">nutrition/ → 饮食历史摘要</div>
+                    <div class="memory-item">chat/ → 对话偏好和话题</div>
+
+                    <div class="memory-section-title">Deep Agent 记忆 (5个MD文件):</div>
+                    <div class="memory-item">profile/ &nbsp; goals/ &nbsp; nutrition/</div>
+                    <div class="memory-item">preferences/ &nbsp; insights/</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="height: 20px;"></div>
+
+        <!-- ChromaDB -->
+        <div class="chroma-box" style="width: 220px;">
+            <div class="db-title">🔍 ChromaDB</div>
+            <div class="db-sub">(知识检索)</div>
+        </div>
+
+    </div>
+</body>
+</html>

@@ -121,7 +121,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
   Widget _buildUserInfoCard(User? currentUser, UserProfile? userProfile) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [AppColors.cardBackground, Colors.white],
@@ -146,12 +146,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           width: 1,
         ),
       ),
-      child: Column(
+      child: Row(
         children: [
-          // 头像
+          // 左侧头像
           Container(
-            width: 80,
-            height: 80,
+            width: 64,
+            height: 64,
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
@@ -164,7 +164,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               shape: BoxShape.circle,
               border: Border.all(
                 color: AppColors.primary,
-                width: 3,
+                width: 2.5,
               ),
               boxShadow: [
                 BoxShadow(
@@ -182,7 +182,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       errorBuilder: (context, error, stackTrace) {
                         return const Icon(
                           LucideIcons.user,
-                          size: 40,
+                          size: 32,
                           color: AppColors.primary,
                         );
                       },
@@ -190,55 +190,67 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   )
                 : const Icon(
                     LucideIcons.user,
-                    size: 40,
+                    size: 32,
                     color: AppColors.primary,
                   ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(width: 16),
 
-          // 昵称优先显示
-          Text(
-            userProfile?.realName ?? currentUser?.username ?? '用户',
-            style: AppTextStyles.h4.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // 查看详细信息按钮
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppColors.primary.withValues(alpha: 0.1),
-                  AppColors.primary.withValues(alpha: 0.05)
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppColors.primary.withValues(alpha: 0.2),
-                width: 1,
-              ),
-            ),
-            child: OutlinedButton.icon(
-              onPressed: () {
-                _showDetailedInfo(currentUser, userProfile);
-              },
-              icon: const Icon(LucideIcons.info, size: 18),
-              label: const Text(
-                '查看详细信息',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
+          // 右侧信息
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  userProfile?.realName ?? currentUser?.username ?? '用户',
+                  style: AppTextStyles.h5.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.primary,
-                side: BorderSide.none,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              ),
+                const SizedBox(height: 4),
+                Text(
+                  '@${currentUser?.username ?? '—'}',
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 10),
+                GestureDetector(
+                  onTap: () => _showDetailedInfo(currentUser, userProfile),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.2),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(LucideIcons.info,
+                            size: 14, color: AppColors.primary),
+                        const SizedBox(width: 4),
+                        const Text(
+                          '查看详细信息',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
