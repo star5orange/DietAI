@@ -484,7 +484,7 @@ def setup_scheduler() -> AsyncIOScheduler:
         from shared.tasks.pet_starvation_tasks import check_pet_starvation
         _scheduler.add_job(
             check_pet_starvation,
-            trigger=CronTrigger(hour=[8, 12, 18, 21], minute=30),
+            trigger=CronTrigger(hour='8,12,18,21', minute=30),
             id="check_pet_starvation",
             name="桌宠饥饿提醒检查",
             replace_existing=True,

@@ -42,8 +42,10 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
   double _waterIntake = 0.0;
   double _waterGoal = 2000.0;
   double _targetCalories = 2000.0;
+  double _targetProtein = 0.0;
   bool _isLoading = true;
   Map<String, dynamic>? _weeklySummary;
+  bool _summaryExpanded = false;
 
   @override
   void initState() {
@@ -84,6 +86,11 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
     }
   }
 
+  /// 下拉刷新：数据 + 目标（热量/饮水/蛋白质）一起刷新
+  Future<void> _refreshData() async {
+    await Future.wait([_loadTodayData(), _loadTargetCalories()]);
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -117,17 +124,29 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
         final manual = userProfile.targetCalories?.toDouble() ?? 0.0;
         if (manual > 0) {
           _targetCalories = manual;
-        } else {
-          // 未手动设置：回退系统计算目标（含断食调整）
+        }
+        // 未手动设置热量时，回退系统计算目标（含断食调整）；
+        // 蛋白质无手动设置入口，始终取系统计算值（用于蛋白质进度条）
+        try {
           final result = await _goalTrackingService.getDailyStatus();
           if (result.success && result.data != null) {
             final targets =
                 result.data!['daily_targets'] as Map<String, dynamic>?;
-            final computed = (targets?['calories'] as num?)?.toDouble() ?? 0.0;
-            if (computed > 0) {
-              _targetCalories = computed;
+            if (manual <= 0) {
+              final computed =
+                  (targets?['calories'] as num?)?.toDouble() ?? 0.0;
+              if (computed > 0) {
+                _targetCalories = computed;
+              }
+            }
+            final proteinTarget =
+                (targets?['protein'] as num?)?.toDouble() ?? 0.0;
+            if (proteinTarget > 0) {
+              _targetProtein = proteinTarget;
             }
           }
+        } catch (e) {
+          debugPrint('[HealthPage] 加载蛋白质目标失败: $e');
         }
         _waterGoal = userProfile.dailyWaterGoal?.toDouble() ?? 2000.0;
         // 饮水目标优先读取每日饮水汇总（断食日自动提升），与首页饮水卡片同源
@@ -353,7 +372,7 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
         foregroundColor: AppColors.textPrimary,
       ),
       body: RefreshIndicator(
-        onRefresh: _loadTodayData,
+        onRefresh: _refreshData,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
@@ -401,9 +420,12 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
     final waterProgress = displayWaterGoal > 0
         ? (_waterIntake / displayWaterGoal).clamp(0.0, 1.0)
         : 0.0;
+    final proteinProgress = _targetProtein > 0
+        ? ((_dailySummary?.totalProtein ?? 0) / _targetProtein).clamp(0.0, 1.0)
+        : 0.0;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [AppColors.primary, AppColors.primaryLight],
@@ -422,69 +444,125 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                LucideIcons.heart,
-                color: Colors.white,
-                size: 24,
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                '今日健康概览',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
+          // 折叠/展开头部：默认折叠，仅占一行高度
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _summaryExpanded = !_summaryExpanded),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    LucideIcons.heart,
+                    color: Colors.white,
+                    size: 22,
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '今日健康概览',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '摄入 ${_formatNumber(calories)} / ${_formatNumber(displayTargetCalories)} kcal · 饮水 $waterValue $waterUnit',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 4),
+                AnimatedRotation(
+                  turns: _summaryExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: const Icon(
+                    LucideIcons.chevronDown,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 4),
+              ],
+            ),
           ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _buildSummaryItem(
-                  '卡路里',
-                  '${_formatNumber(calories)} / ${_formatNumber(displayTargetCalories)}',
-                  'kcal',
-                  caloriesProgress,
-                  onTap: _showCalorieGoalDialog,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildSummaryItem(
-                  '水分',
-                  waterValue,
-                  waterUnit,
-                  waterProgress,
-                  onTap: _showWaterGoalDialog,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildSummaryItem(
-                  '蛋白质',
-                  '${_formatNumber(_dailySummary?.totalProtein ?? 0)}',
-                  'g',
-                  0,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildSummaryItem(
-                  '用餐次数',
-                  '${_dailySummary?.mealCount ?? 0}',
-                  '次',
-                  0,
-                ),
-              ),
-            ],
+          // 展开后的明细区域（带高度动画）
+          AnimatedSize(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: _summaryExpanded
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildSummaryItem(
+                              '卡路里',
+                              '${_formatNumber(calories)} / ${_formatNumber(displayTargetCalories)}',
+                              'kcal',
+                              caloriesProgress,
+                              onTap: _showCalorieGoalDialog,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildSummaryItem(
+                              '水分',
+                              waterValue,
+                              waterUnit,
+                              waterProgress,
+                              onTap: _showWaterGoalDialog,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildSummaryItem(
+                              '蛋白质',
+                              '${_formatNumber(_dailySummary?.totalProtein ?? 0)}',
+                              'g',
+                              proteinProgress,
+                              showProgress: _targetProtein > 0,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildSummaryItem(
+                              '用餐次数',
+                              '${_dailySummary?.mealCount ?? 0}',
+                              '次',
+                              0,
+                              showProgress: false,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  )
+                : const SizedBox(width: double.infinity),
           ),
         ],
       ),
@@ -865,14 +943,14 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
 
   Widget _buildSummaryItem(
       String title, String value, String unit, double progress,
-      {VoidCallback? onTap}) {
+      {VoidCallback? onTap, bool showProgress = true}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -890,29 +968,31 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
                   const SizedBox(width: 4),
                   const Icon(
                     Icons.edit,
-                    size: 12,
+                    size: 10,
                     color: Colors.white70,
                   ),
                 ],
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               value,
               style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
                 color: Colors.white,
               ),
             ),
-            const SizedBox(height: 8),
-            LinearProgressIndicator(
-              value: progress,
-              backgroundColor: Colors.white.withValues(alpha: 0.3),
-              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-              minHeight: 4,
-              borderRadius: BorderRadius.circular(2),
-            ),
+            if (showProgress) ...[
+              const SizedBox(height: 6),
+              LinearProgressIndicator(
+                value: progress,
+                backgroundColor: Colors.white.withValues(alpha: 0.3),
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                minHeight: 2,
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ],
           ],
         ),
       ),
