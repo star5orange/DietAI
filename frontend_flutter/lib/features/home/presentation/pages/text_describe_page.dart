@@ -249,8 +249,8 @@ class _TextDescribePageState extends State<TextDescribePage> {
     final portion = double.tryParse(_portionController.text) ?? 1.0;
     final description = _descriptionController.text.trim();
     final fullDescription = description.isNotEmpty
-        ? '$foodName ${portion}${_selectedPortionUnit} - $description'
-        : '$foodName ${portion}${_selectedPortionUnit}';
+        ? '$foodName $portion$_selectedPortionUnit - $description'
+        : '$foodName $portion$_selectedPortionUnit';
 
     return FoodRecordCreate(
       recordDate: widget.recordDate,
@@ -350,7 +350,7 @@ class _TextDescribePageState extends State<TextDescribePage> {
                     setState(() => _isAutoEstimate = v);
                     if (v) _updateAutoEstimate();
                   },
-                  activeColor: AppColors.primary,
+                  activeThumbColor: AppColors.primary,
                 ),
               ],
             ),
@@ -384,12 +384,12 @@ class _TextDescribePageState extends State<TextDescribePage> {
             ),
             const SizedBox(height: 8),
             if (_isAutoEstimate)
-              Text(
+              const Text(
                 '💡 支持多食物估算：用"、"分隔多种食物，如"鸡排、米饭"；复合食物自动拆分，如"鸡排饭"→鸡排+米饭',
                 style: TextStyle(fontSize: 12, color: AppColors.textHint),
               )
             else
-              Text(
+              const Text(
                 '💡 请手动输入营养数据，或切换为自动估算',
                 style: TextStyle(fontSize: 12, color: AppColors.textHint),
               ),
@@ -410,10 +410,10 @@ class _TextDescribePageState extends State<TextDescribePage> {
         prefixIcon: Icon(icon, size: 16, color: AppColors.textSecondary),
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: AppColors.borderLight)),
+            borderSide: const BorderSide(color: AppColors.borderLight)),
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: AppColors.borderLight)),
+            borderSide: const BorderSide(color: AppColors.borderLight)),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
@@ -519,14 +519,14 @@ class _TextDescribePageState extends State<TextDescribePage> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child:
-                    Icon(LucideIcons.edit2, color: AppColors.primary, size: 18),
+                    const Icon(LucideIcons.edit2, color: AppColors.primary, size: 18),
               ),
               const SizedBox(width: 10),
               Text('食物名称',
                   style: AppTextStyles.bodyMedium
                       .copyWith(fontWeight: FontWeight.w600)),
               const Spacer(),
-              Text('必填',
+              const Text('必填',
                   style: TextStyle(fontSize: 12, color: AppColors.error)),
             ],
           ),
@@ -536,13 +536,13 @@ class _TextDescribePageState extends State<TextDescribePage> {
             onChanged: (_) => _updateAutoEstimate(),
             decoration: InputDecoration(
               hintText: '例如：鸡排、米饭 或 鸡排饭...',
-              hintStyle: TextStyle(color: AppColors.textHint, fontSize: 14),
+              hintStyle: const TextStyle(color: AppColors.textHint, fontSize: 14),
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColors.borderLight)),
+                  borderSide: const BorderSide(color: AppColors.borderLight)),
               enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColors.borderLight)),
+                  borderSide: const BorderSide(color: AppColors.borderLight)),
               focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide:
@@ -602,10 +602,10 @@ class _TextDescribePageState extends State<TextDescribePage> {
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: AppColors.borderLight)),
+                        borderSide: const BorderSide(color: AppColors.borderLight)),
                     enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: AppColors.borderLight)),
+                        borderSide: const BorderSide(color: AppColors.borderLight)),
                     focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide: const BorderSide(
@@ -689,7 +689,7 @@ class _TextDescribePageState extends State<TextDescribePage> {
                   style: AppTextStyles.bodyMedium
                       .copyWith(fontWeight: FontWeight.w600)),
               const Spacer(),
-              Text('选填',
+              const Text('选填',
                   style:
                       TextStyle(fontSize: 12, color: AppColors.textTertiary)),
             ],
@@ -699,13 +699,13 @@ class _TextDescribePageState extends State<TextDescribePage> {
             controller: _descriptionController,
             decoration: InputDecoration(
               hintText: '例如：少油少盐、加了辣椒、配了米饭...',
-              hintStyle: TextStyle(color: AppColors.textHint, fontSize: 14),
+              hintStyle: const TextStyle(color: AppColors.textHint, fontSize: 14),
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColors.borderLight)),
+                  borderSide: const BorderSide(color: AppColors.borderLight)),
               enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColors.borderLight)),
+                  borderSide: const BorderSide(color: AppColors.borderLight)),
               focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide:

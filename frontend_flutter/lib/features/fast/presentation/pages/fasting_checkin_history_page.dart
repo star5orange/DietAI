@@ -59,7 +59,7 @@ class _FastingCheckinHistoryPageState
             const SizedBox(height: 24),
 
             // 记录列表
-            Text('历史记录', style: AppTextStyles.h6),
+            const Text('历史记录', style: AppTextStyles.h6),
             const SizedBox(height: 12),
             ..._buildCheckinList(),
           ],
@@ -86,7 +86,7 @@ class _FastingCheckinHistoryPageState
     return Row(
       children: [
         Expanded(
-          child: _buildStatCard('总打卡', '${totalCheckins}次',
+          child: _buildStatCard('总打卡', '$totalCheckins次',
               LucideIcons.calendarCheck, AppColors.primary),
         ),
         const SizedBox(width: 12),
@@ -217,7 +217,7 @@ class _FastingCheckinHistoryPageState
               ],
             ),
           ),
-          Icon(LucideIcons.chevronRight, color: AppColors.textTertiary),
+          const Icon(LucideIcons.chevronRight, color: AppColors.textTertiary),
         ],
       ),
     );

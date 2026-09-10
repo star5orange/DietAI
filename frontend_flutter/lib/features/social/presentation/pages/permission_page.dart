@@ -180,7 +180,7 @@ class _PermissionPageState extends ConsumerState<PermissionPage> {
         trailing: Switch(
           value: isSelected,
           onChanged: (_) => _toggleField(field['key']!),
-          activeColor: AppColors.primary,
+          activeThumbColor: AppColors.primary,
         ),
         onTap: () => _toggleField(field['key']!),
       ),

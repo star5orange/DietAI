@@ -239,7 +239,7 @@ class _AppInputState extends State<AppInput> with SingleTickerProviderStateMixin
                         : AppColors.backgroundSecondary.withValues(alpha: 0.5),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
+                      borderSide: const BorderSide(
                         color: AppColors.border,
                         width: 1,
                       ),

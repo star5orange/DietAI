@@ -194,11 +194,11 @@ class RecipeDetailPage extends StatelessWidget {
                 border:
                     Border.all(color: AppColors.info.withValues(alpha: 0.2)),
               ),
-              child: Row(
+              child: const Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(LucideIcons.info, color: AppColors.info, size: 18),
-                  const SizedBox(width: 10),
+                  Icon(LucideIcons.info, color: AppColors.info, size: 18),
+                  SizedBox(width: 10),
                   Expanded(
                     child: Text('温馨提示：食疗效果因人而异，建议根据自身体质适量食用。如有特殊疾病，请遵医嘱。',
                         style: TextStyle(

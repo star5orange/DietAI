@@ -205,8 +205,6 @@ class MealSelectionPage extends StatelessWidget {
         return '晚间用餐，均衡搭配的晚餐';
       case 4:
         return '两餐之间的小食或零食';
-      case 5:
-        return '夜间进食，建议清淡';
       default:
         return '';
     }

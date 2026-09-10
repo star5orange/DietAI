@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 class FoodRecordModal extends StatefulWidget {
@@ -80,28 +79,28 @@ class _FoodRecordModalState extends State<FoodRecordModal> {
 
   List<Widget> _buildRecordOptions() {
     final options = [
-      _RecordOption(
+      const _RecordOption(
         icon: LucideIcons.scanLine,
         title: 'AI扫描器',
         subtitle: '拍照识别食物营养',
         methodId: 'ai_scan',
         isNew: false,
       ),
-      _RecordOption(
+      const _RecordOption(
         icon: LucideIcons.messageSquare,
         title: '文字描述',
         subtitle: '手动输入食物信息',
         methodId: 'text_describe',
         isNew: false,
       ),
-      _RecordOption(
+      const _RecordOption(
         icon: LucideIcons.bookmark,
         title: '已保存的菜品',
         subtitle: '从收藏中选择',
         methodId: 'saved_meals',
         isNew: false,
       ),
-      _RecordOption(
+      const _RecordOption(
         icon: LucideIcons.mic,
         title: '语音记录',
         subtitle: '语音识别食物',
@@ -114,7 +113,7 @@ class _FoodRecordModalState extends State<FoodRecordModal> {
   }
 
   Widget _buildOptionTile(_RecordOption option) {
-    final isDisabled = false;
+    const isDisabled = false;
     return GestureDetector(
       onTap: isDisabled ? null : () => _handleRecordMethod(option.methodId),
       child: Container(

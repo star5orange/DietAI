@@ -385,11 +385,11 @@ class _ExerciseHistoryPageState extends State<ExerciseHistoryPage> {
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
             color: AppColors.shadow,
             blurRadius: 4,
-            offset: const Offset(0, 2),
+            offset: Offset(0, 2),
           ),
         ],
       ),
@@ -507,7 +507,7 @@ class _ExerciseHistoryPageState extends State<ExerciseHistoryPage> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(LucideIcons.flame, size: 14, color: AppColors.accent),
+                  const Icon(LucideIcons.flame, size: 14, color: AppColors.accent),
                   const SizedBox(width: 3),
                   Text(
                     summary.formattedTotalCalories,
@@ -517,7 +517,7 @@ class _ExerciseHistoryPageState extends State<ExerciseHistoryPage> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Icon(LucideIcons.clock,
+                  const Icon(LucideIcons.clock,
                       size: 14, color: AppColors.textTertiary),
                   const SizedBox(width: 3),
                   Text(
@@ -569,11 +569,11 @@ class _ExerciseHistoryPageState extends State<ExerciseHistoryPage> {
         decoration: BoxDecoration(
           color: AppColors.cardBackground,
           borderRadius: BorderRadius.circular(14),
-          boxShadow: [
+          boxShadow: const [
             BoxShadow(
               color: AppColors.shadow,
               blurRadius: 4,
-              offset: const Offset(0, 1),
+              offset: Offset(0, 1),
             ),
           ],
         ),

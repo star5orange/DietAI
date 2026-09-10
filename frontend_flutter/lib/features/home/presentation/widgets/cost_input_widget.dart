@@ -157,7 +157,7 @@ class _CostInputWidgetState extends State<CostInputWidget> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // 消费金额
-                  Text('消费金额', style: AppTextStyles.bodyLarge),
+                  const Text('消费金额', style: AppTextStyles.bodyLarge),
                   const SizedBox(height: 8),
                   Container(
                     decoration: BoxDecoration(
@@ -182,7 +182,7 @@ class _CostInputWidgetState extends State<CostInputWidget> {
                   const SizedBox(height: 16),
 
                   // 消费来源
-                  Text('消费来源', style: AppTextStyles.bodyLarge),
+                  const Text('消费来源', style: AppTextStyles.bodyLarge),
                   const SizedBox(height: 8),
                   Container(
                     decoration: BoxDecoration(

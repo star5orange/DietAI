@@ -175,6 +175,8 @@ class PetNotifier extends StateNotifier<PetState> {
         _storage?.currentStreak = state.currentStreak;
         _storage?.longestStreak = state.longestStreak;
         _storage?.petNames = petNames; // 保存各皮肤命名到本地
+        // 本地皮肤 key 与后端保持一致（后端是权威来源），避免下次启动读到旧值
+        _storage?.petType = skinKey;
       }
     } catch (_) {
       // 后端不可用时继续使用本地数据
@@ -188,8 +190,11 @@ class PetNotifier extends StateNotifier<PetState> {
     final currentSkin = PetSkin.fromKey(petType);
 
     // 从本地存储获取各皮肤命名，并获取当前皮肤的名称
+    // 注意：petNames 的键是皮肤 key（default/christine），
+    // 而 _storage.petType 可能是历史值 'cat'，必须用 currentSkin.key 查找，
+    // 否则自定义命名会在重启后丢失（回退成皮肤默认名）
     final petNames = _storage!.petNames;
-    final currentPetName = petNames[petType] ?? currentSkin.defaultName;
+    final currentPetName = petNames[currentSkin.key] ?? currentSkin.defaultName;
 
     state = state.copyWith(
       level: currentLevel,
@@ -282,7 +287,9 @@ class PetNotifier extends StateNotifier<PetState> {
       currentSkin: skin,
       petName: newPetName,
     );
-    _petService.setPetType(skin.key);
+    // 后端只有单个 pet_name（对应当前皮肤），切皮肤时需同步"皮肤 + 该皮肤的名称"，
+    // 否则下次启动会把上一个皮肤的名字错配到当前皮肤
+    _petService.setPetName(newPetName, skinKey: skin.key);
   }
 
   /// 设置指定皮肤的名称
@@ -303,12 +310,16 @@ class PetNotifier extends StateNotifier<PetState> {
 
     // 保存到本地存储
     _storage?.petNames = newPetNames;
+    _storage?.petType = state.currentSkin.key;
     if (targetSkin == state.currentSkin) {
       _storage?.petName = petName;
     }
 
-    // 保存到后端
-    _petService.setPetName(petName, skinKey: targetSkin.key);
+    // 保存到后端：后端只有单个 pet_name（对应当前皮肤）。
+    // 非当前皮肤的命名仅保存在本地，否则下次启动会把该名字错配到当前皮肤。
+    if (targetSkin == state.currentSkin) {
+      _petService.setPetName(petName, skinKey: targetSkin.key);
+    }
   }
 
   /// 获取指定皮肤的名称

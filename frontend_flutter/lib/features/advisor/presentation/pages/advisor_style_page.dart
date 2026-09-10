@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-import '../../../../core/services/api_service.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../data/services/advisor_service.dart';
@@ -25,7 +24,6 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
   Set<String> _selectedFocusNutrients = {}; // 改为多选
   String _selectedResponseStyle = 'friendly';
   bool _isLoading = false;
-  bool _isInitialized = false;
 
   @override
   void initState() {
@@ -38,7 +36,7 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
     try {
       final service = ref.read(advisorServiceProvider);
       final settings = await service.getSettings();
-      if (mounted && settings != null) {
+      if (mounted) {
         setState(() {
           if (isPet) {
             // 宠物模式：加载宠物专属字段
@@ -61,7 +59,6 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
                 _nutrientsFromCode(settings.focusNutrient);
           }
           _selectedResponseStyle = settings.responseStyle ?? 'friendly';
-          _isInitialized = true;
         });
       }
     } catch (_) {
@@ -77,96 +74,8 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
             _focusGoals = List.from(_fallbackFocusGoals);
             _focusNutrients = List.from(_fallbackFocusNutrients);
           }
-          _isInitialized = true;
         });
       }
-    }
-  }
-
-  Future<void> _fetchAdvisorStyles() async {
-    try {
-      final response = await ApiService().get('/ai-advisor/styles');
-      if (response.success &&
-          response.data != null &&
-          response.data['items'] != null) {
-        final items = response.data['items'] as List;
-        final updated = items
-            .map((item) => {
-                  'id': (item['id'] ?? '').toString(),
-                  'name': (item['name'] ?? '').toString(),
-                  'icon': LucideIcons.apple, // 图标保持使用硬编码映射
-                  'desc':
-                      (item['description'] ?? item['desc'] ?? '').toString(),
-                })
-            .toList();
-        if (updated.isNotEmpty && mounted) {
-          setState(() => _advisorStyles = updated);
-        }
-      }
-    } catch (_) {
-      // API 失败，使用硬编码回退数据
-    }
-  }
-
-  Future<void> _fetchFocusGoals() async {
-    try {
-      final response = await ApiService().get('/ai-advisor/goals');
-      if (response.success &&
-          response.data != null &&
-          response.data['items'] != null) {
-        final items = response.data['items'] as List;
-        final updated = items
-            .map((item) => (item['name'] ?? item['goal'] ?? '').toString())
-            .where((s) => s.isNotEmpty)
-            .toList();
-        if (updated.isNotEmpty && mounted) {
-          setState(() => _focusGoals = updated);
-        }
-      }
-    } catch (_) {
-      // API 失败，使用硬编码回退数据
-    }
-  }
-
-  Future<void> _fetchFocusNutrients() async {
-    try {
-      final response = await ApiService().get('/ai-advisor/nutrients');
-      if (response.success &&
-          response.data != null &&
-          response.data['items'] != null) {
-        final items = response.data['items'] as List;
-        final updated = items
-            .map((item) => (item['name'] ?? item['nutrient'] ?? '').toString())
-            .where((s) => s.isNotEmpty)
-            .toList();
-        if (updated.isNotEmpty && mounted) {
-          setState(() => _focusNutrients = updated);
-        }
-      }
-    } catch (_) {
-      // API 失败，使用硬编码回退数据
-    }
-  }
-
-  Future<void> _fetchResponseStyles() async {
-    try {
-      final response = await ApiService().get('/ai-advisor/response-styles');
-      if (response.success &&
-          response.data != null &&
-          response.data['items'] != null) {
-        final items = response.data['items'] as List;
-        final updated = items
-            .map((item) => {
-                  'id': (item['id'] ?? '').toString(),
-                  'name': (item['name'] ?? '').toString(),
-                })
-            .toList();
-        if (updated.isNotEmpty && mounted) {
-          setState(() => _responseStyles = updated);
-        }
-      }
-    } catch (_) {
-      // API 失败，使用硬编码回退数据
     }
   }
 
@@ -251,7 +160,7 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
     '微量元素',
   ];
 
-  List<Map<String, String>> _responseStyles =
+  final List<Map<String, String>> _responseStyles =
       List.from(_fallbackResponseStyles);
 
   static const _fallbackResponseStyles = [
@@ -344,7 +253,7 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildCurrentSummary(),
-            Text('选择顾问风格', style: AppTextStyles.h6),
+            const Text('选择顾问风格', style: AppTextStyles.h6),
             const SizedBox(height: 12),
             AdvisorStyleSelector(
               selectedStyle: _selectedStyle,
@@ -352,7 +261,7 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
               onChanged: (style) => setState(() => _selectedStyle = style),
             ),
             const SizedBox(height: 24),
-            Text('关注目标（可多选）', style: AppTextStyles.h6),
+            const Text('关注目标（可多选）', style: AppTextStyles.h6),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
@@ -373,7 +282,7 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
             ),
             if (!isPet) ...[
               const SizedBox(height: 24),
-              Text('关注营养素（可多选）', style: AppTextStyles.h6),
+              const Text('关注营养素（可多选）', style: AppTextStyles.h6),
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
@@ -395,9 +304,21 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
               ),
             ],
             const SizedBox(height: 24),
-            Text('回复风格', style: AppTextStyles.h6),
+            const Text('回复风格', style: AppTextStyles.h6),
             const SizedBox(height: 12),
-            ..._responseStyles.map((style) => _buildResponseStyleRadio(style)),
+            RadioGroup<String>(
+              groupValue: _selectedResponseStyle,
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _selectedResponseStyle = value);
+                }
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children:
+                    _responseStyles.map(_buildResponseStyleRadio).toList(),
+              ),
+            ),
           ],
         ),
       ),
@@ -440,10 +361,10 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(Icons.tune, size: 16, color: AppColors.primary),
-              const SizedBox(width: 6),
+              Icon(Icons.tune, size: 16, color: AppColors.primary),
+              SizedBox(width: 6),
               Text('当前顾问配置', style: AppTextStyles.h6),
             ],
           ),
@@ -523,13 +444,7 @@ class _AdvisorStylePageState extends ConsumerState<AdvisorStylePage> {
         ),
         child: Row(
           children: [
-            Radio<String>(
-              value: style['id']!,
-              groupValue: _selectedResponseStyle,
-              onChanged: (value) =>
-                  setState(() => _selectedResponseStyle = value!),
-              activeColor: AppColors.primary,
-            ),
+            Radio<String>(value: style['id']!, activeColor: AppColors.primary),
             const SizedBox(width: 12),
             Text(
               style['name']!,

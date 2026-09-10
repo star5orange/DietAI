@@ -213,7 +213,7 @@ class _FastingRefeedPageState extends ConsumerState<FastingRefeedPage> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(LucideIcons.check,
+                          const Icon(LucideIcons.check,
                               size: 16, color: AppColors.success),
                           const SizedBox(width: 8),
                           Expanded(
@@ -276,7 +276,7 @@ class _FastingRefeedPageState extends ConsumerState<FastingRefeedPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(LucideIcons.alertCircle, color: AppColors.info),
+          const Icon(LucideIcons.alertCircle, color: AppColors.info),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -301,7 +301,7 @@ class _FastingRefeedPageState extends ConsumerState<FastingRefeedPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(LucideIcons.alertTriangle, color: AppColors.warning),
+          const Icon(LucideIcons.alertTriangle, color: AppColors.warning),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

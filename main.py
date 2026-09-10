@@ -114,6 +114,14 @@ try:
 except ImportError:
     pass
 
+# 首页模块布局
+_home_layout_router = None
+try:
+    from routers.home_layout_router import router as home_layout_router
+    _home_layout_router = home_layout_router
+except ImportError:
+    pass
+
 # 语音识别路由器
 _voice_router = None
 try:
@@ -420,6 +428,8 @@ if _fasting_router is not None:
     app.include_router(_fasting_router, prefix="/api", tags=["轻断食"])
 if _advisor_router is not None:
     app.include_router(_advisor_router, prefix="/api", tags=["AI顾问设置"])
+if _home_layout_router is not None:
+    app.include_router(_home_layout_router, prefix="/api", tags=["首页布局"])
 
 # 语音识别路由
 if _voice_router is not None:

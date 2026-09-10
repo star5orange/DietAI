@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/api_service.dart';
-import '../../../../shared/domain/models/api_response.dart';
 
 /// 饮食推荐状态
 class DietRecommendationState {

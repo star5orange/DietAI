@@ -4,10 +4,10 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
-import '../../../../shared/domain/models/user_model.dart';
 import '../../../health/presentation/pages/reminder_settings_page.dart';
 import '../../../advisor/presentation/pages/advisor_style_page.dart';
 import '../widgets/budget_setting_sheet.dart';
+import 'home_layout_page.dart';
 
 /// 系统设置页面
 ///
@@ -46,7 +46,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 应用设置
-            Text('应用设置', style: AppTextStyles.h6),
+            const Text('应用设置', style: AppTextStyles.h6),
             const SizedBox(height: 12),
             _buildSettingsCard(
               icon: LucideIcons.wallet,
@@ -63,6 +63,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   context,
                   MaterialPageRoute(
                     builder: (context) => const AdvisorStylePage(),
+                  ),
+                );
+              },
+            ),
+            _buildSettingsCard(
+              icon: LucideIcons.layoutGrid,
+              title: '首页模块管理',
+              subtitle: '自定义首页显示哪些功能、调整顺序',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const HomeLayoutPage(),
                   ),
                 );
               },

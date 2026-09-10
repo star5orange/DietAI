@@ -205,8 +205,7 @@ class ExerciseType {
   ) async {
     try {
       final response = await get('/exercises/types');
-      if (response is dynamic &&
-          response.success == true &&
+      if (response.success == true &&
           response.data != null) {
         final data = response.data;
         if (data['items'] != null) {

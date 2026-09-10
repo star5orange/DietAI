@@ -197,8 +197,8 @@ class _FastingCheckinPageState extends ConsumerState<FastingCheckinPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('本周进度', style: AppTextStyles.bodyMedium),
-                  Text('${_weeklyCheckins}/${_weeklyTarget} 天',
+                  const Text('本周进度', style: AppTextStyles.bodyMedium),
+                  Text('$_weeklyCheckins/$_weeklyTarget 天',
                       style: AppTextStyles.h6.copyWith(
                           color: AppColors.primary,
                           fontWeight: FontWeight.w700)),
@@ -241,7 +241,7 @@ class _FastingCheckinPageState extends ConsumerState<FastingCheckinPage> {
         ],
 
         // 今日感受
-        Text('今日感受', style: AppTextStyles.h6),
+        const Text('今日感受', style: AppTextStyles.h6),
         const SizedBox(height: 12),
         Wrap(
           spacing: 12,
@@ -253,7 +253,7 @@ class _FastingCheckinPageState extends ConsumerState<FastingCheckinPage> {
         const SizedBox(height: 24),
 
         // 备注
-        Text('备注（可选）', style: AppTextStyles.h6),
+        const Text('备注（可选）', style: AppTextStyles.h6),
         const SizedBox(height: 12),
         TextField(
           maxLines: 3,

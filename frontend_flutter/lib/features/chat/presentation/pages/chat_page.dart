@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../services/chat_service.dart';
-import '../../../../shared/domain/models/api_response.dart';
 import '../../../../core/themes/app_colors.dart';
 import 'chat_history_page.dart';
 import '../../../advisor/presentation/pages/advisor_style_page.dart';
@@ -644,23 +643,23 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 children: [
                   // 如果是AI消息且内容为空，显示输入指示器
                   if (!isUser && message.content.isEmpty)
-                    Row(
+                    const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
+                        Text(
                           '正在思考中',
                           style: TextStyle(
                             color: Color(0xFF666666),
                             fontSize: 16,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        SizedBox(width: 8),
                         SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: const AlwaysStoppedAnimation<Color>(
+                            valueColor: AlwaysStoppedAnimation<Color>(
                               Color(0xFF2BAF74),
                             ),
                           ),

@@ -25,6 +25,16 @@ class FoodRecordCreate(BaseModel):
     target_user_id: Optional[int] = Field(None, description="代记录目标用户ID（仅家人关系可用）")
     # M4 增强: 仅分析不落库（AI 拍照识别"先分析、用户确认后再创建记录"）
     analyze_only: Optional[bool] = Field(False, description="仅分析不落库：SSE 只返回分析结果，由用户确认后调用 confirm-create 落库")
+    # 包装食品营养成分表识别：预置精确营养值（跳过 AI 估算，仅生成 AI 建议）
+    preset_nutrition: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "预置营养值（包装标注精确值，已按食用量换算）。提供时 nutrition_agent "
+            "跳过图片/文字分析与营养估算，直接使用该值生成建议。"
+            "结构：{food_items, total_calories, macronutrients{protein,fat,carbohydrates,"
+            "dietary_fiber,sugar}, vitamins_minerals{sodium,...}, health_level, source_description}"
+        )
+    )
 
 
 class FoodRecordConfirmCreate(FoodRecordCreate):
@@ -129,3 +139,30 @@ class DailyNutritionSummaryResponse(BaseModel):
 
 class NutritionTrendParams(DateRangeParams):
     metrics: Optional[List[str]] = Field(None, description="指标列表")
+
+
+class FoodLabelOCRRequest(BaseModel):
+    """包装食品营养成分表识别请求（复用宠物食品 OCR 的 DashScope qwen-vl 直调模式）"""
+
+    image_base64: str = Field(..., description="Base64 编码的包装食品照片")
+
+
+class FoodLabelOCRResult(BaseModel):
+    """包装食品营养成分表识别结果
+
+    所有营养字段均为"每 100 克"口径（若包装按"每份"标注，由模型换算为每 100g）；
+    热量统一为 kcal（若包装标注 kJ，由模型换算：1 kJ ≈ 0.239 kcal）。
+    """
+
+    is_packaged_food: Optional[bool] = Field(None, description="照片是否为预包装食品（False 时前端提示改用餐食识别）")
+    brand: Optional[str] = Field(None, max_length=200, description="品牌名称")
+    food_name: Optional[str] = Field(None, max_length=200, description="产品名称")
+    serving_size_g: Optional[float] = Field(None, description="每份克数（仅包装按每份标注时返回）")
+    calories_per_100g: Optional[float] = Field(None, description="每100克热量(kcal)")
+    protein_per_100g: Optional[float] = Field(None, description="每100克蛋白质(g)")
+    fat_per_100g: Optional[float] = Field(None, description="每100克脂肪(g)")
+    carbs_per_100g: Optional[float] = Field(None, description="每100克碳水化合物(g)")
+    sugar_per_100g: Optional[float] = Field(None, description="每100克糖(g)")
+    fiber_per_100g: Optional[float] = Field(None, description="每100克膳食纤维(g)")
+    sodium_per_100g: Optional[float] = Field(None, description="每100克钠(mg)")
+    raw_text: Optional[str] = Field(None, description="模型原始返回文本（兜底展示）")

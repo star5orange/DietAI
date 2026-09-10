@@ -14,7 +14,6 @@ import '../../../../services/wellness_service.dart';
 import '../../../../services/water_service.dart';
 import '../../../../shared/domain/models/api_response.dart';
 import '../../../../shared/domain/models/food_model.dart';
-import '../../../profile/presentation/providers/profile_provider.dart';
 import 'constitution_quiz_page.dart';
 import '../../../profile/domain/services/user_service.dart';
 import '../../../cost/presentation/pages/cost_statistics_page.dart';
@@ -311,7 +310,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
             _buildStatCard('蛋白质', '${totalProtein.toStringAsFixed(0)}g', '本周',
                 AppColors.proteinColor, LucideIcons.fish),
             const SizedBox(width: 10),
-            _buildStatCard('日均蛋白', '${avgProtein.toStringAsFixed(0)}', 'g',
+            _buildStatCard('日均蛋白', avgProtein.toStringAsFixed(0), 'g',
                 AppColors.proteinColor, LucideIcons.target),
           ],
         ),
@@ -675,7 +674,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
             show: true,
             drawVerticalLine: false,
             horizontalInterval: maxY > 0 ? maxY / 4 : 50,
-            getDrawingHorizontalLine: (value) => FlLine(
+            getDrawingHorizontalLine: (value) => const FlLine(
               color: AppColors.borderLight,
               strokeWidth: 1,
             ),
@@ -898,7 +897,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
                   unit == 'L'
                       ? value.toStringAsFixed(1)
                       : value.toInt().toString(),
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -1480,7 +1479,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
             const SizedBox(width: 10),
             _buildStatCard(
                 '达标率',
-                '${(complianceRate.toDouble() * 100).toStringAsFixed(0)}',
+                (complianceRate.toDouble() * 100).toStringAsFixed(0),
                 '%',
                 AppColors.info,
                 LucideIcons.target),

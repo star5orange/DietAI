@@ -12,6 +12,8 @@ from .wellness_models import WellnessKnowledge
 from .advisor_models import AiAdvisorSettings
 from .fasting_models import FastingPlan, FastingCheckin
 from .pet_models import VirtualPetState, PetUnlockable
+# 首页模块布局偏好
+from .home_layout_models import UserHomeLayout
 
 # Milestone 4 新增模型
 from .social_models import UserRelationship, DataPermission
@@ -61,6 +63,7 @@ __all__ = [
     "VirtualPetState",
     "PetUnlockable",
     "HealthAchievement",
+    "UserHomeLayout",
 
     # Milestone 4 新增模型
     "UserRelationship",

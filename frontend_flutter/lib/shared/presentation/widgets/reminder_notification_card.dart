@@ -42,11 +42,11 @@ class ReminderNotificationCard extends StatelessWidget {
                 ? accentColor.withValues(alpha: 0.3)
                 : AppColors.border,
           ),
-          boxShadow: [
+          boxShadow: const [
             BoxShadow(
               color: AppColors.shadow,
               blurRadius: 6,
-              offset: const Offset(0, 2),
+              offset: Offset(0, 2),
             ),
           ],
         ),
@@ -118,7 +118,7 @@ class ReminderNotificationCard extends StatelessWidget {
                 Switch(
                   value: isEnabled,
                   onChanged: onToggle,
-                  activeColor: accentColor,
+                  activeThumbColor: accentColor,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
             ],

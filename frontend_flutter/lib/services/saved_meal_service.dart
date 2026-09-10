@@ -1,5 +1,5 @@
-import 'package:dio/dio.dart';
-
+﻿
+import 'package:flutter/foundation.dart';
 import '../core/services/api_service.dart';
 import '../shared/domain/models/api_response.dart';
 import '../shared/domain/models/saved_meal_model.dart';
@@ -44,7 +44,7 @@ class SavedMealService {
         );
       }
     } catch (e) {
-      print('获取保存菜品列表失败: $e');
+      debugPrint('获取保存菜品列表失败: $e');
       return ApiResponse(
         success: false,
         message: '获取菜品列表失败: $e',
@@ -71,7 +71,7 @@ class SavedMealService {
         );
       }
     } catch (e) {
-      print('获取保存菜品详情失败: $e');
+      debugPrint('获取保存菜品详情失败: $e');
       return ApiResponse(
         success: false,
         message: '获取菜品详情失败: $e',
@@ -100,7 +100,7 @@ class SavedMealService {
         );
       }
     } catch (e) {
-      print('创建保存菜品失败: $e');
+      debugPrint('创建保存菜品失败: $e');
       return ApiResponse(
         success: false,
         message: '创建菜品失败: $e',
@@ -143,7 +143,7 @@ class SavedMealService {
         );
       }
     } catch (e) {
-      print('从食物记录创建保存菜品失败: $e');
+      debugPrint('从食物记录创建保存菜品失败: $e');
       return ApiResponse(
         success: false,
         message: '创建菜品失败: $e',
@@ -170,7 +170,7 @@ class SavedMealService {
         );
       }
     } catch (e) {
-      print('更新保存菜品失败: $e');
+      debugPrint('更新保存菜品失败: $e');
       return ApiResponse(
         success: false,
         message: '更新菜品失败: $e',
@@ -195,7 +195,7 @@ class SavedMealService {
         );
       }
     } catch (e) {
-      print('删除保存菜品失败: $e');
+      debugPrint('删除保存菜品失败: $e');
       return ApiResponse(
         success: false,
         message: '删除菜品失败: $e',
@@ -220,7 +220,7 @@ class SavedMealService {
         );
       }
     } catch (e) {
-      print('使用保存菜品失败: $e');
+      debugPrint('使用保存菜品失败: $e');
       return ApiResponse(
         success: false,
         message: '操作失败: $e',
@@ -249,3 +249,4 @@ class SavedMealService {
     ];
   }
 }
+

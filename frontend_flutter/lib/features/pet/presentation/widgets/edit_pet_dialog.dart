@@ -243,7 +243,7 @@ class _EditPetDialogState extends State<EditPetDialog> {
 
     final result = await api.updatePet(petId, updateData);
 
-    if (result.isSuccess && weightChanged && weightVal != null) {
+    if (result.isSuccess && weightChanged) {
       await api.addWeight(petId, {'weight': weightVal});
     }
 

@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../data/real_pet_api_service.dart';
 import '../widgets/pet_nutrition_progress.dart';
-import '../widgets/pet_ai_advice_card.dart';
 import '../widgets/add_feeding_record_modal.dart';
 
 /// 宠物饮食日报页面
@@ -25,7 +24,7 @@ class _PetFeedingPageState extends State<PetFeedingPage> {
   bool _isLoading = true;
   int _targetCalories = 250;
   double _targetProtein = 22;
-  double _targetFat = 10;
+  final double _targetFat = 10;
 
   @override
   void initState() {

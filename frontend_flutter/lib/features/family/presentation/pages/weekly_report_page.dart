@@ -96,7 +96,7 @@ class _WeeklyReportPageState extends ConsumerState<WeeklyReportPage> {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Icon(Icons.calendar_today, color: AppColors.primary),
+                    const Icon(Icons.calendar_today, color: AppColors.primary),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -181,7 +181,7 @@ class _WeeklyReportPageState extends ConsumerState<WeeklyReportPage> {
                       ? NetworkImage(member.avatarUrl!)
                       : null,
                   child: member.avatarUrl == null
-                      ? Icon(Icons.person, color: AppColors.primary)
+                      ? const Icon(Icons.person, color: AppColors.primary)
                       : null,
                 ),
                 const SizedBox(width: 12),
@@ -302,7 +302,7 @@ class _WeeklyReportPageState extends ConsumerState<WeeklyReportPage> {
 
     final dateText = dateStr.isNotEmpty ? dateStr.substring(0, 10) : '未知';
     final abnormalText = abnormalCount > 0
-        ? '${abnormalCount} 项异常：${abnormalMetrics.join('、')}'
+        ? '$abnormalCount 项异常：${abnormalMetrics.join('、')}'
         : '指标正常';
 
     String checkupText;

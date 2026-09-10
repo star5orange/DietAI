@@ -240,6 +240,7 @@ FoodRecordCreate _$FoodRecordCreateFromJson(Map<String, dynamic> json) =>
       sourceTag: json['source_tag'] as String?,
       targetUserId: (json['target_user_id'] as num?)?.toInt(),
       analyzeOnly: json['analyze_only'] as bool? ?? false,
+      presetNutrition: json['preset_nutrition'] as Map<String, dynamic>?,
     );
 
 Map<String, dynamic> _$FoodRecordCreateToJson(FoodRecordCreate instance) =>
@@ -256,6 +257,7 @@ Map<String, dynamic> _$FoodRecordCreateToJson(FoodRecordCreate instance) =>
       'source_tag': instance.sourceTag,
       'target_user_id': instance.targetUserId,
       'analyze_only': instance.analyzeOnly,
+      'preset_nutrition': instance.presetNutrition,
     };
 
 NutritionDetailCreate _$NutritionDetailCreateFromJson(

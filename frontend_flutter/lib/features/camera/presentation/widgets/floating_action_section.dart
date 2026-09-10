@@ -62,7 +62,7 @@ class FloatingActionSection extends StatelessWidget {
               // 保存记录按钮
               Expanded(
                 flex: 3,
-                child: Container(
+                child: SizedBox(
                   height: 56,
                   child: ElevatedButton(
                     onPressed: onSaveRecord,
@@ -75,15 +75,15 @@ class FloatingActionSection extends StatelessWidget {
                         borderRadius: BorderRadius.circular(16),
                       ),
                     ),
-                    child: Row(
+                    child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(
+                        Icon(
                           LucideIcons.check,
                           size: 20,
                         ),
-                        const SizedBox(width: 8),
-                        const Text(
+                        SizedBox(width: 8),
+                        Text(
                           '记录这餐',
                           style: TextStyle(
                             fontSize: 16,

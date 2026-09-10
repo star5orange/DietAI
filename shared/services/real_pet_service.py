@@ -151,6 +151,109 @@ def get_weight_records(db: Session, pet_id: int, user_id: int) -> List[PetWeight
     ).order_by(PetWeightRecord.measured_at.desc()).limit(100).all()
 
 
+def build_pet_chat_context(db: Session, pet_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+    """构建宠物 AI 咨询上下文。
+
+    键名必须与 agent/utils/chat_nodes.py 中 analyze_context 的消费端保持一致
+    （name/latest_weight_kg/weight_date/recent_feedings/recent_waters/vaccines/dewormings），
+    否则宠物姓名、体重等信息会在注入 prompt 前丢失。未找到宠物时返回 None。
+    """
+    pet = get_pet(db, pet_id, user_id)
+    if not pet:
+        return None
+    ctx = {
+        'id': pet.id,
+        'pet_id': pet.id,
+        'name': pet.name,
+        'species': pet.species,
+        'breed': pet.breed,
+        'gender': pet.gender,
+        'birth_date': pet.birth_date.isoformat() if pet.birth_date else None,
+        'is_neutered': pet.is_neutered,
+    }
+
+    # 最新体重
+    try:
+        latest_w = db.query(PetWeightRecord).filter(
+            PetWeightRecord.pet_id == pet.id
+        ).order_by(PetWeightRecord.measured_at.desc()).first()
+        if latest_w and latest_w.weight:
+            ctx['latest_weight_kg'] = float(latest_w.weight)
+            ctx['weight_date'] = latest_w.measured_at.isoformat() if latest_w.measured_at else None
+    except Exception:
+        ctx['latest_weight_kg'] = None
+        ctx['weight_date'] = None
+
+    # 近7天饮食记录
+    try:
+        feedings = get_feeding_records(db, pet.id, limit=50)
+        recent_feedings = [f for f in feedings
+                           if f.record_time and f.record_time.date() >= (date.today() - timedelta(days=7))]
+        ctx['recent_feedings'] = [{
+            'food_name': f.food_name,
+            'amount_g': float(f.amount_grams) if f.amount_grams else 0,
+            'calories': float(f.calories) if f.calories else 0,
+            'protein': float(f.protein) if f.protein else 0,
+            'fat': float(f.fat) if f.fat else 0,
+            'carbs': float(f.carbs) if f.carbs else 0,
+            'time': f.record_time.isoformat() if f.record_time else None,
+        } for f in recent_feedings]
+    except Exception:
+        ctx['recent_feedings'] = []
+
+    # 近7天饮水记录
+    try:
+        waters = get_water_records(db, pet.id, limit=50)
+        recent_waters = [w for w in waters
+                         if w.record_time and w.record_time.date() >= (date.today() - timedelta(days=7))]
+        ctx['recent_waters'] = [{
+            'amount_ml': w.amount_ml,
+            'time': w.record_time.isoformat() if w.record_time else None,
+        } for w in recent_waters]
+    except Exception:
+        ctx['recent_waters'] = []
+
+    # 疫苗记录
+    try:
+        vaccines = db.query(PetVaccineRecord).filter(
+            PetVaccineRecord.pet_id == pet.id
+        ).order_by(PetVaccineRecord.vaccinated_at.desc()).limit(10).all()
+        ctx['vaccines'] = [{
+            'name': v.vaccine_name or '',
+            'date': v.vaccinated_at.isoformat() if v.vaccinated_at else '',
+            'next_date': v.next_vaccination_date.isoformat() if v.next_vaccination_date else '',
+            'notes': v.notes or '',
+        } for v in vaccines]
+    except Exception:
+        ctx['vaccines'] = []
+
+    # 驱虫记录
+    try:
+        dewormings = db.query(PetDewormingRecord).filter(
+            PetDewormingRecord.pet_id == pet.id
+        ).order_by(PetDewormingRecord.treated_at.desc()).limit(10).all()
+        ctx['dewormings'] = [{
+            'type': d.deworming_type or '',
+            'date': d.treated_at.isoformat() if d.treated_at else '',
+            'next_date': d.next_treatment_date.isoformat() if d.next_treatment_date else '',
+            'notes': d.notes or '',
+        } for d in dewormings]
+    except Exception:
+        ctx['dewormings'] = []
+
+    # 当日推荐目标与摄入情况（兼容原 chat_router 内联逻辑）
+    try:
+        from shared.services.pet_nutrition_calc import check_daily_completion, calculate_daily_targets
+        nutrition_targets = calculate_daily_targets(pet)
+        ctx['daily_calories'] = nutrition_targets.get('daily_calories')
+        ctx['daily_protein'] = nutrition_targets.get('daily_protein_g')
+        ctx['today_intake'] = check_daily_completion(db, pet.id)
+    except Exception:
+        pass
+
+    return ctx
+
+
 def get_weight_trend(db: Session, pet_id: int, user_id: int, days: int = 30) -> dict:
     pet = get_pet(db, pet_id, user_id)
     if not pet:
@@ -1450,72 +1553,48 @@ def _food_to_dict(f: PetFoodDatabase) -> dict:
 def parse_pet_food_label(image_base64: str) -> dict:
     """使用 DashScope OCR 解析宠物食品包装营养成分表
 
+    视觉模型调用复用 shared/services/dashscope_vl_ocr.py（模型回退链 + Key 获取）。
+    原先写死 qwen-vl-plus，该模型免费额度耗尽后会静默返回兜底空值。
+
     Args:
         image_base64: Base64 编码的食品包装背面照片
 
     Returns:
         dict with brand, food_name, calories_per_100g, protein_per_100g, etc.
     """
-    import re
-    import json
-    import os
-    from openai import OpenAI
+    from shared.services.dashscope_vl_ocr import call_vl_json
 
-    api_key = os.getenv("DASHSCOPE_API_KEY", "")
-    if not api_key:
-        # Fallback: parse with regex from raw OCR text
-        return _parse_food_label_local(image_base64)
+    prompt = (
+        "请识别这张宠物食品包装照片上的营养成分信息，提取以下内容并以JSON格式返回：\n"
+        "{\n"
+        '  "brand": "品牌名称（如 皇家、冠能、麦富迪等）",\n'
+        '  "food_name": "产品名称（如 室内成猫粮、幼犬粮等）",\n'
+        '  "calories_per_100g": 每100克热量数值,\n'
+        '  "protein_per_100g": 每100克蛋白质克数,\n'
+        '  "fat_per_100g": 每100克脂肪克数,\n'
+        '  "carbs_per_100g": 每100克碳水化合物克数\n'
+        "}\n"
+        "只返回JSON，不要其他内容。如果某个字段无法识别，设为null。"
+    )
 
     try:
-        client = OpenAI(
-            api_key=api_key,
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        )
-
-        # 使用 qwen-vl 进行 OCR + 结构化提取
-        response = client.chat.completions.create(
-            model="qwen-vl-plus",
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}
-                    },
-                    {
-                        "type": "text",
-                        "text": (
-                            "请识别这张宠物食品包装照片上的营养成分信息，提取以下内容并以JSON格式返回：\n"
-                            "{\n"
-                            '  "brand": "品牌名称（如 皇家、冠能、麦富迪等）",\n'
-                            '  "food_name": "产品名称（如 室内成猫粮、幼犬粮等）",\n'
-                            '  "calories_per_100g": 每100克热量数值,\n'
-                            '  "protein_per_100g": 每100克蛋白质克数,\n'
-                            '  "fat_per_100g": 每100克脂肪克数,\n'
-                            '  "carbs_per_100g": 每100克碳水化合物克数\n'
-                            "}\n"
-                            "只返回JSON，不要其他内容。如果某个字段无法识别，设为null。"
-                        )
-                    }
-                ]
-            }],
+        ocr = call_vl_json(
+            image_base64,
+            prompt,
             max_tokens=500,
-            temperature=0.1,
+            env_var="DIETAI_PET_FOOD_OCR_MODEL",
         )
-
-        content = response.choices[0].message.content or ""
-        # 提取 JSON
-        json_match = re.search(r'\{[\s\S]*\}', content)
-        if json_match:
-            result = json.loads(json_match.group(0))
-            result["raw_text"] = content
-            return result
-
-        return {"raw_text": content}
-
-    except Exception as e:
-        logger.warning(f"DashScope OCR failed: {e}, falling back to local parse")
+    except RuntimeError as e:
+        logger.warning(f"宠物食品 OCR 调用失败: {e}, falling back to local parse")
         return _parse_food_label_local(image_base64)
+
+    result = ocr.get("data")
+    if not result:
+        return {"raw_text": ocr.get("raw_text", "")}
+
+    result["raw_text"] = ocr.get("raw_text", "")
+    result["model"] = ocr.get("model", "")
+    return result
 
 
 def _parse_food_label_local(_image_base64: str) -> dict:

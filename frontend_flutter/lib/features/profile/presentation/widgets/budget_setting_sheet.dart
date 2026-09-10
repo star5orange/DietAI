@@ -142,7 +142,7 @@ class _BudgetSettingSheetState extends ConsumerState<BudgetSettingSheet> {
                     color: AppColors.primary, size: 20),
               ),
               const SizedBox(width: 12),
-              Text('月度饮食预算', style: AppTextStyles.h5),
+              const Text('月度饮食预算', style: AppTextStyles.h5),
             ],
           ),
           const SizedBox(height: 20),
@@ -189,7 +189,7 @@ class _BudgetSettingSheetState extends ConsumerState<BudgetSettingSheet> {
                 labelText: '预算金额',
                 hintText: '例如: 1500',
                 suffixText: '元/月',
-                prefixIcon: Icon(LucideIcons.coins),
+                prefixIcon: const Icon(LucideIcons.coins),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -248,7 +248,7 @@ class _BudgetSettingSheetState extends ConsumerState<BudgetSettingSheet> {
                           color: Colors.white,
                         ),
                       )
-                    : Text('保存设置', style: AppTextStyles.buttonMedium),
+                    : const Text('保存设置', style: AppTextStyles.buttonMedium),
               ),
             ),
           ],

@@ -1,4 +1,5 @@
 import asyncio
+import re
 from langchain_core.documents import Document
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -12,7 +13,10 @@ from agent.common_utils.image_utils import encode_image_to_base64
 from agent.common_utils.redis_util import get_redis_client
 from agent.common_utils.configuration import Configuration
 from agent.nutrition_agent.utils.states import AgentState
-from agent.nutrition_agent.utils.structs import NutritionAnalysis, NutritionAdvice, AdviceDependencies
+from agent.nutrition_agent.utils.structs import (
+    NutritionAnalysis, NutritionAdvice, AdviceDependencies,
+    Macronutrients, VitaminsMinerals, HealthLevelEnum,
+)
 from agent.common_utils.model_utils import get_model
 from agent.nutrition_agent.utils.prompts import create_nutrition_prompt
 
@@ -23,6 +27,7 @@ def state_init(state: AgentState, config: RunnableConfig):
         initial_state = AgentState(
             image_data=state.get('image_data'),
             text_description=state.get('text_description'),
+            preset_nutrition=state.get('preset_nutrition'),
             image_analysis=None,
             nutrition_analysis=None,
             nutrition_advice=None,
@@ -46,6 +51,7 @@ def state_init(state: AgentState, config: RunnableConfig):
     initial_state = AgentState(
         image_data=image_data,
         text_description=state.get('text_description'),
+        preset_nutrition=state.get('preset_nutrition'),
         image_analysis=None,
         nutrition_analysis=None,
         nutrition_advice=None,
@@ -205,6 +211,75 @@ def extract_nutrition_info(state: AgentState) -> AgentState:
 
     except Exception as e:
         state["error_message"] = f"营养分析失败: {str(e)}"
+
+    return state
+
+
+def use_preset_nutrition(state: AgentState) -> AgentState:
+    """预置营养值分支（包装食品营养成分表）
+
+    使用 OCR 从包装标注得到的精确营养值，跳过 analyze_image/analyze_text 与
+    extract_nutrition 两个 AI 估算步骤，直接进入知识检索与建议生成，
+    保证落库数值与包装标注完全一致。
+    """
+    try:
+        preset = state.get("preset_nutrition") or {}
+        macro = preset.get("macronutrients") or {}
+        vm = preset.get("vitamins_minerals") or {}
+
+        def _num(value) -> float:
+            """兼容数值与脏字符串（如 "250mg"、"2,300"）"""
+            if isinstance(value, (int, float)):
+                return float(value)
+            try:
+                text = str(value).replace(",", "").strip()
+                match = re.search(r"-?\d+(\.\d+)?", text)
+                return float(match.group(0)) if match else 0.0
+            except (TypeError, ValueError):
+                return 0.0
+
+        food_items = [str(i) for i in (preset.get("food_items") or []) if str(i).strip()]
+        if not food_items:
+            food_items = ["包装食品"]
+
+        # 健康等级：包装标注不含该信息，未提供时按"一般(C)"处理
+        try:
+            health_level = HealthLevelEnum(int(preset.get("health_level")))
+        except (TypeError, ValueError):
+            health_level = HealthLevelEnum.C
+
+        state["nutrition_analysis"] = NutritionAnalysis(
+            food_items=food_items,
+            total_calories=_num(preset.get("total_calories")),
+            macronutrients=Macronutrients(
+                protein=_num(macro.get("protein")),
+                fat=_num(macro.get("fat")),
+                carbohydrates=_num(macro.get("carbohydrates")),
+                dietary_fiber=_num(macro.get("dietary_fiber")),
+                sugar=_num(macro.get("sugar")),
+            ),
+            vitamins_minerals=VitaminsMinerals(
+                vitamin_a=_num(vm.get("vitamin_a")),
+                vitamin_c=_num(vm.get("vitamin_c")),
+                vitamin_d=_num(vm.get("vitamin_d")),
+                calcium=_num(vm.get("calcium")),
+                iron=_num(vm.get("iron")),
+                sodium=_num(vm.get("sodium")),
+                potassium=_num(vm.get("potassium")),
+                cholesterol=_num(vm.get("cholesterol")),
+            ),
+            health_level=health_level,
+        )
+        # 无图片分析环节，用来源说明填充，供前端展示
+        state["image_analysis"] = (
+            preset.get("source_description")
+            or "包装食品营养成分表（数据取自包装标注）"
+        )
+        state["current_step"] = "nutrition_extracted"
+        print(state["current_step"])
+
+    except Exception as e:
+        state["error_message"] = f"预置营养数据解析失败: {str(e)}"
 
     return state
 

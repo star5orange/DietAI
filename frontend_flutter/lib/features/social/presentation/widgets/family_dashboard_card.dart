@@ -5,7 +5,6 @@ import '../../../../core/themes/app_colors.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/family_provider.dart';
 import '../providers/social_provider.dart';
-import '../../domain/social_models.dart';
 
 /// 家庭健康看板卡片（聚合所有家人的健康摘要）
 ///

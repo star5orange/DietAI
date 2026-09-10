@@ -479,6 +479,20 @@ def setup_scheduler() -> AsyncIOScheduler:
     except ImportError as e:
         logger.warning(f"Exam reminder tasks not registered: {e}")
 
+    # M3b: 健康目标自动过期（每天 00:05 检查，将超过 target_date 的进行中目标标记为已过期）
+    try:
+        from shared.tasks.goal_expiry_task import auto_expire_goals
+        _scheduler.add_job(
+            auto_expire_goals,
+            trigger=CronTrigger(hour=0, minute=5),
+            id="auto_expire_goals",
+            name="健康目标自动过期",
+            replace_existing=True,
+        )
+        logger.info("Goal auto-expiry task registered (daily 00:05)")
+    except ImportError as e:
+        logger.warning(f"Goal expiry task not registered: {e}")
+
     # M4: 桌宠饥饿主动推送（每天 08:30/12:30/18:30/21:30）
     try:
         from shared.tasks.pet_starvation_tasks import check_pet_starvation

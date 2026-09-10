@@ -215,49 +215,49 @@ class AppColors {
   
   // 阴影预设 - 现代化分层
   static List<BoxShadow> get lightShadow => [
-    BoxShadow(
+    const BoxShadow(
       color: shadowLight,
       blurRadius: 4,
-      offset: const Offset(0, 1),
+      offset: Offset(0, 1),
     ),
   ];
   
   static List<BoxShadow> get mediumShadow => [
-    BoxShadow(
+    const BoxShadow(
       color: shadowMedium,
       blurRadius: 8,
-      offset: const Offset(0, 4),
+      offset: Offset(0, 4),
     ),
-    BoxShadow(
+    const BoxShadow(
       color: shadowLight,
       blurRadius: 16,
-      offset: const Offset(0, 8),
+      offset: Offset(0, 8),
     ),
   ];
   
   static List<BoxShadow> get strongShadow => [
-    BoxShadow(
+    const BoxShadow(
       color: shadowStrong,
       blurRadius: 16,
-      offset: const Offset(0, 8),
+      offset: Offset(0, 8),
     ),
-    BoxShadow(
+    const BoxShadow(
       color: shadowMedium,
       blurRadius: 32,
-      offset: const Offset(0, 16),
+      offset: Offset(0, 16),
     ),
   ];
   
   static List<BoxShadow> get cardShadow => [
-    BoxShadow(
+    const BoxShadow(
       color: shadowLight,
       blurRadius: 10,
-      offset: const Offset(0, 4),
+      offset: Offset(0, 4),
     ),
-    BoxShadow(
+    const BoxShadow(
       color: shadow,
       blurRadius: 20,
-      offset: const Offset(0, 8),
+      offset: Offset(0, 8),
     ),
   ];
   
@@ -269,15 +269,15 @@ class AppColors {
   // 向后兼容的颜色别名
   static const Color cardBackground = backgroundCard;
   static List<BoxShadow> get cardShadowCompat => [
-    BoxShadow(
+    const BoxShadow(
       color: shadowLight,
       blurRadius: 10,
-      offset: const Offset(0, 4),
+      offset: Offset(0, 4),
     ),
-    BoxShadow(
+    const BoxShadow(
       color: shadow,
       blurRadius: 20,
-      offset: const Offset(0, 8),
+      offset: Offset(0, 8),
     ),
   ];
   static const Color breakfastColor = breakfastStart;

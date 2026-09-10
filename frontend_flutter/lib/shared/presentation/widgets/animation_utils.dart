@@ -507,9 +507,8 @@ class ModernPageRoute<T> extends PageRouteBuilder<T> {
   ModernPageRoute({
     required this.child,
     this.transitionType = 'slide',
-    RouteSettings? settings,
+    super.settings,
   }) : super(
-          settings: settings,
           pageBuilder: (context, animation, secondaryAnimation) => child,
           transitionDuration: AnimationDurations.medium,
           reverseTransitionDuration: AnimationDurations.medium,

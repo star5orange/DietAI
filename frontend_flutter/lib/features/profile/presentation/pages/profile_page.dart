@@ -9,16 +9,15 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../health/presentation/pages/health_goals_page.dart';
 import '../../../health/presentation/pages/weight_tracking_page.dart';
 import '../../../health/presentation/pages/reminder_settings_page.dart';
+import 'home_layout_page.dart';
+import '../../../home/presentation/pages/home_preference_page.dart';
 import '../providers/profile_provider.dart';
 import '../widgets/profile_edit_sheet.dart';
 import '../widgets/health_goals_sheet.dart';
 import '../widgets/weight_records_sheet.dart';
 import '../widgets/health_info_sheet.dart';
-import '../widgets/budget_setting_sheet.dart';
 import 'help_center_page.dart';
 import 'about_us_page.dart';
-import 'my_pet_page.dart';
-import 'settings_page.dart';
 import '../../../advisor/presentation/pages/advisor_style_page.dart';
 import '../../../../core/services/api_service.dart';
 
@@ -130,10 +129,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(
+          const BoxShadow(
             color: AppColors.shadow,
             blurRadius: 16,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
           BoxShadow(
             color: AppColors.primary.withValues(alpha: 0.05),
@@ -232,13 +231,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         width: 1,
                       ),
                     ),
-                    child: Row(
+                    child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(LucideIcons.info,
+                        Icon(LucideIcons.info,
                             size: 14, color: AppColors.primary),
-                        const SizedBox(width: 4),
-                        const Text(
+                        SizedBox(width: 4),
+                        Text(
                           '查看详细信息',
                           style: TextStyle(
                             fontSize: 12,
@@ -294,7 +293,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             ],
           ),
         ],
-        if (userProfile.activityLevel != null) ...[
+        ...[
           const SizedBox(height: 8),
           _buildInfoItem('活动级别', userProfile.activityLevelText),
         ],
@@ -358,10 +357,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(
+          const BoxShadow(
             color: AppColors.shadow,
             blurRadius: 12,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
           BoxShadow(
             color: AppColors.primary.withValues(alpha: 0.03),
@@ -427,6 +426,32 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 context,
                 MaterialPageRoute(
                     builder: (context) => const ReminderSettingsPage()),
+              );
+            },
+          ),
+          _buildMenuItem(
+            icon: LucideIcons.layoutGrid,
+            title: '首页模块管理',
+            subtitle: '自定义首页显示哪些功能、调整顺序',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const HomeLayoutPage(),
+                ),
+              );
+            },
+          ),
+          _buildMenuItem(
+            icon: LucideIcons.slidersHorizontal,
+            title: '首页个性化',
+            subtitle: '完善目标与日常习惯，首页自动调整',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const HomePreferencePage(),
+                ),
               );
             },
           ),
@@ -688,15 +713,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     );
   }
 
-  void _showBudgetSettingSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => const BudgetSettingSheet(),
-    );
-  }
-
   void _showDetailedInfo(User? currentUser, UserProfile? userProfile) {
     showModalBottomSheet(
       context: context,
@@ -778,7 +794,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     'BMI', '${userProfile.bmi} (${userProfile.bmiStatus})'),
                 const SizedBox(height: 12),
               ],
-              if (userProfile.activityLevel != null) ...[
+              ...[
                 _buildDetailItem('活动级别', userProfile.activityLevelText),
                 const SizedBox(height: 12),
               ],

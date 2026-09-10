@@ -201,9 +201,23 @@ class _PetFoodLibraryPageState extends State<PetFoodLibraryPage> {
 
       if (res.isSuccess && res.data != null) {
         final data = res.data!;
-        _showOcrResultDialog(data);
+        // 任一字段识别成功即可进入结果弹窗；全部为空说明 OCR 服务异常或未识别到营养信息
+        final hasAnyValue = [
+          data['brand'],
+          data['food_name'],
+          data['calories_per_100g'],
+          data['protein_per_100g'],
+          data['fat_per_100g'],
+          data['carbs_per_100g'],
+        ].any((v) => v != null && v.toString().trim().isNotEmpty);
+
+        if (hasAnyValue) {
+          _showOcrResultDialog(data);
+        } else {
+          _showOcrFailedDialog((data['raw_text'] as String?)?.trim() ?? '');
+        }
       } else {
-        _showSnackBar(res.message ?? '识别失败，请重试');
+        _showSnackBar(res.message.isEmpty ? '识别失败，请重试' : res.message);
       }
     } catch (e) {
       if (mounted) {
@@ -212,6 +226,56 @@ class _PetFoodLibraryPageState extends State<PetFoodLibraryPage> {
     } finally {
       if (mounted) setState(() => _isScanning = false);
     }
+  }
+
+  /// 识别失败/未识别到营养信息：展示原始返回内容，便于排查（额度耗尽、模型未开通等）
+  void _showOcrFailedDialog(String rawText) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(LucideIcons.alertTriangle,
+                color: Color(0xFFFFA726), size: 20),
+            SizedBox(width: 8),
+            Text('未能识别营养信息',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('请确认拍摄的是清晰完整的营养成分表，并保证光线充足后重试；'
+                  '也可以直接手动录入宠物食品信息。'),
+              if (rawText.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.background,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    rawText,
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.textTertiary),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('重新拍摄'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showOcrResultDialog(Map<String, dynamic> data) {
@@ -223,18 +287,18 @@ class _PetFoodLibraryPageState extends State<PetFoodLibraryPage> {
     final carbs = data['carbs_per_100g'];
     final rawText = data['raw_text'] as String?;
 
-    bool _saving = false;
+    bool saving = false;
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: Row(
+          title: const Row(
             children: [
-              const Icon(LucideIcons.camera,
+              Icon(LucideIcons.camera,
                   color: AppColors.primary, size: 20),
-              const SizedBox(width: 8),
-              const Text('识别结果',
+              SizedBox(width: 8),
+              Text('识别结果',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             ],
           ),
@@ -246,7 +310,7 @@ class _PetFoodLibraryPageState extends State<PetFoodLibraryPage> {
                 if (brand.isNotEmpty) _buildOcrRow('品牌', brand),
                 _buildOcrRow('产品名', foodName),
                 _buildOcrRow(
-                    '热量', calories != null ? '${calories} kcal/100g' : '未识别'),
+                    '热量', calories != null ? '$calories kcal/100g' : '未识别'),
                 _buildOcrRow(
                     '蛋白质', protein != null ? '${protein}g/100g' : '未识别'),
                 _buildOcrRow('脂肪', fat != null ? '${fat}g/100g' : '未识别'),
@@ -282,10 +346,10 @@ class _PetFoodLibraryPageState extends State<PetFoodLibraryPage> {
               child: const Text('关闭'),
             ),
             FilledButton.icon(
-              onPressed: _saving
+              onPressed: saving
                   ? null
                   : () async {
-                      setDialogState(() => _saving = true);
+                      setDialogState(() => saving = true);
                       final api = RealPetApiService();
                       final saveRes = await api.saveFood(
                         foodName: foodName,
@@ -295,7 +359,7 @@ class _PetFoodLibraryPageState extends State<PetFoodLibraryPage> {
                         fatPer100g: fat?.toDouble(),
                         carbsPer100g: carbs?.toDouble(),
                       );
-                      setDialogState(() => _saving = false);
+                      setDialogState(() => saving = false);
                       if (mounted) {
                         Navigator.pop(ctx);
                         if (saveRes.isSuccess) {
@@ -306,7 +370,7 @@ class _PetFoodLibraryPageState extends State<PetFoodLibraryPage> {
                         }
                       }
                     },
-              icon: _saving
+              icon: saving
                   ? const SizedBox(
                       width: 16,
                       height: 16,
@@ -314,7 +378,7 @@ class _PetFoodLibraryPageState extends State<PetFoodLibraryPage> {
                           strokeWidth: 2, color: Colors.white),
                     )
                   : const Icon(LucideIcons.save, size: 16),
-              label: Text(_saving ? '保存中...' : '保存到食品库'),
+              label: Text(saving ? '保存中...' : '保存到食品库'),
             ),
           ],
         ),
@@ -358,6 +422,7 @@ class _PetFoodLibraryPageState extends State<PetFoodLibraryPage> {
     );
   }
 
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,

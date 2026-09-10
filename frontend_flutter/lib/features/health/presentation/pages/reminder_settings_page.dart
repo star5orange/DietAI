@@ -147,7 +147,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('取消', style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text('取消', style: TextStyle(color: AppColors.textSecondary)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -202,7 +202,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
         elevation: 0,
       ),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: AppColors.primary))
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
           : _reminders.isEmpty
               ? _buildEmptyState()
               : RefreshIndicator(
@@ -385,7 +385,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
               Switch(
                 value: record.isEnabled,
                 onChanged: (v) => _toggleReminder(record, v),
-                activeColor: AppColors.primary,
+                activeThumbColor: AppColors.primary,
               ),
             ],
           ),
@@ -398,7 +398,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
             ),
             child: Row(
               children: [
-                Icon(LucideIcons.clock,
+                const Icon(LucideIcons.clock,
                     size: 15, color: AppColors.textSecondary),
                 const SizedBox(width: 6),
                 Text(
@@ -411,7 +411,7 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
                   ),
                 ),
                 const SizedBox(width: 16),
-                Icon(LucideIcons.repeat,
+                const Icon(LucideIcons.repeat,
                     size: 15, color: AppColors.textSecondary),
                 const SizedBox(width: 6),
                 Expanded(
@@ -431,20 +431,20 @@ class _ReminderSettingsPageState extends State<ReminderSettingsPage> {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10)),
                   itemBuilder: (context) => [
-                    PopupMenuItem(
+                    const PopupMenuItem(
                         value: 'edit',
                         child: Row(children: [
                           Icon(LucideIcons.pencil,
                               size: 16, color: AppColors.textSecondary),
-                          const SizedBox(width: 8),
-                          const Text('编辑')
+                          SizedBox(width: 8),
+                          Text('编辑')
                         ])),
-                    PopupMenuItem(
+                    const PopupMenuItem(
                         value: 'delete',
                         child: Row(children: [
                           Icon(LucideIcons.trash2,
                               size: 16, color: AppColors.error),
-                          const SizedBox(width: 8),
+                          SizedBox(width: 8),
                           Text('删除', style: TextStyle(color: AppColors.error))
                         ])),
                   ],
@@ -756,13 +756,13 @@ class _AddEditReminderModalState extends State<_AddEditReminderModal> {
       maxLines: maxLines,
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(color: AppColors.textHint, fontSize: 14),
+        hintStyle: const TextStyle(color: AppColors.textHint, fontSize: 14),
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: AppColors.borderLight)),
+            borderSide: const BorderSide(color: AppColors.borderLight)),
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: AppColors.borderLight)),
+            borderSide: const BorderSide(color: AppColors.borderLight)),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
@@ -853,7 +853,7 @@ class _AddEditReminderModalState extends State<_AddEditReminderModal> {
                   .copyWith(color: AppColors.textPrimary),
             ),
             const Spacer(),
-            Icon(LucideIcons.chevronDown,
+            const Icon(LucideIcons.chevronDown,
                 size: 20, color: AppColors.textTertiary),
           ],
         ),

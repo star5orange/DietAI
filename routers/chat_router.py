@@ -14,13 +14,16 @@ import decimal
 
 from shared.models.database import get_db
 from shared.models import schemas, user_models, conversation_models
+from shared.models.schemas.constitution import normalize_constitution
 from shared.utils.auth import get_current_user
 from shared.config.redis_config import cache_service
+from shared.config.settings import get_settings
 from langgraph_sdk import get_client
 from agent.chat_agent import chat_graph
 from agent.common_utils.configuration import get_agent_model_config
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 router = APIRouter(prefix="/chat", tags=["AI对话"])
 
@@ -196,78 +199,18 @@ async def send_chat_message_stream(
                 constitution_type = user_context.get('constitution_type')
             conversation_history = await get_conversation_history(session.id, db)
 
-            # M3: 宠物健康咨询时加载宠物上下文
+            # M3: 宠物健康咨询时加载宠物上下文（统一走 real_pet_service.build_pet_chat_context，
+            # 键名与 agent/utils/chat_nodes.py analyze_context 消费端一致：name/latest_weight_kg 等）
             pet_context = None
             if session_type == 6 and pet_id:
                 try:
-                    from shared.models.pet_models import PetProfile
-                    from shared.services.pet_nutrition_calc import check_daily_completion, calculate_daily_targets
-                    pet = db.query(PetProfile).filter(
-                        PetProfile.id == pet_id,
-                        PetProfile.user_id == current_user.id
-                    ).first()
-                    if pet:
-                        today_summary = check_daily_completion(db, pet_id)
-                        nutrition_targets = calculate_daily_targets(pet)
-                        # 获取最新体重
-                        latest_weight = None
-                        try:
-                            from shared.models.pet_models import PetWeightRecord
-                            latest_w = db.query(PetWeightRecord).filter(
-                                PetWeightRecord.pet_id == pet_id
-                            ).order_by(PetWeightRecord.measured_at.desc()).first()
-                            if latest_w:
-                                latest_weight = float(latest_w.weight) if latest_w.weight else None
-                        except Exception:
-                            pass
-                        pet_context = {
-                            'pet_id': pet.id,
-                            'pet_name': pet.name,
-                            'species': pet.species,
-                            'breed': pet.breed,
-                            'gender': pet.gender,
-                            'birth_date': str(pet.birth_date) if pet.birth_date else None,
-                            'weight': latest_weight,
-                            'is_neutered': pet.is_neutered,
-                            'daily_calories': nutrition_targets.get('daily_calories'),
-                            'daily_protein': nutrition_targets.get('daily_protein_g'),
-                            'today_intake': today_summary,
-                        }
-                        # 加载疫苗记录
-                        try:
-                            from shared.models.pet_models import PetVaccineRecord
-                            vaccines = db.query(PetVaccineRecord).filter(
-                                PetVaccineRecord.pet_id == pet_id
-                            ).order_by(PetVaccineRecord.vaccinated_at.desc()).limit(10).all()
-                            pet_context['vaccines'] = [{
-                                'name': v.vaccine_name or '',
-                                'date': v.vaccinated_at.isoformat() if v.vaccinated_at else '',
-                                'next_date': v.next_vaccination_date.isoformat() if v.next_vaccination_date else '',
-                                'notes': v.notes or '',
-                            } for v in vaccines]
-                        except Exception:
-                            pet_context['vaccines'] = []
-                        # 加载驱虫记录
-                        try:
-                            from shared.models.pet_models import PetDewormingRecord
-                            dewormings = db.query(PetDewormingRecord).filter(
-                                PetDewormingRecord.pet_id == pet_id
-                            ).order_by(PetDewormingRecord.treated_at.desc()).limit(10).all()
-                            pet_context['dewormings'] = [{
-                                'type': d.deworming_type or '',
-                                'date': d.treated_at.isoformat() if d.treated_at else '',
-                                'next_date': d.next_treatment_date.isoformat() if d.next_treatment_date else '',
-                                'notes': d.notes or '',
-                            } for d in dewormings]
-                        except Exception:
-                            pet_context['dewormings'] = []
-                except ImportError:
-                    pass
+                    from shared.services.real_pet_service import build_pet_chat_context
+                    pet_context = build_pet_chat_context(db, pet_id, current_user.id)
                 except Exception as e:
                     logger.warning(f"Failed to load pet context: {e}")
 
             # 4. 调用 LangGraph Agent
-            client = get_client(url="http://127.0.0.1:2024")
+            client = get_client(url=settings.ai_service_url)
 
             # 创建或获取 LangGraph thread
             if not session.langgraph_thread_id or session.langgraph_thread_id.startswith("local-"):
@@ -463,7 +406,7 @@ async def send_chat_message(
         constitution_type = user_context.get('constitution_type')
 
         # 4. 调用 LangGraph Agent
-        client = get_client(url="http://127.0.0.1:2024")
+        client = get_client(url=settings.ai_service_url)
 
         # 创建或获取 LangGraph thread
         if not session.langgraph_thread_id or session.langgraph_thread_id.startswith("local-"):
@@ -754,8 +697,31 @@ async def get_user_context(user_id: int, db: Session, session_type: int = 0):
         "weight": float(user_profile.weight) if user_profile and user_profile.weight else None,
         "activity_level": user_profile.activity_level if user_profile else None,
         "crowd_tag": user_profile.crowd_tag if user_profile else None,
-        "constitution_type": user_profile.constitution_type if user_profile else None,
+        # 归一化为中文标准形式（库里可能存前端自测写入的英文码，如 pinghe）
+        "constitution_type": normalize_constitution(user_profile.constitution_type) if user_profile and user_profile.constitution_type else None,
     }
+
+    # 本月消费概况（供 AI 结合预算给建议；失败不阻塞聊天）
+    cost_summary = None
+    try:
+        nested_cost = db.begin_nested()
+        from shared.services.cost_service import get_cost_stats
+        cost_stats = get_cost_stats(db, user_id, period="month")
+        cost_summary = {
+            "total_cost": cost_stats.get("total_cost"),
+            "daily_avg": cost_stats.get("daily_avg"),
+            "max_single": cost_stats.get("max_single"),
+            "budget": cost_stats.get("budget"),
+            "budget_remaining": cost_stats.get("budget_remaining"),
+            "calorie_per_yuan": cost_stats.get("calorie_per_yuan"),
+        }
+    except Exception as e:
+        logger.warning(f"获取消费概况失败: {e}")
+        try:
+            nested_cost.rollback()
+        except Exception:
+            pass
+    context["cost_summary"] = cost_summary
     
     is_pet_session = (session_type == 6)
 

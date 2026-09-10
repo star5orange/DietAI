@@ -11,6 +11,7 @@ from .user import (
 from .food import (
     FoodRecordCreate, FoodRecordConfirmCreate, FoodRecordResponse, NutritionDetailCreate, NutritionDetailResponse,
     DailyNutritionSummaryResponse, NutritionTrendParams,
+    FoodLabelOCRRequest, FoodLabelOCRResult,
 )
 from .chat import (
     ConversationSessionCreate, ConversationCreate, ConversationResponse,

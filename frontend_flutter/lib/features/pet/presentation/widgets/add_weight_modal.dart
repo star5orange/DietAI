@@ -78,7 +78,7 @@ class _AddWeightModalState extends State<AddWeightModal> {
                   const SizedBox(width: 10),
                   Text(
                     widget.isEdit ? '编辑体重' : '记录体重',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textPrimary,
@@ -87,7 +87,7 @@ class _AddWeightModalState extends State<AddWeightModal> {
                   const Spacer(),
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
-                    child: Icon(
+                    child: const Icon(
                       LucideIcons.x,
                       color: AppColors.textTertiary,
                       size: 22,

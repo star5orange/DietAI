@@ -15,6 +15,9 @@ services:
       - DIETAI_MINIO_SECRET_KEY=minioadmin
       - DIETAI_MINIO_SECURE=false
       - DIETAI_DEBUG=true
+      # AI Agent 服务地址（langgraph-agent 属于 production profile，
+      # 未启用该 profile 时保持本设置不会影响默认栈启动）
+      - DIETAI_AI_SERVICE_URL=http://langgraph-agent:8000
     depends_on:
       - postgres
       - redis
@@ -86,12 +89,99 @@ services:
     profiles:
       - production
 
+  # ============================================================
+  # LangGraph Agent 服务（AI 对话/营养分析依赖，生产模式启用）
+  # ------------------------------------------------------------
+  # 前置步骤：
+  #   1. 构建 Agent 镜像（使用官方 CLI，内部基于 langchain/langgraph-api）：
+  #      uv run langgraph build -t dietai-langgraph:latest
+  #   2. 在 .env 配置（镜像内 Agent 图代码需要模型密钥）：
+  #      DASHSCOPE_API_KEY / DEEPSEEK_API_KEY 等
+  #   3. 可选 LangSmith 云端追踪（不配置则跳过）：
+  #      LANGSMITH_API_KEY / LANGGRAPH_CLOUD_LICENSE_KEY
+  # 启动：docker compose --profile production up -d
+  # 说明：Agent 图同时使用 Postgres(checkpoint 持久化) 与 Redis(流式推送)。
+  # ============================================================
+  langgraph-redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - langgraph_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - dietai-network
+    restart: unless-stopped
+    profiles:
+      - production
+
+  langgraph-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: langgraph
+      POSTGRES_USER: langgraph
+      POSTGRES_PASSWORD: langgraph123
+    volumes:
+      - langgraph_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langgraph"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - dietai-network
+    restart: unless-stopped
+    profiles:
+      - production
+
+  langgraph-agent:
+    image: ${LANGGRAPH_IMAGE:-dietai-langgraph:latest}
+    ports:
+      - "8123:8000" # 容器内 8000；后端通过 http://langgraph-agent:8000 访问
+    depends_on:
+      langgraph-redis:
+        condition: service_healthy
+      langgraph-postgres:
+        condition: service_healthy
+    environment:
+      REDIS_URI: redis://langgraph-redis:6379
+      DATABASE_URI: postgres://langgraph:langgraph123@langgraph-postgres:5432/langgraph?sslmode=disable
+      # LangSmith 追踪（可选，不配置则跳过）
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+      LANGGRAPH_CLOUD_LICENSE_KEY: ${LANGGRAPH_CLOUD_LICENSE_KEY:-}
+      # Agent 图运行所需模型密钥（与后端保持一致）
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      DIETAI_DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_API_BASE: ${DEEPSEEK_API_BASE:-https://api.deepseek.com}
+      ANALYSIS_MODEL_PROVIDER: ${ANALYSIS_MODEL_PROVIDER:-deepseek}
+      ANALYSIS_MODEL: ${ANALYSIS_MODEL:-deepseek-v4-flash}
+      VISION_MODEL_PROVIDER: ${VISION_MODEL_PROVIDER:-qwen}
+      VISION_MODEL: ${VISION_MODEL:-qwen3.7-plus}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # Agent 图代码直连应用 DB/Redis（如宠物档案/记忆等兜底查询）
+      DIETAI_DATABASE_URL: postgresql://dietai:dietai123@postgres:5432/dietai_db
+      DIETAI_REDIS_HOST: redis
+      DIETAI_REDIS_PORT: 6379
+    networks:
+      - dietai-network
+    restart: unless-stopped
+    profiles:
+      - production
+
 volumes:
   postgres_data:
     driver: local
   redis_data:
     driver: local
   minio_data:
+    driver: local
+  langgraph_redis_data:
+    driver: local
+  langgraph_pg_data:
     driver: local
 
 networks:

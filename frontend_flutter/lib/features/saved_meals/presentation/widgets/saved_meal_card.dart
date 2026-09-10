@@ -157,7 +157,7 @@ class SavedMealCard extends StatelessWidget {
 
             // 底部操作栏
             Container(
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 border: Border(
                   top: BorderSide(
                     color: AppColors.borderLight,
@@ -202,8 +202,8 @@ class SavedMealCard extends StatelessWidget {
                       if (onUse != null)
                         TextButton.icon(
                           onPressed: onUse,
-                          icon: Icon(LucideIcons.plus, size: 16),
-                          label: Text('使用'),
+                          icon: const Icon(LucideIcons.plus, size: 16),
+                          label: const Text('使用'),
                           style: TextButton.styleFrom(
                             foregroundColor: AppColors.primary,
                             padding: const EdgeInsets.symmetric(
@@ -217,7 +217,7 @@ class SavedMealCard extends StatelessWidget {
                       if (onEdit != null)
                         IconButton(
                           onPressed: onEdit,
-                          icon: Icon(LucideIcons.pencil, size: 18),
+                          icon: const Icon(LucideIcons.pencil, size: 18),
                           color: AppColors.textSecondary,
                           padding: const EdgeInsets.all(8),
                           constraints: const BoxConstraints(),
@@ -227,7 +227,7 @@ class SavedMealCard extends StatelessWidget {
                       if (onDelete != null)
                         IconButton(
                           onPressed: onDelete,
-                          icon: Icon(LucideIcons.trash2, size: 18),
+                          icon: const Icon(LucideIcons.trash2, size: 18),
                           color: AppColors.error,
                           padding: const EdgeInsets.all(8),
                           constraints: const BoxConstraints(),

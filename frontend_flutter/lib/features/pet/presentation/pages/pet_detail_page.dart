@@ -158,7 +158,7 @@ class _PetDetailPageState extends ConsumerState<PetDetailPage>
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           colors: [
             AppColors.primarySurface,
             AppColors.backgroundCard,
@@ -225,11 +225,11 @@ class _PetDetailPageState extends ConsumerState<PetDetailPage>
               color: AppColors.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Row(
+            child: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(LucideIcons.hand, size: 14, color: AppColors.primary),
-                const SizedBox(width: 6),
+                SizedBox(width: 6),
                 Text('点击互动',
                     style: TextStyle(
                       fontSize: 12,
@@ -261,7 +261,7 @@ class _PetDetailPageState extends ConsumerState<PetDetailPage>
               const Icon(LucideIcons.activity,
                   color: AppColors.primary, size: 18),
               const SizedBox(width: 8),
-              Text('宠物状态', style: AppTextStyles.h6),
+              const Text('宠物状态', style: AppTextStyles.h6),
               if (_statsLoading) ...[
                 const SizedBox(width: 8),
                 const SizedBox(
@@ -319,7 +319,7 @@ class _PetDetailPageState extends ConsumerState<PetDetailPage>
               const Icon(LucideIcons.calendar,
                   size: 16, color: AppColors.warning),
               const SizedBox(width: 8),
-              Text('连续达标', style: AppTextStyles.bodyMedium),
+              const Text('连续达标', style: AppTextStyles.bodyMedium),
               const Spacer(),
               Text(
                 '${petState.currentStreak}天',
@@ -368,7 +368,7 @@ class _PetDetailPageState extends ConsumerState<PetDetailPage>
                   .copyWith(color: AppColors.textSecondary),
             ),
             const SizedBox(width: 8),
-            Text('${pct}%',
+            Text('$pct%',
                 style: AppTextStyles.numberXSmall.copyWith(color: color)),
           ],
         ),
@@ -390,7 +390,7 @@ class _PetDetailPageState extends ConsumerState<PetDetailPage>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           colors: [AppColors.primary, AppColors.primaryLight],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -418,11 +418,11 @@ class _PetDetailPageState extends ConsumerState<PetDetailPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        const Row(
           children: [
-            const Icon(LucideIcons.zap,
+            Icon(LucideIcons.zap,
                 size: 16, color: AppColors.caloriesColor),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             Text('经验值', style: AppTextStyles.bodyMedium),
           ],
         ),

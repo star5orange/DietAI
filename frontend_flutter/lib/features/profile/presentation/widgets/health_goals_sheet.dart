@@ -5,9 +5,7 @@ import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../shared/domain/models/user_model.dart';
-import '../../../../shared/presentation/widgets/app_button.dart';
 import '../../../../shared/presentation/widgets/app_input.dart';
-import '../../domain/services/user_service.dart';
 import '../providers/profile_provider.dart';
 
 class HealthGoalsSheet extends ConsumerStatefulWidget {
@@ -149,7 +147,7 @@ class _HealthGoalsSheetState extends ConsumerState<HealthGoalsSheet> {
                     .read(healthGoalsProvider.notifier)
                     .activeGoals
                     .map((goal) => _buildGoalCard(goal))
-                    .toList(),
+                    ,
                 const SizedBox(height: 24),
               ],
 
@@ -164,7 +162,7 @@ class _HealthGoalsSheetState extends ConsumerState<HealthGoalsSheet> {
                     .read(healthGoalsProvider.notifier)
                     .completedGoals
                     .map((goal) => _buildGoalCard(goal))
-                    .toList(),
+                    ,
               ],
             ],
           ),
@@ -186,7 +184,7 @@ class _HealthGoalsSheetState extends ConsumerState<HealthGoalsSheet> {
             style: AppTextStyles.h6.copyWith(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 8),
-          Text(
+          const Text(
             '设置健康目标，开始您的健康之旅',
             style: AppTextStyles.bodyMedium,
           ),

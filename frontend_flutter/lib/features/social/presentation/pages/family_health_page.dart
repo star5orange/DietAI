@@ -462,7 +462,7 @@ class _FamilyHealthPageState extends ConsumerState<FamilyHealthPage> {
     final maxCalories = data
         .map((d) => d.calories > d.burned ? d.calories : d.burned)
         .reduce((a, b) => a > b ? a : b);
-    final chartHeight = 120.0;
+    const chartHeight = 120.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -658,7 +658,7 @@ class _FamilyHealthPageState extends ConsumerState<FamilyHealthPage> {
     if (data.isEmpty) return const SizedBox.shrink();
 
     final maxWater = data.map((d) => d.water).reduce((a, b) => a > b ? a : b);
-    final chartHeight = 120.0;
+    const chartHeight = 120.0;
 
     return SizedBox(
       height: chartHeight + 40,

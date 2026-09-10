@@ -198,7 +198,7 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
 
             // 选择计划类型
             if (_activePlan == null) ...[
-              Text('选择计划类型', style: AppTextStyles.h6),
+              const Text('选择计划类型', style: AppTextStyles.h6),
               const SizedBox(height: 12),
               ..._planTypes.map((plan) => _buildPlanCard(plan)),
               const SizedBox(height: 18),
@@ -304,12 +304,12 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 if (is16_8)
-                  _buildStatItem('连续打卡', '${_streakDays}天', LucideIcons.flame)
+                  _buildStatItem('连续打卡', '$_streakDays天', LucideIcons.flame)
                 else
-                  _buildStatItem('本周打卡', '${_weeklyCheckins}/${_weeklyTarget}天',
+                  _buildStatItem('本周打卡', '$_weeklyCheckins/$_weeklyTarget天',
                       LucideIcons.flame),
-                _buildStatItem('累计打卡', '${_checkinCount}次', LucideIcons.check),
-                _buildStatItem('当前周期', '第${_weekCount}周', LucideIcons.calendar),
+                _buildStatItem('累计打卡', '$_checkinCount次', LucideIcons.check),
+                _buildStatItem('当前周期', '第$_weekCount周', LucideIcons.calendar),
               ],
             );
           }),
@@ -449,7 +449,7 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
               const Icon(LucideIcons.target,
                   color: AppColors.primary, size: 18),
               const SizedBox(width: 8),
-              Text('完成度', style: AppTextStyles.h6),
+              const Text('完成度', style: AppTextStyles.h6),
               const Spacer(),
               Text('${rate.toStringAsFixed(0)}%',
                   style: AppTextStyles.numberSmall.copyWith(
@@ -536,7 +536,7 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
       ),
       child: Column(
         children: [
-          Icon(LucideIcons.calendarPlus,
+          const Icon(LucideIcons.calendarPlus,
               size: 48, color: AppColors.textTertiary),
           const SizedBox(height: 12),
           Text('暂无进行中的计划',
@@ -597,7 +597,7 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
                 ],
               ),
             ),
-            Icon(LucideIcons.chevronRight, color: AppColors.textTertiary),
+            const Icon(LucideIcons.chevronRight, color: AppColors.textTertiary),
           ],
         ),
       ),
@@ -615,7 +615,7 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
       ),
       child: Row(
         children: [
-          Icon(LucideIcons.flame, color: AppColors.warning, size: 32),
+          const Icon(LucideIcons.flame, color: AppColors.warning, size: 32),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -648,7 +648,7 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
       ),
       child: Row(
         children: [
-          Icon(LucideIcons.calendarCheck, color: AppColors.primary, size: 32),
+          const Icon(LucideIcons.calendarCheck, color: AppColors.primary, size: 32),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -717,7 +717,7 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('已完成计划', style: AppTextStyles.h6),
+        const Text('已完成计划', style: AppTextStyles.h6),
         const SizedBox(height: 12),
         ..._completedPlans.map((plan) => _buildCompletedPlanCard(plan)),
       ],
@@ -1060,7 +1060,7 @@ class _FastingPlanPageState extends ConsumerState<FastingPlanPage> {
         TimeOfDay localEnd = endTime;
         return StatefulBuilder(
           builder: (ctx, setDialogState) {
-            final formatTime = (TimeOfDay t) =>
+            String formatTime(TimeOfDay t) =>
                 '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
             return AlertDialog(
               title: const Text('修改进食窗口'),

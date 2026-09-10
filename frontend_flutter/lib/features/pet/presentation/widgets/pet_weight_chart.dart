@@ -55,7 +55,7 @@ class PetWeightChart extends StatelessWidget {
             drawVerticalLine: false,
             horizontalInterval: 0.5,
             getDrawingHorizontalLine: (value) {
-              return FlLine(
+              return const FlLine(
                 color: AppColors.borderLight,
                 strokeWidth: 1,
               );

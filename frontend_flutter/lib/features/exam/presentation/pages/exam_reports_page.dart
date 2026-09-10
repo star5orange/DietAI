@@ -155,9 +155,9 @@ class _ExamReportsPageState extends ConsumerState<ExamReportsPage> {
 
           // 记录列表
           if (filtered.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 48),
-              child: const Center(
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 48),
+              child: Center(
                 child: Text('当天没有体检记录', style: TextStyle(color: Colors.grey)),
               ),
             )

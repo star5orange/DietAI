@@ -124,12 +124,12 @@ class _ProxyRecordPageState extends State<ProxyRecordPage> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                  const Icon(Icons.info_outline, color: Colors.blue, size: 20),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       '正在为${widget.targetUserName}记录饮食，记录将计入其账户，并由其本人收到通知',
-                      style: TextStyle(color: Colors.blue, fontSize: 14),
+                      style: const TextStyle(color: Colors.blue, fontSize: 14),
                     ),
                   ),
                 ],

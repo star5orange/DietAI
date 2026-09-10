@@ -30,7 +30,7 @@ class WellnessService {
 
       return result;
     } catch (e) {
-      return ApiResponse(
+      return const ApiResponse(
         success: false,
         data: <Map<String, dynamic>>[],
         message: '养生知识接口不可用',
@@ -97,7 +97,7 @@ class WellnessService {
         (json) => (json as List).map((e) => e as Map<String, dynamic>).toList(),
       );
     } catch (e) {
-      return ApiResponse(
+      return const ApiResponse(
         success: false,
         data: <Map<String, dynamic>>[],
         message: '节气数据接口不可用',

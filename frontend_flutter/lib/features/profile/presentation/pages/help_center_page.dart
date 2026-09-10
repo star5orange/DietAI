@@ -122,7 +122,7 @@ class HelpCenterPage extends StatelessWidget {
             ),
             child: Column(
               children: [
-                Icon(LucideIcons.headphones,
+                const Icon(LucideIcons.headphones,
                     size: 32, color: AppColors.primary),
                 const SizedBox(height: 12),
                 Text(

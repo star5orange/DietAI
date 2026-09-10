@@ -6,8 +6,6 @@ import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../shared/domain/models/user_model.dart';
 import '../../../../shared/presentation/widgets/app_input.dart';
-import '../../../../shared/presentation/widgets/app_button.dart';
-import '../../domain/services/user_service.dart';
 import '../providers/profile_provider.dart';
 
 class ProfileEditSheet extends ConsumerStatefulWidget {
@@ -138,7 +136,7 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(LucideIcons.x),
                 ),
-                Expanded(
+                const Expanded(
                   child: Text(
                     '编辑个人资料',
                     style: AppTextStyles.h5,
@@ -283,7 +281,7 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('性别', style: AppTextStyles.bodyMedium),
+        const Text('性别', style: AppTextStyles.bodyMedium),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -345,7 +343,7 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('出生日期', style: AppTextStyles.bodyMedium),
+        const Text('出生日期', style: AppTextStyles.bodyMedium),
         const SizedBox(height: 8),
         GestureDetector(
           onTap: _selectBirthDate,
@@ -385,7 +383,7 @@ class _ProfileEditSheetState extends ConsumerState<ProfileEditSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('活动级别', style: AppTextStyles.bodyMedium),
+        const Text('活动级别', style: AppTextStyles.bodyMedium),
         const SizedBox(height: 8),
         Column(
           children: [

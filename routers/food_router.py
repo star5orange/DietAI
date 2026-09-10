@@ -15,7 +15,8 @@ from shared.models.schemas import (
     BaseResponse, FoodRecordCreate, FoodRecordConfirmCreate, FoodRecordResponse,
     NutritionDetailCreate, NutritionDetailResponse,
     DailyNutritionSummaryResponse, DateRangeParams,
-    PaginationParams, FileUploadResponse, AgentAnalysisData, NutritionFacts, Recommendations
+    PaginationParams, FileUploadResponse, AgentAnalysisData, NutritionFacts, Recommendations,
+    FoodLabelOCRRequest
 )
 from shared.utils.auth import get_current_user, AuthService
 from shared.models.user_models import User
@@ -304,7 +305,11 @@ async def generate_sse_stream(
                     food_record.analysis_status = 2  # 分析中
                     db.commit()
 
-                is_text_analysis = not food_data.image_url and bool(food_data.description)
+                # 预置营养值（包装食品标签）也走文字分支：description 作为食物描述，
+                # preset_nutrition 由 Agent 直接采用，跳过 AI 估算
+                is_text_analysis = not food_data.image_url and (
+                    bool(food_data.description) or bool(food_data.preset_nutrition)
+                )
                 analysis_type = "文字" if is_text_analysis else "图片"
 
                 yield f"data: {json.dumps({'type': 'analysis_started', 'data': {'status': 'analyzing', 'message': f'开始分析{analysis_type}...'}, 'success': True}, ensure_ascii=False)}\n\n"
@@ -313,7 +318,9 @@ async def generate_sse_stream(
                 analysis_complete_data = None
                 print(f"[SSE] 开始调用Agent分析{food_data.image_url or food_data.description}")
                 if is_text_analysis:
-                    async for chunk in analyze_food_text_with_agent(food_data.description, user_id, db):
+                    async for chunk in analyze_food_text_with_agent(
+                            food_data.description or "", user_id, db,
+                            preset_nutrition=food_data.preset_nutrition):
                         chunk_type = chunk.get("type")
                         print(f"[SSE] 收到Agent chunk: type={chunk_type}")
                         if chunk_type == "analysis_progress":
@@ -1154,8 +1161,13 @@ async def analyze_food_image_with_agent(image_url: str, user_id: int, db: Sessio
         raise e
 
 
-async def analyze_food_text_with_agent(text_description: str, user_id: int, db: Session):
-    """使用Langgraph Agent分析文字食物描述（流式输出）"""
+async def analyze_food_text_with_agent(text_description: str, user_id: int, db: Session,
+                                       preset_nutrition: Optional[dict] = None):
+    """使用Langgraph Agent分析文字食物描述（流式输出）
+
+    preset_nutrition 非空时（包装食品营养成分表）：Agent 跳过文字分析与营养估算，
+    直接使用包装标注的精确营养值生成 AI 建议。
+    """
 
     try:
         # 在进入异步流之前，先提取用户偏好数据，避免session并发问题
@@ -1170,15 +1182,19 @@ async def analyze_food_text_with_agent(text_description: str, user_id: int, db: 
             config={"configurable": get_agent_model_config()}
         )
 
+        run_input = {
+            "text_description": text_description,
+            "user_preferences": user_prefs
+        }
+        if preset_nutrition:
+            run_input["preset_nutrition"] = preset_nutrition
+
         # 创建线程
         thread = await client.threads.create()
         async for chunk in client.runs.stream(
                 assistant_id=assistant["assistant_id"],
                 thread_id=thread['thread_id'],
-                input={
-                    "text_description": text_description,
-                    "user_preferences": user_prefs
-                },
+                input=run_input,
                 stream_mode="values"
         ):
             if chunk.data is not None:
@@ -1893,6 +1909,36 @@ async def get_nutrition_trends(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取营养趋势失败: {str(e)}"
+        )
+
+
+@router.post("/label-ocr", response_model=BaseResponse)
+async def ocr_food_label(
+        data: FoodLabelOCRRequest,
+        current_user: User = Depends(get_current_user)
+):
+    """拍照识别包装食品营养成分表
+
+    复用宠物食品 OCR（/pets/food-database/ocr）的 DashScope qwen-vl 直调模式，
+    针对人类预包装食品改造（每份/每100g 口径统一、kJ→kcal 换算、糖/纤维/钠）。
+    返回结构化营养数据，前端用户确认食用量后走 confirm-create 落库。
+    """
+    from shared.services.food_label_ocr_service import parse_food_label
+    try:
+        result = parse_food_label(data.image_base64)
+        # 非包装食品：正常返回（success=True），由前端提示切换回餐食识别
+        if result.get("is_packaged_food") is False:
+            return BaseResponse(
+                success=True,
+                message="照片不是预包装食品，请切换到餐食识别",
+                data=result
+            )
+        return BaseResponse(success=True, message="识别成功", data=result)
+    except Exception as e:
+        logger.error(f"Food label OCR failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"识别失败: {str(e)}"
         )
 
 

@@ -41,7 +41,7 @@ class _CreateSavedMealModalState extends State<CreateSavedMealModal> {
 
   // 状态变量
   String? _selectedCategory;
-  List<String> _selectedTags = [];
+  final List<String> _selectedTags = [];
   bool _isLoading = false;
 
   @override
@@ -494,11 +494,11 @@ class _CreateSavedMealModalState extends State<CreateSavedMealModal> {
             hintText: hintText,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.divider),
+              borderSide: const BorderSide(color: AppColors.divider),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.primary),
+              borderSide: const BorderSide(color: AppColors.primary),
             ),
             filled: true,
             fillColor: AppColors.backgroundSecondary,
@@ -533,11 +533,11 @@ class _CreateSavedMealModalState extends State<CreateSavedMealModal> {
             hintText: hintText,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.divider),
+              borderSide: const BorderSide(color: AppColors.divider),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.primary),
+              borderSide: const BorderSide(color: AppColors.primary),
             ),
             filled: true,
             fillColor: AppColors.backgroundSecondary,
@@ -565,18 +565,18 @@ class _CreateSavedMealModalState extends State<CreateSavedMealModal> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: value,
+          initialValue: value,
           items: items,
           onChanged: onChanged,
           decoration: InputDecoration(
             hintText: hintText,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.divider),
+              borderSide: const BorderSide(color: AppColors.divider),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.primary),
+              borderSide: const BorderSide(color: AppColors.primary),
             ),
             filled: true,
             fillColor: AppColors.backgroundSecondary,

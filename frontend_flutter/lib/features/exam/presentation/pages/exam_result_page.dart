@@ -151,11 +151,11 @@ class _ExamResultPageState extends ConsumerState<ExamResultPage> {
         const SizedBox(height: 24),
 
         // AI 健康建议
-        Row(
+        const Row(
           children: [
-            const Icon(Icons.tips_and_updates, color: Colors.orange),
-            const SizedBox(width: 8),
-            const Text(
+            Icon(Icons.tips_and_updates, color: Colors.orange),
+            SizedBox(width: 8),
+            Text(
               'AI 健康建议',
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
@@ -558,11 +558,11 @@ class _ExamResultPageState extends ConsumerState<ExamResultPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        const Row(
           children: [
-            const Icon(Icons.trending_up, color: Colors.blue),
-            const SizedBox(width: 8),
-            const Text(
+            Icon(Icons.trending_up, color: Colors.blue),
+            SizedBox(width: 8),
+            Text(
               '与上次体检对比',
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
@@ -623,7 +623,7 @@ class _ExamResultPageState extends ConsumerState<ExamResultPage> {
                             size: 16,
                           ),
                           Text(
-                            '${change.abs().toStringAsFixed(2)}',
+                            change.abs().toStringAsFixed(2),
                             style: TextStyle(
                               fontSize: 12,
                               color: changeColor,

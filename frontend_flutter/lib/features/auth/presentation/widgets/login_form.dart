@@ -119,7 +119,7 @@ class _LoginFormState extends ConsumerState<LoginForm> {
               ),
               child: Row(
                 children: [
-                  Icon(
+                  const Icon(
                     LucideIcons.alertCircle,
                     color: AppColors.error,
                     size: 20,

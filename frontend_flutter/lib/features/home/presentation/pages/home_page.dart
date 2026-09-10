@@ -37,6 +37,11 @@ import 'text_describe_page.dart';
 import 'voice_record_page.dart';
 import '../../../saved_meals/presentation/pages/saved_meals_page.dart';
 import '../../../exam/presentation/pages/exam_upload_page.dart';
+import '../../../profile/presentation/pages/home_layout_page.dart';
+import '../../../profile/presentation/widgets/profile_edit_sheet.dart';
+import 'home_preference_page.dart';
+import '../../domain/home_layout.dart';
+import '../providers/home_layout_provider.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -1185,6 +1190,8 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     await _foodService.invalidateRecordsCache(dateStr);
     await _loadDataForDate(_selectedDate);
     ref.read(petProvider.notifier).onFoodRecorded();
+    // 数据变化可能改变布局规则（如完成首餐后自动退出新用户引导态）
+    _reloadHomeLayout();
   }
 
   void _onWaterRecorded() {
@@ -1196,6 +1203,8 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     final currentCalories = _dailySummary?.totalCalories ?? 0.0;
     final remainingCalories = (_targetCalories - currentCalories).round();
     final crowdTag = ref.watch(userProfileProvider).value?.crowdTag ?? '均衡维持';
+    // 首页模块布局（后端按用户画像推导 + 用户定制覆盖）
+    final homeLayout = ref.watch(homeLayoutProvider);
 
     return Scaffold(
       backgroundColor: AppColors.backgroundSecondary,
@@ -1267,8 +1276,9 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
         child: Column(
           children: [
             _buildAppBar(),
-            _buildPetSwitcher(),
-            if (_selectedPetIndex == null) _buildDateSelector(),
+            // 无宠物用户自动隐藏"我的健康 / 宠物"切换入口
+            if (homeLayout.isVisible(HomeModuleId.petSwitcher))
+              _buildPetSwitcher(),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _refreshData,
@@ -1283,58 +1293,13 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                           children: [
                             if (_isLoading)
                               const Center(child: CircularProgressIndicator())
-                            else ...[
-                              _buildCrowdTagHighlight(crowdTag),
-                              const SizedBox(height: 12),
-                              _buildExamReportButton(),
-                              const SizedBox(height: 14),
-                              _buildCalorieCard(
-                                  remainingCalories, currentCalories, crowdTag),
-                              const SizedBox(height: 14),
-                              WaterIntakeWidget(
-                                onTapDetails: () {},
-                                onWaterRecorded: _onWaterRecorded,
-                                selectedDate: _selectedDate,
-                                collapsible: true,
-                                initiallyCollapsed: true,
+                            else
+                              ..._buildHomeModules(
+                                homeLayout,
+                                crowdTag,
+                                remainingCalories,
+                                currentCalories,
                               ),
-                              const SizedBox(height: 14),
-                              // 节气相关（横幅 + 今日节气卡，默认收起的折叠区）
-                              _FoldSection(
-                                icon: LucideIcons.leaf,
-                                color: const Color(0xFF43A047),
-                                title: '节气养生',
-                                subtitle:
-                                    '${SolarTermTodayWidget.getCurrentSolarTermName()} · 应季养生建议',
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (_solarTermChanged != null) ...[
-                                      _buildSolarTermChangeBanner(),
-                                      const SizedBox(height: 12),
-                                    ],
-                                    if (_upcomingSolarTerm != null) ...[
-                                      _buildUpcomingSolarTermBanner(),
-                                      const SizedBox(height: 12),
-                                    ],
-                                    SolarTermTodayWidget(
-                                      onTapDetails: () =>
-                                          context.push('/wellness'),
-                                      crowdTag: crowdTag,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              // 消费概览（默认收起）
-                              _buildCostOverviewCard(),
-                              const SizedBox(height: 12),
-                              if (_favoriteMeals.isNotEmpty) ...[
-                                _buildFavoriteMealsSection(),
-                                const SizedBox(height: 24),
-                              ],
-                              _buildFoodIntakeSection(),
-                            ],
                           ],
                         ),
                 ),
@@ -1595,8 +1560,30 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                 ],
               ),
             ),
+          // 首页模块编辑入口（我的健康态可用：显示/隐藏模块 + 调整顺序）
+          if (_selectedPetIndex == null)
+            IconButton(
+              onPressed: _openHomeLayoutEditor,
+              tooltip: '编辑首页模块',
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              constraints: const BoxConstraints(),
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(
+                LucideIcons.slidersHorizontal,
+                size: 18,
+                color: AppColors.textSecondary,
+              ),
+            ),
         ],
       ),
+    );
+  }
+
+  /// 打开首页模块管理（显示/隐藏模块 + 调整顺序）
+  void _openHomeLayoutEditor() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeLayoutPage()),
     );
   }
 
@@ -1616,93 +1603,6 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
       setState(() => _selectedDate = selectedDate);
       _loadDataForDate(selectedDate);
     }
-  }
-
-  Widget _buildDateSelector() {
-    // 计算 _selectedDate 所在周的周一
-    final monday =
-        _selectedDate.subtract(Duration(days: _selectedDate.weekday - 1));
-    final now = DateTime.now();
-
-    return Container(
-      color: AppColors.backgroundCard,
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // 7 个正方形格子 + 格子间 6px 间距，均分可用宽度
-            final cellSize = (constraints.maxWidth - 7 * 6) / 7;
-            return Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: List.generate(7, (index) {
-                final date = monday.add(Duration(days: index));
-                final isSelected = _isSameDay(date, _selectedDate);
-                final today = DateTime(now.year, now.month, now.day);
-                final isFutureDate =
-                    DateTime(date.year, date.month, date.day).isAfter(today);
-                final dayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-
-                return SizedBox(
-                  width: cellSize,
-                  height: cellSize,
-                  child: GestureDetector(
-                    onTap: isFutureDate
-                        ? null
-                        : () {
-                            setState(() => _selectedDate = date);
-                            _loadDataForDate(date);
-                          },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: isSelected ? AppColors.primaryGradient : null,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Padding(
-                          padding: const EdgeInsets.all(2),
-                          child: Opacity(
-                            opacity: isFutureDate ? 0.35 : 1.0,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  dayNames[date.weekday - 1],
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: isSelected
-                                        ? AppColors.textInverse
-                                        : AppColors.textTertiary,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  '${date.day}',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: isSelected
-                                        ? AppColors.textInverse
-                                        : AppColors.textPrimary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            );
-          },
-        ),
-      ),
-    );
   }
 
   Widget _buildCalorieCard(
@@ -1818,10 +1718,22 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
       title: '常用餐食',
       subtitle: '${_favoriteMeals.length} 个常吃，点按可快捷记录',
       trailing: GestureDetector(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const SavedMealsPage()),
-        ),
+        onTap: () async {
+          final pick = await Navigator.of(context).push<SavedMealPick>(
+            MaterialPageRoute(
+              builder: (_) => const SavedMealsPage(selectMealTypeFirst: true),
+            ),
+          );
+          if (pick == null || !mounted) return;
+
+          // 餐次与可选消费金额/来源已在弹窗内一并填写，直接按结果生成记录
+          setState(() {
+            _pendingCostAmount = pick.costAmount;
+            _pendingCostSource = pick.costSource;
+          });
+          await _createFoodRecordFromSavedMeal(
+              pick.meal, pick.mealName, pick.mealType);
+        },
         child: Text('查看全部',
             style: AppTextStyles.bodySmall
                 .copyWith(color: AppColors.primary, fontSize: 12)),
@@ -2678,6 +2590,226 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
   }
 
   /// 拍体检报告大按钮（首页顶部，最显眼位置）
+  /// 按布局配置渲染首页模块：顺序 / 可见性 / 变体（如体检入口 compact）全部由后端下发
+  List<Widget> _buildHomeModules(
+    HomeLayout layout,
+    String crowdTag,
+    int remainingCalories,
+    double currentCalories,
+  ) {
+    final builders = <String, Widget Function()>{
+      HomeModuleId.crowdTag: () => _buildCrowdTagHighlight(crowdTag),
+      HomeModuleId.examEntry: () =>
+          layout.variantOf(HomeModuleId.examEntry) == 'compact'
+              ? _buildExamEntryCompact()
+              : _buildExamReportButton(),
+      HomeModuleId.calorie: () =>
+          _buildCalorieCard(remainingCalories, currentCalories, crowdTag),
+      HomeModuleId.water: () => WaterIntakeWidget(
+            onTapDetails: () {},
+            onWaterRecorded: _onWaterRecorded,
+            selectedDate: _selectedDate,
+            collapsible: true,
+            initiallyCollapsed: true,
+          ),
+      // 节气相关（横幅 + 今日节气卡，默认收起的折叠区）
+      HomeModuleId.solarTerm: () => _FoldSection(
+            icon: LucideIcons.leaf,
+            color: const Color(0xFF43A047),
+            title: '节气养生',
+            subtitle: '${SolarTermTodayWidget.getCurrentSolarTermName()} · 应季养生建议',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_solarTermChanged != null) ...[
+                  _buildSolarTermChangeBanner(),
+                  const SizedBox(height: 12),
+                ],
+                if (_upcomingSolarTerm != null) ...[
+                  _buildUpcomingSolarTermBanner(),
+                  const SizedBox(height: 12),
+                ],
+                SolarTermTodayWidget(
+                  onTapDetails: () => context.push('/wellness'),
+                  crowdTag: crowdTag,
+                ),
+              ],
+            ),
+          ),
+      HomeModuleId.cost: () => _buildCostOverviewCard(),
+      HomeModuleId.favorites: () => _favoriteMeals.isNotEmpty
+          ? _buildFavoriteMealsSection()
+          : const SizedBox.shrink(),
+      HomeModuleId.foodIntake: () => _buildFoodIntakeSection(),
+      // ---------- 新用户引导卡（完成后由后端信号自动隐藏）----------
+      HomeModuleId.onboardingPreference: () => _buildOnboardingCard(
+        icon: LucideIcons.slidersHorizontal,
+        color: const Color(0xFF7C4DFF),
+        title: '让首页更懂你',
+        subtitle: '回答几个小问题，首页更贴合你的日常',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const HomePreferencePage()),
+            ).then((_) => _reloadHomeLayout()),
+          ),
+      HomeModuleId.onboardingRecord: () => _buildOnboardingCard(
+            icon: LucideIcons.camera,
+            color: AppColors.primary,
+            title: '记录第一餐',
+            subtitle: '拍一张或说一句话，AI 自动算出营养',
+            onTap: () => _showFoodRecordModal(_currentMealName()),
+          ),
+      HomeModuleId.onboardingProfile: () => _buildOnboardingCard(
+            icon: LucideIcons.userCheck,
+            color: const Color(0xFF1E88E5),
+            title: '完善健康档案',
+            subtitle: '填好身高体重和目标，热量建议才准确',
+            onTap: () {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => ProfileEditSheet(
+                  userProfile: ref.read(userProfileProvider).value,
+                ),
+              ).then((_) => _reloadHomeLayout());
+            },
+          ),
+      HomeModuleId.onboardingConstitution: () => _buildOnboardingCard(
+            icon: LucideIcons.clipboardCheck,
+            color: const Color(0xFF43A047),
+            title: '体质自测',
+            subtitle: '9 道题测出体质，解锁应季养生建议',
+            onTap: () => context
+                .push('/constitution-quiz')
+                .then((_) => _reloadHomeLayout()),
+          ),
+      HomeModuleId.onboardingAddPet: () => _buildOnboardingCard(
+            icon: LucideIcons.bone,
+            color: const Color(0xFFFB8C00),
+            title: '添加宠物',
+            subtitle: '给毛孩子建立健康档案（可选）',
+            onTap: () =>
+                context.push('/add-pet').then((_) => _reloadHomeLayout()),
+          ),
+    };
+
+    final widgets = <Widget>[];
+    for (final id in layout.order) {
+      if (id == HomeModuleId.petSwitcher) continue; // 顶部固定区单独渲染
+      if (!layout.isVisible(id)) continue;
+      final builder = builders[id];
+      if (builder == null) continue;
+      widgets.add(builder());
+      widgets.add(const SizedBox(height: 14));
+    }
+    return widgets;
+  }
+
+  /// 重新拉取首页布局（完成引导动作后卡片自动隐藏、模式可能切换）
+  void _reloadHomeLayout() {
+    ref.read(homeLayoutProvider.notifier).reload();
+  }
+
+  /// 当前时段对应的餐次名（用于"记录第一餐"引导卡）
+  String _currentMealName() {
+    final hour = DateTime.now().hour;
+    if (hour < 10) return '早餐';
+    if (hour < 15) return '午餐';
+    if (hour < 21) return '晚餐';
+    return '加餐';
+  }
+
+  /// 新用户引导卡（统一样式）
+  Widget _buildOnboardingCard({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 18, color: color),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.textTertiary)),
+                ],
+              ),
+            ),
+            Icon(LucideIcons.chevronRight, size: 18, color: color),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 体检报告紧凑入口：无体检记录时替代大按钮，避免首屏被占位
+  Widget _buildExamEntryCompact() {
+    return GestureDetector(
+      onTap: () {
+        // 语音引导：老年人不识字，点击前先读出操作说明
+        _ttsService.speak('请把体检报告平放在桌面上，保证光线充足，然后拍摄照片。').catchError((_) {});
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ExamUploadPage()),
+        ).then((_) => _refreshData());
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8F2FD),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.camera_alt, size: 18, color: Color(0xFF1E88E5)),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '拍体检报告，AI 自动识别指标',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1565C0)),
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 18, color: Color(0xFF1E88E5)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildExamReportButton() {
     return GestureDetector(
       onTap: () {

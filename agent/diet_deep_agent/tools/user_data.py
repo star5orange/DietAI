@@ -21,19 +21,21 @@ def _get_db_session():
 
 @tool
 def get_user_profile(user_id: int) -> dict[str, Any]:
-    """获取用户个人资料，包含基本信息、健康状况、过敏原、疾病等。
+    """获取用户个人资料，包含基本信息、体质类型、人群标签、过敏原、疾病等。
 
     Args:
         user_id: 用户 ID
 
     Returns:
-        用户档案字典，包含 profile、allergies、diseases、active_goals
+        用户档案字典，包含 profile、allergies、diseases、active_goals；
+        profile 中含 constitution_type（中医九种体质，如"痰湿质"）与 crowd_tag（人群标签）
     """
     db = _get_db_session()
     try:
         from shared.models.user_models import (
             UserProfile, User, Disease, Allergy, HealthGoal
         )
+        from shared.models.schemas.constitution import normalize_constitution
 
         user = db.query(User).filter(User.id == user_id).first()
         profile = db.query(UserProfile).filter(
@@ -70,6 +72,16 @@ def get_user_profile(user_id: int) -> dict[str, Any]:
                 "weight": float(profile.weight) if profile.weight else None,
                 "age": calculate_age(profile.birth_date) if profile.birth_date else None,
                 "activity_level": profile.activity_level,
+                # 归一化为中文标准名（库里可能存前端自测写入的英文码，如 pinghe）
+                "constitution_type": (
+                    normalize_constitution(profile.constitution_type)
+                    if profile.constitution_type else None
+                ),
+                "crowd_tag": profile.crowd_tag,
+                "monthly_food_budget": (
+                    float(profile.monthly_food_budget)
+                    if profile.monthly_food_budget else None
+                ),
             },
             "allergies": [
                 {"name": a.allergen_name, "severity": a.severity_level, "reaction": a.reaction_description or ""}
@@ -104,7 +116,7 @@ def get_diet_history(user_id: int, days: int = 7) -> dict[str, Any]:
         days: 查询天数（默认 7 天）
 
     Returns:
-        饮食历史，包含每日营养汇总和食物记录
+        饮食历史，包含每日营养汇总、食物记录和消费汇总 cost_summary
     """
     db = _get_db_session()
     try:
@@ -125,6 +137,18 @@ def get_diet_history(user_id: int, days: int = 7) -> dict[str, Any]:
             FoodRecord.user_id == user_id,
             FoodRecord.record_date >= start_date
         ).order_by(FoodRecord.record_date.desc()).limit(50).all()
+
+        # 周期内消费汇总（同一张 FoodRecord 表的 cost 字段，独立聚合不受 50 条限制）
+        from sqlalchemy import func
+        cost_agg = db.query(
+            func.sum(FoodRecord.cost), func.count(FoodRecord.id)
+        ).filter(
+            FoodRecord.user_id == user_id,
+            FoodRecord.record_date >= start_date,
+            FoodRecord.cost.isnot(None),
+        ).one()
+        total_cost = round(float(cost_agg[0]), 2) if cost_agg[0] else 0
+        purchase_count = cost_agg[1] or 0
 
         return {
             "period": f"近 {days} 天",
@@ -149,6 +173,12 @@ def get_diet_history(user_id: int, days: int = 7) -> dict[str, Any]:
                 for r in food_records[:20]  # 限制返回数量
             ],
             "record_count": len(food_records),
+            "cost_summary": {
+                "period": f"近 {days} 天",
+                "total_cost": total_cost,
+                "purchase_count": purchase_count,
+                "daily_avg": round(total_cost / days, 2) if days > 0 else 0,
+            },
         }
     except Exception as e:
         logger.error(f"get_diet_history failed: {e}")

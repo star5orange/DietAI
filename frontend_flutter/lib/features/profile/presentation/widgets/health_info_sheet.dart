@@ -5,9 +5,7 @@ import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../shared/domain/models/user_model.dart';
-import '../../../../shared/presentation/widgets/app_button.dart';
 import '../../../../shared/presentation/widgets/app_input.dart';
-import '../../domain/services/user_service.dart';
 import '../providers/profile_provider.dart';
 
 class HealthInfoSheet extends ConsumerStatefulWidget {
@@ -416,20 +414,20 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
                 itemBuilder: (context) => [
-                  PopupMenuItem(
+                  const PopupMenuItem(
                       value: 'edit',
                       child: Row(children: [
                         Icon(LucideIcons.pencil,
                             size: 16, color: AppColors.textSecondary),
-                        const SizedBox(width: 8),
-                        const Text('编辑')
+                        SizedBox(width: 8),
+                        Text('编辑')
                       ])),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                       value: 'delete',
                       child: Row(children: [
                         Icon(LucideIcons.trash2,
                             size: 16, color: AppColors.error),
-                        const SizedBox(width: 8),
+                        SizedBox(width: 8),
                         Text('删除', style: TextStyle(color: AppColors.error))
                       ])),
                 ],
@@ -529,20 +527,20 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
                 itemBuilder: (context) => [
-                  PopupMenuItem(
+                  const PopupMenuItem(
                       value: 'edit',
                       child: Row(children: [
                         Icon(LucideIcons.pencil,
                             size: 16, color: AppColors.textSecondary),
-                        const SizedBox(width: 8),
-                        const Text('编辑')
+                        SizedBox(width: 8),
+                        Text('编辑')
                       ])),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                       value: 'delete',
                       child: Row(children: [
                         Icon(LucideIcons.trash2,
                             size: 16, color: AppColors.error),
-                        const SizedBox(width: 8),
+                        SizedBox(width: 8),
                         Text('删除', style: TextStyle(color: AppColors.error))
                       ])),
                 ],
@@ -612,7 +610,7 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<int>(
-                  value: severityLevel,
+                  initialValue: severityLevel,
                   decoration: const InputDecoration(
                     labelText: '严重程度',
                     border: OutlineInputBorder(),
@@ -746,7 +744,7 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<int>(
-                  value: allergenType,
+                  initialValue: allergenType,
                   decoration: const InputDecoration(
                     labelText: '过敏原类型',
                     border: OutlineInputBorder(),
@@ -773,7 +771,7 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<int>(
-                  value: severityLevel,
+                  initialValue: severityLevel,
                   decoration: const InputDecoration(
                     labelText: '严重程度',
                     border: OutlineInputBorder(),
@@ -968,7 +966,7 @@ class _AddDiseaseFormState extends ConsumerState<_AddDiseaseForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('严重程度', style: AppTextStyles.bodyMedium),
+        const Text('严重程度', style: AppTextStyles.bodyMedium),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -1015,7 +1013,7 @@ class _AddDiseaseFormState extends ConsumerState<_AddDiseaseForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('诊断日期', style: AppTextStyles.bodyMedium),
+        const Text('诊断日期', style: AppTextStyles.bodyMedium),
         const SizedBox(height: 8),
         GestureDetector(
           onTap: _selectDiagnosedDate,
@@ -1242,7 +1240,7 @@ class _AddAllergyFormState extends ConsumerState<_AddAllergyForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('过敏原类型', style: AppTextStyles.bodyMedium),
+        const Text('过敏原类型', style: AppTextStyles.bodyMedium),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
@@ -1296,7 +1294,7 @@ class _AddAllergyFormState extends ConsumerState<_AddAllergyForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('严重程度', style: AppTextStyles.bodyMedium),
+        const Text('严重程度', style: AppTextStyles.bodyMedium),
         const SizedBox(height: 8),
         Row(
           children: [

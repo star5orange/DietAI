@@ -163,7 +163,7 @@ class FamilyMemberCard extends ConsumerWidget {
                           ),
                           child: Text(
                             member.note ?? '家人',
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.primary,
                               fontWeight: FontWeight.w500,

@@ -66,6 +66,51 @@ def _get_cached_agent():
     return _cached_agent
 
 
+def _build_user_constitution_context(user_id: int) -> str:
+    """构建用户体质/人群标签上下文，追加到人类营养师 System Prompt。
+
+    Deep Agent 与 Chat Agent 不同，Router 层不会自动携带用户档案；
+    体质类型（体质自测落库到 UserProfile.constitution_type）需在此显式注入，
+    否则模型不知道用户的体质标签。宠物会话不调用本函数。
+    """
+    try:
+        from shared.models.database import SessionLocal
+        from shared.models.user_models import UserProfile
+
+        db = SessionLocal()
+        try:
+            profile = db.query(UserProfile).filter(
+                UserProfile.user_id == user_id
+            ).first()
+            from shared.models.schemas.constitution import normalize_constitution
+            constitution = (
+                normalize_constitution(profile.constitution_type)
+                if profile and profile.constitution_type else None
+            )
+            crowd_tag = profile.crowd_tag if profile else None
+        finally:
+            db.close()
+
+        lines = []
+        if constitution:
+            lines.append(f"- 体质类型: {constitution}（来自用户体质自测，中医九种体质）")
+        if crowd_tag:
+            lines.append(f"- 人群标签: {crowd_tag}")
+        if not lines:
+            return ""
+
+        return (
+            "\n\n## 用户体质档案（必须参考）\n"
+            + "\n".join(lines)
+            + "\n给出饮食/养生建议时必须结合该体质的宜忌；"
+            "涉及体质养生、药膳茶饮等检索时，调用 query_wellness_knowledge "
+            "应将该体质作为 constitution 过滤条件传入。"
+        )
+    except Exception as e:
+        logger.warning(f"构建用户体质上下文失败 (非致命): {e}")
+        return ""
+
+
 @router.post("/chat")
 async def deep_chat(
     request: Request,
@@ -130,6 +175,9 @@ async def deep_chat(
                 advisor_prompt += "\n\n" + style_prompt
         except Exception:
             pass
+
+        # 叠加用户体质档案（体质自测结果，建议与养生检索需参考）
+        advisor_prompt += _build_user_constitution_context(current_user.id)
 
     async def generate_response() -> AsyncGenerator[str, None]:
         try:
@@ -250,6 +298,9 @@ async def deep_analyze(
                 advisor_prompt += "\n\n" + style_prompt
         except Exception:
             pass
+
+        # 叠加用户体质档案（体质自测结果，建议与养生检索需参考）
+        advisor_prompt += _build_user_constitution_context(current_user.id)
 
     async def generate_response() -> AsyncGenerator[str, None]:
         try:

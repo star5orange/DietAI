@@ -117,12 +117,13 @@ final healthGoalProgressProvider = FutureProvider.family<HealthGoalProgress?, in
   return result.success ? result.data : null;
 });
 
-/// 当前活跃健康目标Provider - 获取状态为进行中的目标
+/// 当前活跃健康目标Provider - 获取状态为进行中的目标（排除已过期）
 final activeHealthGoalsProvider = Provider<AsyncValue<List<HealthGoal>>>((ref) {
   final healthGoalsAsync = ref.watch(healthGoalsProvider);
   
   return healthGoalsAsync.when(
     data: (goals) {
+      // 只保留进行中（status=1）的目标，已过期（status=5）的不算活跃
       final activeGoals = goals.where((goal) => goal.currentStatus == 1).toList();
       return AsyncValue.data(activeGoals);
     },

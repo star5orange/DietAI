@@ -572,11 +572,11 @@ class _CostStatisticsPageState extends ConsumerState<CostStatisticsPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(LucideIcons.zap,
+              Icon(LucideIcons.zap,
                   color: AppColors.caloriesColor, size: 20),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Text('每元热量指标', style: AppTextStyles.h6),
             ],
           ),
@@ -654,11 +654,11 @@ class _CostStatisticsPageState extends ConsumerState<CostStatisticsPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(LucideIcons.barChart3,
+              Icon(LucideIcons.barChart3,
                   color: AppColors.primary, size: 18),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Text('快速统计', style: AppTextStyles.h6),
             ],
           ),
@@ -1026,7 +1026,7 @@ class _CostStatisticsPageState extends ConsumerState<CostStatisticsPage>
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: Text('设置月度预算', style: AppTextStyles.h4),
+          title: const Text('设置月度预算', style: AppTextStyles.h4),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -47,7 +46,7 @@ class NotificationService {
       const linuxSettings =
           LinuxInitializationSettings(defaultActionName: 'open');
 
-      final settings = InitializationSettings(
+      const settings = InitializationSettings(
         android: androidSettings,
         iOS: darwinSettings,
         macOS: darwinSettings,
@@ -111,7 +110,7 @@ class NotificationService {
       presentBadge: true,
       presentSound: true,
     );
-    final details = NotificationDetails(
+    const details = NotificationDetails(
       android: androidDetails,
       iOS: darwinDetails,
       macOS: darwinDetails,
@@ -208,7 +207,7 @@ class NotificationService {
         presentBadge: true,
         presentSound: true,
       );
-      final details = NotificationDetails(
+      const details = NotificationDetails(
         android: androidDetails,
         iOS: darwinDetails,
         macOS: darwinDetails,

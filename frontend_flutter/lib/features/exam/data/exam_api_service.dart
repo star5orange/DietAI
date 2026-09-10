@@ -25,8 +25,9 @@ class ExamApiService {
         ));
       }
       formData.fields.add(MapEntry('user_id', '$userId'));
-      if (examDate != null)
+      if (examDate != null) {
         formData.fields.add(MapEntry('exam_date', examDate));
+      }
       if (hospitalName != null) {
         formData.fields.add(MapEntry('hospital_name', hospitalName));
       }

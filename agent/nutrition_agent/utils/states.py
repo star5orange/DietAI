@@ -13,6 +13,8 @@ class AgentState(TypedDict):
     image_dir: Optional[str]
     image_data: Optional[str]
     text_description: Optional[str]
+    # 预置营养值（包装食品营养成分表：OCR/标注精确值），存在时跳过 AI 估算，仅生成建议
+    preset_nutrition: Optional[Dict]
     image_analysis: Optional[str]
     nutrition_analysis: Optional[NutritionAnalysis]
     nutrition_advice: Optional[NutritionAdvice]
@@ -32,6 +34,8 @@ class InputState(TypedDict):
     image_data: Optional[str]
     text_description: Optional[str]
     user_preferences: Optional[Dict]
+    # 预置营养值：由包装食品 OCR 得到（精确值），传入后跳过 AI 营养估算
+    preset_nutrition: Optional[Dict]
 
 
 class OutputState(TypedDict):

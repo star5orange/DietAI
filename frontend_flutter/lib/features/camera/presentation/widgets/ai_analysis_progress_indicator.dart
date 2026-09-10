@@ -382,7 +382,7 @@ class _AIAnalysisProgressIndicatorState extends State<AIAnalysisProgressIndicato
               ],
             ),
           );
-        }).toList(),
+        }),
       ],
     );
   }

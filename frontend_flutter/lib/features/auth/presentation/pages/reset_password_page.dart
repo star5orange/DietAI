@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
-import '../../../../shared/domain/models/api_response.dart';
 import '../../../../shared/presentation/widgets/app_button.dart';
 import '../../domain/services/auth_service.dart';
 
@@ -114,13 +112,13 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                   Center(
                     child: Column(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.vpn_key_outlined,
                           size: 80,
                           color: AppColors.primary,
                         ),
                         const SizedBox(height: 24),
-                        Text(
+                        const Text(
                           '设置新密码',
                           style: AppTextStyles.h2,
                         ),
@@ -206,7 +204,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.info_outline, color: AppColors.info, size: 20),
+                        const Icon(Icons.info_outline, color: AppColors.info, size: 20),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(

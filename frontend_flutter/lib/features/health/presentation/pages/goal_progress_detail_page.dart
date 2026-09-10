@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
-import '../../../../shared/domain/models/api_response.dart';
 import '../../../../services/goal_tracking_service.dart';
 import '../widgets/weight_chart.dart';
 
@@ -51,8 +50,8 @@ class _GoalProgressDetailPageState
         _trackingService.getDailyStatus(),
       ]);
 
-      final progressResult = results[0] as ApiResponse<Map<String, dynamic>>;
-      final dailyResult = results[1] as ApiResponse<Map<String, dynamic>>;
+      final progressResult = results[0];
+      final dailyResult = results[1];
 
       if (!mounted) return;
 
@@ -152,7 +151,7 @@ class _GoalProgressDetailPageState
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: AppColors.shadow, blurRadius: 8, offset: const Offset(0, 4))],
+        boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 8, offset: Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -192,7 +191,7 @@ class _GoalProgressDetailPageState
             ),
           ),
           const SizedBox(height: 8),
-          Text('${progressPct.toStringAsFixed(1)}%', style: TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w700)),
+          Text('${progressPct.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w700)),
           const SizedBox(height: 16),
           // Weight numbers
           Row(
@@ -245,7 +244,7 @@ class _GoalProgressDetailPageState
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: AppColors.shadow, blurRadius: 8, offset: const Offset(0, 4))],
+        boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 8, offset: Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -316,7 +315,7 @@ class _GoalProgressDetailPageState
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: AppColors.shadow, blurRadius: 8, offset: const Offset(0, 4))],
+        boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 8, offset: Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -336,7 +335,7 @@ class _GoalProgressDetailPageState
             ],
           ),
           const SizedBox(height: 16),
-          SizedBox(
+          const SizedBox(
             height: 200,
             child: WeightChart(days: 30),
           ),
@@ -355,7 +354,7 @@ class _GoalProgressDetailPageState
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: AppColors.shadow, blurRadius: 8, offset: const Offset(0, 4))],
+        boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 8, offset: Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -364,9 +363,9 @@ class _GoalProgressDetailPageState
           const SizedBox(height: 16),
           Row(
             children: [
-              _buildMetricCard('BMR', bmr != null ? '${(bmr as num).toStringAsFixed(0)}' : '--', 'kcal/天', LucideIcons.activity),
+              _buildMetricCard('BMR', bmr != null ? (bmr as num).toStringAsFixed(0) : '--', 'kcal/天', LucideIcons.activity),
               const SizedBox(width: 12),
-              _buildMetricCard('TDEE', tdee != null ? '${(tdee as num).toStringAsFixed(0)}' : '--', 'kcal/天', LucideIcons.zap),
+              _buildMetricCard('TDEE', tdee != null ? (tdee as num).toStringAsFixed(0) : '--', 'kcal/天', LucideIcons.zap),
               const SizedBox(width: 12),
               _buildMetricCard('已记录', recordCount != null ? '$recordCount' : '--', '次体重', LucideIcons.scale),
             ],

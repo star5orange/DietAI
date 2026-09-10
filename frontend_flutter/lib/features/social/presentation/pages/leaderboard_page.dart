@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/themes/app_colors.dart';
-import '../../domain/social_models.dart';
 import '../providers/social_provider.dart';
 
 /// 好友饮食排行榜页
@@ -47,13 +46,13 @@ class LeaderboardPage extends ConsumerWidget {
     }
 
     if (state.items.isEmpty) {
-      return Center(
+      return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.emoji_events_outlined, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            const Text('还没有好友数据，快去添加好友一起运动吧！',
+            Icon(Icons.emoji_events_outlined, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text('还没有好友数据，快去添加好友一起运动吧！',
                 style: TextStyle(color: Colors.grey)),
           ],
         ),

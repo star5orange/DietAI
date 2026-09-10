@@ -578,7 +578,8 @@ class _FoodAnalysisPageState extends ConsumerState<FoodAnalysisPage>
         'image_url':
             _uploadedImageUrl ?? _currentRecord?.imageUrl ?? pending?.imageUrl,
         'recording_method': 1, // AI扫描
-        'from_source': 'camera',
+        // 沿用待创建数据的来源（餐食拍照为 camera；包装食品标签识别为 barcode）
+        'from_source': pending?.fromSource ?? 'camera',
         'cost': _costAmount ?? pending?.cost,
         'source_tag': _costSource ?? pending?.sourceTag,
         'target_user_id': pending?.targetUserId,

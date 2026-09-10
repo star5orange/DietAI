@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
@@ -14,14 +13,11 @@ class CacheManager {
   // 内存缓存
   final Map<String, dynamic> _memoryCache = {};
   final Map<String, Uint8List> _imageCache = {};
-  
+
   // 缓存配置
   static const int _maxMemoryCacheSize = 100; // 最大内存缓存条目数
   static const int _maxImageCacheSize = 50; // 最大图片缓存条目数
   static const Duration _cacheExpiration = Duration(hours: 24); // 缓存过期时间
-
-  /// 获取缓存键
-  String _getCacheKey(String key, String type) => '${type}_$key';
 
   /// 设置内存缓存
   void setMemoryCache(String key, dynamic data) {
@@ -43,7 +39,7 @@ class CacheManager {
 
     final timestamp = (cached['timestamp'] as num?)?.toInt() ?? 0;
     final age = DateTime.now().millisecondsSinceEpoch - timestamp;
-    
+
     if (age > _cacheExpiration.inMilliseconds) {
       _memoryCache.remove(key);
       return null;
@@ -91,7 +87,7 @@ class CacheManager {
       final cached = jsonDecode(cachedString);
       final timestamp = (cached['timestamp'] as num?)?.toInt() ?? 0;
       final age = DateTime.now().millisecondsSinceEpoch - timestamp;
-      
+
       if (age > _cacheExpiration.inMilliseconds) {
         await prefs.remove(key);
         return null;
@@ -133,7 +129,7 @@ class CacheManager {
   Future<void> clearAllCache() async {
     _memoryCache.clear();
     _imageCache.clear();
-    
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final keys = prefs.getKeys();
@@ -142,7 +138,7 @@ class CacheManager {
           await prefs.remove(key);
         }
       }
-      
+
       final directory = await getTemporaryDirectory();
       final files = directory.listSync();
       for (final file in files) {
@@ -220,4 +216,4 @@ class CacheManager {
       'max_image_cache_size': _maxImageCacheSize,
     };
   }
-} 
+}

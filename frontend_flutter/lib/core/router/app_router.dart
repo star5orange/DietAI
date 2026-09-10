@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -22,7 +22,6 @@ import '../../features/health/presentation/pages/constitution_quiz_page.dart';
 import '../../features/health/presentation/pages/wellness_page.dart';
 import '../../features/cost/presentation/pages/cost_statistics_page.dart';
 import '../../features/advisor/presentation/pages/advisor_style_page.dart';
-import '../../features/pet/presentation/pages/pet_home_page.dart';
 import '../../features/pet/presentation/pages/real_pet_detail_page.dart';
 import '../../features/pet/presentation/pages/add_pet_page.dart';
 import '../../features/pet/presentation/pages/pet_feeding_page.dart';

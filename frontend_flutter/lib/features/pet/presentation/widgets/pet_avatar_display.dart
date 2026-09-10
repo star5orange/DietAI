@@ -373,7 +373,7 @@ class EmotionSelector extends StatelessWidget {
       children: _emotions.map((emotion) {
         final isSelected = selectedEmotion == emotion['key'];
         return GestureDetector(
-          onTap: () => onEmotionSelected(emotion['key'] as String? ?? ''),
+          onTap: () => onEmotionSelected(emotion['key'] ?? ''),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
