@@ -245,15 +245,15 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
               ),
               const SizedBox(height: 12),
               if (isLoading) ...[
-                Row(
+                const Row(
                   children: [
-                    const SizedBox(
+                    SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                    const SizedBox(width: 12),
-                    const Text('正在分析中...', style: TextStyle(color: Colors.grey, fontSize: 14)),
+                    SizedBox(width: 12),
+                    Text('正在分析中...', style: TextStyle(color: Colors.grey, fontSize: 14)),
                   ],
                 ),
                 if (result != null && result.isNotEmpty) ...[
@@ -275,7 +275,7 @@ class _HealthAnalysisPageState extends ConsumerState<HealthAnalysisPage>
                   onPressed: () => _startAiAnalysis(metricType),
                 ),
               ] else if (hasResult) ...[
-                Text(result!, style: const TextStyle(fontSize: 14, height: 1.6)),
+                Text(result, style: const TextStyle(fontSize: 14, height: 1.6)),
               ] else ...[
                 SizedBox(
                   width: double.infinity,

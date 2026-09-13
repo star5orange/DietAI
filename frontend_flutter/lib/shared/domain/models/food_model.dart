@@ -331,6 +331,11 @@ class FoodRecordCreate {
   @JsonKey(name: 'analyze_only')
   final bool analyzeOnly;
 
+  /// 包装食品营养成分表识别的精确营养值（已按食用量换算）
+  /// 提供时后端跳过 AI 营养估算，仅生成 AI 建议，保证数值与包装标注一致
+  @JsonKey(name: 'preset_nutrition')
+  final Map<String, dynamic>? presetNutrition;
+
   const FoodRecordCreate({
     required this.recordDate,
     this.recordTime,
@@ -344,6 +349,7 @@ class FoodRecordCreate {
     this.sourceTag,
     this.targetUserId,
     this.analyzeOnly = false,
+    this.presetNutrition,
   });
 
   factory FoodRecordCreate.fromJson(Map<String, dynamic> json) =>

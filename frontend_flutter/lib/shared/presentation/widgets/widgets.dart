@@ -6,7 +6,6 @@ export 'app_input.dart';
 export 'animated_progress_circle.dart';
 export 'error_handler.dart';
 export 'main_scaffold.dart';
-export 'pulse_badge.dart';
 
 // 现代化组件 - 新增
 export 'modern_card.dart';

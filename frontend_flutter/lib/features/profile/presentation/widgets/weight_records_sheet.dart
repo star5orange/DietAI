@@ -5,9 +5,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../shared/domain/models/user_model.dart';
-import '../../../../shared/presentation/widgets/app_button.dart';
 import '../../../../shared/presentation/widgets/app_input.dart';
-import '../../domain/services/user_service.dart';
 import '../providers/profile_provider.dart';
 
 class WeightRecordsSheet extends ConsumerStatefulWidget {
@@ -161,7 +159,7 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
             style: AppTextStyles.h6.copyWith(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 8),
-          Text(
+          const Text(
             '记录您的体重变化，追踪健康进展',
             style: AppTextStyles.bodyMedium,
           ),
@@ -243,7 +241,7 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
           color: AppColors.backgroundSecondary,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Center(
+        child: const Center(
           child: Text(
             '至少需要2个记录才能显示图表',
             style: AppTextStyles.bodyMedium,
@@ -269,7 +267,7 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
           color: AppColors.backgroundSecondary,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Center(
+        child: const Center(
           child: Text(
             '最近30天内没有记录',
             style: AppTextStyles.bodyMedium,
@@ -293,7 +291,7 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
             drawVerticalLine: false,
             horizontalInterval: 1,
             getDrawingHorizontalLine: (value) {
-              return FlLine(
+              return const FlLine(
                 color: AppColors.divider,
                 strokeWidth: 1,
               );
@@ -494,7 +492,7 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
             ),
           ),
           const SizedBox(height: 12),
-          ...sortedRecords.map((record) => _buildRecordCard(record)).toList(),
+          ...sortedRecords.map((record) => _buildRecordCard(record)),
         ],
       ),
     );
@@ -760,10 +758,10 @@ class _AddRecordFormState extends ConsumerState<_AddRecordForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('设备类型', style: AppTextStyles.bodyMedium),
+        const Text('设备类型', style: AppTextStyles.bodyMedium),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: _selectedDeviceType,
+          initialValue: _selectedDeviceType,
           decoration: InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),

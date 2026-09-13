@@ -50,7 +50,7 @@ class ExerciseQuickAdd extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(LucideIcons.dumbbell,
+                const Icon(LucideIcons.dumbbell,
                     color: AppColors.textInverse, size: 20),
                 const SizedBox(width: 8),
                 Text(
@@ -101,7 +101,7 @@ class ExerciseQuickAdd extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(LucideIcons.plus,
+                  const Icon(LucideIcons.plus,
                       color: AppColors.textInverse, size: 16),
                   const SizedBox(width: 6),
                   Text(

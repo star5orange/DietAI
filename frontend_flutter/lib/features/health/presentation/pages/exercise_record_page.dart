@@ -11,7 +11,6 @@ import '../../../../shared/domain/models/exercise_model.dart';
 import '../../../../services/exercise_service.dart';
 import '../../../profile/domain/services/user_service.dart';
 import '../../../../core/services/api_service.dart';
-import '../../../../shared/domain/models/api_response.dart';
 import 'exercise_history_page.dart';
 
 class ExerciseRecordPage extends StatefulWidget {
@@ -120,11 +119,11 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
             decoration: BoxDecoration(
               color: AppColors.cardBackground,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: [
+              boxShadow: const [
                 BoxShadow(
                   color: AppColors.shadow,
                   blurRadius: 4,
-                  offset: const Offset(0, 2),
+                  offset: Offset(0, 2),
                 ),
               ],
             ),
@@ -271,7 +270,7 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
               Expanded(
                 child: _buildSummaryItem(
                   '消耗热量',
-                  '${calories.toStringAsFixed(0)}',
+                  calories.toStringAsFixed(0),
                   'kcal',
                   LucideIcons.flame,
                 ),
@@ -458,11 +457,11 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
             color: AppColors.shadow,
             blurRadius: 8,
-            offset: const Offset(0, 2),
+            offset: Offset(0, 2),
           ),
         ],
       ),
@@ -503,7 +502,7 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
                           ),
                           child: Text(
                             typeLabel,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
                               color: AppColors.primary,
@@ -592,16 +591,16 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (muscleGroups.isNotEmpty) ...[
-            Row(
+            const Row(
               children: [
-                const Icon(LucideIcons.target,
+                Icon(LucideIcons.target,
                     size: 14, color: Color(0xFF66BB6A)),
-                const SizedBox(width: 6),
+                SizedBox(width: 6),
                 Text('训练肌群',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFF66BB6A),
+                      color: Color(0xFF66BB6A),
                     )),
               ],
             ),
@@ -630,16 +629,16 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
             if (sets.isNotEmpty) const SizedBox(height: 10),
           ],
           if (sets.isNotEmpty) ...[
-            Row(
+            const Row(
               children: [
-                const Icon(LucideIcons.dumbbell,
+                Icon(LucideIcons.dumbbell,
                     size: 14, color: Color(0xFF66BB6A)),
-                const SizedBox(width: 6),
+                SizedBox(width: 6),
                 Text('训练内容',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFF66BB6A),
+                      color: Color(0xFF66BB6A),
                     )),
               ],
             ),
@@ -843,8 +842,9 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
                         showTitles: true,
                         getTitlesWidget: (value, meta) {
                           final idx = value.toInt();
-                          if (idx < 0 || idx >= dailyData.length)
+                          if (idx < 0 || idx >= dailyData.length) {
                             return const SizedBox.shrink();
+                          }
                           return Padding(
                             padding: const EdgeInsets.only(top: 6),
                             child: Text(
@@ -921,8 +921,9 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
                         interval: 1,
                         getTitlesWidget: (value, meta) {
                           final idx = value.toInt();
-                          if (idx < 0 || idx >= dailyData.length)
+                          if (idx < 0 || idx >= dailyData.length) {
                             return const SizedBox.shrink();
+                          }
                           return Padding(
                             padding: const EdgeInsets.only(top: 6),
                             child: Text(dailyData[idx].label,
@@ -1376,7 +1377,7 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
                 ),
               ),
               const SizedBox(height: 24),
-              Text(
+              const Text(
                 '运动类型',
                 style: AppTextStyles.labelLarge,
               ),
@@ -1444,7 +1445,7 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
               const SizedBox(height: 16),
               Row(
                 children: [
-                  Text(
+                  const Text(
                     '消耗热量',
                     style: AppTextStyles.labelLarge,
                   ),
@@ -1461,7 +1462,7 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
                       setState(() => _isAutoCalories = v);
                       if (v) _updateAutoCalories();
                     },
-                    activeColor: AppColors.primary,
+                    activeThumbColor: AppColors.primary,
                   ),
                 ],
               ),
@@ -1805,10 +1806,10 @@ class _AddExerciseModalState extends State<_AddExerciseModal> {
         border:
             Border.all(color: const Color(0xFF66BB6A).withValues(alpha: 0.2)),
       ),
-      child: Row(
+      child: const Row(
         children: [
-          const Icon(LucideIcons.info, size: 18, color: Color(0xFF66BB6A)),
-          const SizedBox(width: 10),
+          Icon(LucideIcons.info, size: 18, color: Color(0xFF66BB6A)),
+          SizedBox(width: 10),
           Expanded(
             child: Text(
               '切换至「健身」人群标签可记录训练肌群、组数×次数、负重等详情',

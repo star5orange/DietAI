@@ -266,7 +266,7 @@ class _PetAnimationWidgetState extends ConsumerState<PetAnimationWidget>
             },
             child: ScaleTransition(
               scale: _pulseAnimation,
-              child: Container(
+              child: SizedBox(
                 width: widget.size,
                 height: widget.size,
                 child: ClipOval(
@@ -427,7 +427,7 @@ class _PetAnimationWidgetState extends ConsumerState<PetAnimationWidget>
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(LucideIcons.zap,
+                          const Icon(LucideIcons.zap,
                               size: 14, color: AppColors.success),
                           const SizedBox(width: 2),
                           Text(

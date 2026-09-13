@@ -650,7 +650,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   const SizedBox(width: 8),
                   // 发送按钮
                   Container(
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       color: AppColors.primary,
                       shape: BoxShape.circle,
                     ),

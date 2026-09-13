@@ -200,7 +200,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           colors: [AppColors.primarySurface, AppColors.backgroundCard],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,

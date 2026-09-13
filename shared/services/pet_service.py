@@ -435,6 +435,7 @@ def update_pet_settings(
     visible: Optional[bool] = None,
     pet_type: Optional[str] = None,
     pet_name: Optional[str] = None,
+    skin_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """更新宠物设置
 
@@ -442,8 +443,9 @@ def update_pet_settings(
         db: 数据库会话
         user_id: 用户ID
         visible: 宠物可见性
-        pet_type: 宠物类型
-        pet_name: 宠物名称
+        pet_type: 宠物物种类型（cat/dog/rabbit/hamster）
+        pet_name: 宠物名称（对应当前皮肤）
+        skin_key: 桌宠皮肤 key（如 default / christine），用于切换当前皮肤
 
     Returns:
         更新后的设置信息
@@ -459,6 +461,10 @@ def update_pet_settings(
     if pet_type is not None and pet_type in ("cat", "dog", "rabbit", "hamster"):
         pet.current_skin = pet_type
         updated_fields.append("pet_type")
+    # 桌宠皮肤切换（前端皮肤 key，与 current_skin 同义）
+    if skin_key and skin_key.strip() and len(skin_key.strip()) <= 50:
+        pet.current_skin = skin_key.strip()
+        updated_fields.append("skin_key")
     if pet_name is not None:
         pet.pet_name = pet_name
         updated_fields.append("pet_name")
@@ -469,9 +475,9 @@ def update_pet_settings(
         db.refresh(pet)
 
     return {
-        "is_visible": pet.is_visible if hasattr(pet, 'is_visible') else True,
+        "is_visible": bool(pet.is_visible) if pet.is_visible is not None else True,
         "current_skin": pet.current_skin,
-        "custom_name": pet.custom_name if hasattr(pet, 'custom_name') else None,
+        "pet_name": pet.pet_name,
         "updated_fields": updated_fields,
     }
 

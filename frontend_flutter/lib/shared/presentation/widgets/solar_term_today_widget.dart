@@ -108,9 +108,7 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
 
   Map<String, dynamic> _getCurrentSolarTerm() {
     final now = DateTime.now();
-    final mmdd = now.month.toString().padLeft(2, '0') +
-        '-' +
-        now.day.toString().padLeft(2, '0');
+    final mmdd = '${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
     // 找到当前日期所在的节气区间
     String currentName = '小寒';
@@ -120,7 +118,7 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
     String currentAvoid = '寒凉生冷';
     String nextName = '大寒';
 
-    final terms = SolarTermTodayWidget._solarTermsData;
+    const terms = SolarTermTodayWidget._solarTermsData;
     for (int i = 0; i < terms.length; i++) {
       final term = terms[i];
       final nextIdx = (i + 1) % terms.length;
@@ -315,7 +313,7 @@ class _SolarTermTodayWidgetState extends State<SolarTermTodayWidget> {
                   children: [
                     Expanded(
                       child: Text(
-                        crowdTip!,
+                        crowdTip,
                         style: AppTextStyles.bodySmall.copyWith(
                           color: AppColors.whiteWithOpacity(0.85),
                           fontWeight: FontWeight.w500,

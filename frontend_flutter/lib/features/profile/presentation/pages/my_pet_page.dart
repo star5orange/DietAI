@@ -13,7 +13,6 @@ import '../../../pet/presentation/widgets/pet_animation_widget.dart';
 import '../../../pet/presentation/pages/real_pet_detail_page.dart';
 import '../../../pet/presentation/pages/add_pet_page.dart';
 import '../../../../core/themes/app_colors.dart';
-import '../../../../core/themes/app_text_styles.dart';
 import '../../../../services/food_service.dart';
 import '../../../../services/water_service.dart';
 import '../../../../services/goal_tracking_service.dart';
@@ -402,7 +401,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
         children: [
           const Icon(Icons.pets, size: 48, color: AppColors.textTertiary),
           const SizedBox(height: 12),
-          Text('还没有添加宠物',
+          const Text('还没有添加宠物',
               style: TextStyle(fontSize: 14, color: AppColors.textTertiary)),
           const SizedBox(height: 4),
           Text('点击上方按钮添加你的第一只宠物吧',
@@ -788,7 +787,7 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
             onChanged: (value) {
               ref.read(petProvider.notifier).setPetVisible(value);
             },
-            activeColor: const Color(0xFF2BAF74),
+            activeThumbColor: const Color(0xFF2BAF74),
           ),
         ],
       ),
@@ -1129,12 +1128,12 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    const Row(
                       children: [
-                        const Icon(LucideIcons.zap,
+                        Icon(LucideIcons.zap,
                             size: 14, color: AppColors.caloriesColor),
-                        const SizedBox(width: 6),
-                        const Text('经验值',
+                        SizedBox(width: 6),
+                        Text('经验值',
                             style: TextStyle(
                                 fontSize: 14, color: Color(0xFF222222))),
                       ],

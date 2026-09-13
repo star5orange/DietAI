@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:fl_chart/fl_chart.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../shared/domain/models/weight_record_model.dart';
@@ -62,11 +61,11 @@ class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage>
             decoration: BoxDecoration(
               color: AppColors.cardBackground,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: [
+              boxShadow: const [
                 BoxShadow(
                   color: AppColors.shadow,
                   blurRadius: 4,
-                  offset: const Offset(0, 2),
+                  offset: Offset(0, 2),
                 ),
               ],
             ),
@@ -253,7 +252,7 @@ class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage>
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '${days}天',
+                  '$days天',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: isSelected ? Colors.white : AppColors.textSecondary,
@@ -280,11 +279,11 @@ class _WeightTrackingPageState extends ConsumerState<WeightTrackingPage>
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
             color: AppColors.shadow,
             blurRadius: 8,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
         ],
       ),

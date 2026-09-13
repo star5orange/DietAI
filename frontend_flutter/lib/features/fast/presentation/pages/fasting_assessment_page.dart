@@ -97,7 +97,7 @@ class _FastingAssessmentPageState extends ConsumerState<FastingAssessmentPage> {
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('压力水平', style: AppTextStyles.bodyMedium),
+          const Text('压力水平', style: AppTextStyles.bodyMedium),
           Slider(
             value: _stressLevel.toDouble(),
             min: 1,
@@ -108,7 +108,7 @@ class _FastingAssessmentPageState extends ConsumerState<FastingAssessmentPage> {
             activeColor: AppColors.primary,
           ),
           const SizedBox(height: 16),
-          Text('睡眠质量', style: AppTextStyles.bodyMedium),
+          const Text('睡眠质量', style: AppTextStyles.bodyMedium),
           Slider(
             value: _sleepQuality.toDouble(),
             min: 1,
@@ -186,7 +186,7 @@ class _FastingAssessmentPageState extends ConsumerState<FastingAssessmentPage> {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: AppColors.primary,
+            activeThumbColor: AppColors.primary,
           ),
         ],
       ),

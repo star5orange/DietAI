@@ -115,7 +115,7 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text('记录饮水', style: AppTextStyles.h4),
+          title: const Text('记录饮水', style: AppTextStyles.h4),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -215,7 +215,7 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('设置每日饮水目标', style: AppTextStyles.h4),
+        title: const Text('设置每日饮水目标', style: AppTextStyles.h4),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -404,182 +404,182 @@ class _WaterIntakeWidgetState extends State<WaterIntakeWidget>
     final goalMl = summary?.goalMl ?? 2000;
     final isGoalReached = summary?.isGoalReached ?? false;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: isGoalReached
-            ? AppColors.successGradient
-            : LinearGradient(
-                colors: [AppColors.info, AppColors.infoLight],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: (isGoalReached ? AppColors.success : AppColors.info)
-                .withValues(alpha: 0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              const Icon(LucideIcons.droplets,
-                  color: AppColors.textInverse, size: 22),
-              const SizedBox(width: 8),
-              Text('今日饮水',
-                  style: AppTextStyles.bodyLarge.copyWith(
-                      color: AppColors.textInverse,
-                      fontWeight: FontWeight.w600)),
-              if (widget.collapsible && _collapsed) ...[
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _collapsed = !_collapsed),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: isGoalReached
+              ? AppColors.successGradient
+              : const LinearGradient(
+                  colors: [AppColors.info, AppColors.infoLight],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: (isGoalReached ? AppColors.success : AppColors.info)
+                  .withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                const Icon(LucideIcons.droplets,
+                    color: AppColors.textInverse, size: 22),
                 const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    '${_formatWaterWithUnit(totalMl)} / ${_formatWaterWithUnit(goalMl)}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.labelMedium
-                        .copyWith(color: AppColors.whiteWithOpacity(0.75)),
+                Text('今日饮水',
+                    style: AppTextStyles.bodyLarge.copyWith(
+                        color: AppColors.textInverse,
+                        fontWeight: FontWeight.w600)),
+                if (widget.collapsible && _collapsed) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      '${_formatWaterWithUnit(totalMl)} / ${_formatWaterWithUnit(goalMl)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.labelMedium
+                          .copyWith(color: AppColors.whiteWithOpacity(0.75)),
+                    ),
                   ),
-                ),
+                ],
+                const Spacer(),
+                if (_todayRecords.isNotEmpty &&
+                    !(widget.collapsible && _collapsed))
+                  IconButton(
+                    icon: const Icon(LucideIcons.undo2, size: 16),
+                    color: AppColors.textInverse,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    tooltip: '撤回上一次记录',
+                    onPressed: _undoLastRecord,
+                  ),
+                if (!(widget.collapsible && _collapsed))
+                  GestureDetector(
+                    behavior: HitTestBehavior.deferToChild,
+                    onTap: _showGoalSettingDialog,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.whiteWithOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(LucideIcons.target,
+                              color: AppColors.textInverse, size: 12),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text('${_formatWater(goalMl)}L',
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTextStyles.labelMedium.copyWith(
+                                    color: AppColors.textInverse,
+                                    fontWeight: FontWeight.w500)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (widget.collapsible)
+                  AnimatedRotation(
+                    turns: _collapsed ? 0 : 0.5,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(LucideIcons.chevronDown,
+                        color: AppColors.textInverse, size: 20),
+                  ),
               ],
-              const Spacer(),
-              if (_todayRecords.isNotEmpty &&
-                  !(widget.collapsible && _collapsed))
-                IconButton(
-                  icon: const Icon(LucideIcons.undo2, size: 16),
-                  color: AppColors.textInverse,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  tooltip: '撤回上一次记录',
-                  onPressed: _undoLastRecord,
-                ),
-              if (!(widget.collapsible && _collapsed))
-                GestureDetector(
-                  onTap: _showGoalSettingDialog,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.whiteWithOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(LucideIcons.target,
-                            color: AppColors.textInverse, size: 12),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text('${_formatWater(goalMl)}L',
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTextStyles.labelMedium.copyWith(
-                                  color: AppColors.textInverse,
-                                  fontWeight: FontWeight.w500)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              if (widget.collapsible)
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => setState(() => _collapsed = !_collapsed),
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: AnimatedRotation(
-                      turns: _collapsed ? 0 : 0.5,
-                      duration: const Duration(milliseconds: 200),
-                      child: const Icon(LucideIcons.chevronDown,
-                          color: AppColors.textInverse, size: 20),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeInOut,
-            alignment: Alignment.topCenter,
-            child: _collapsed
-                ? const SizedBox(width: double.infinity)
-                : Padding(
-                    padding: const EdgeInsets.only(top: 10),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _isLoading
-                            ? SizedBox(
-                                width: 110,
-                                height: 110,
-                                child: Center(
-                                    child: CircularProgressIndicator(
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                                AppColors.textInverse))),
-                              )
-                            : GestureDetector(
-                                onTap: _showTodayRecordsSheet,
-                                child: AnimatedProgressCircle(
-                                  progress: progress,
-                                  size: 110,
-                                  strokeWidth: 10,
-                                  progressColor: AppColors.textInverse,
-                                  backgroundColor:
-                                      AppColors.whiteWithOpacity(0.25),
-                                  showPulse: !isGoalReached,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                          totalMl >= 1000
-                                              ? _formatWater(totalMl)
-                                              : '$totalMl',
-                                          style: AppTextStyles.numberLarge
-                                              .copyWith(
-                                                  color:
-                                                      AppColors.textInverse)),
-                                      Text(totalMl >= 1000 ? '升' : 'ml',
-                                          style: AppTextStyles.bodySmall
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: _collapsed
+                  ? const SizedBox(width: double.infinity)
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _isLoading
+                              ? const SizedBox(
+                                  width: 110,
+                                  height: 110,
+                                  child: Center(
+                                      child: CircularProgressIndicator(
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                  AppColors.textInverse))),
+                                )
+                              : GestureDetector(
+                                  onTap: _showTodayRecordsSheet,
+                                  child: AnimatedProgressCircle(
+                                    progress: progress,
+                                    size: 110,
+                                    strokeWidth: 10,
+                                    progressColor: AppColors.textInverse,
+                                    backgroundColor:
+                                        AppColors.whiteWithOpacity(0.25),
+                                    showPulse: !isGoalReached,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                            totalMl >= 1000
+                                                ? _formatWater(totalMl)
+                                                : '$totalMl',
+                                            style: AppTextStyles.numberLarge
+                                                .copyWith(
+                                                    color:
+                                                        AppColors.textInverse)),
+                                        Text(totalMl >= 1000 ? '升' : 'ml',
+                                            style: AppTextStyles.bodySmall
+                                                .copyWith(
+                                                    color: AppColors
+                                                        .whiteWithOpacity(
+                                                            0.7))),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          isGoalReached
+                                              ? '✅ 已达标'
+                                              : '还差 ${_formatWaterWithUnit(summary?.remainingMl ?? 0)}',
+                                          style: AppTextStyles.labelSmall
                                               .copyWith(
                                                   color: AppColors
-                                                      .whiteWithOpacity(0.7))),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        isGoalReached
-                                            ? '✅ 已达标'
-                                            : '还差 ${_formatWaterWithUnit(summary?.remainingMl ?? 0)}',
-                                        style: AppTextStyles.labelSmall
-                                            .copyWith(
-                                                color:
-                                                    AppColors.whiteWithOpacity(
-                                                        0.7)),
-                                      ),
-                                    ],
+                                                      .whiteWithOpacity(0.7)),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
-                              ),
-                        const SizedBox(height: 10),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            Expanded(child: _buildQuickAddButton('250ml', 250)),
-                            const SizedBox(width: 8),
-                            Expanded(child: _buildQuickAddButton('500ml', 500)),
-                            const SizedBox(width: 8),
-                            Expanded(child: _buildCustomAddButton()),
-                          ],
-                        ),
-                      ],
+                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              Expanded(
+                                  child: _buildQuickAddButton('250ml', 250)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                  child: _buildQuickAddButton('500ml', 500)),
+                              const SizedBox(width: 8),
+                              Expanded(child: _buildCustomAddButton()),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

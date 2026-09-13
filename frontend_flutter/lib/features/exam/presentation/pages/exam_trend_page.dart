@@ -237,9 +237,9 @@ class _TrendChartPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final left = 36.0;
+    const left = 36.0;
     final right = size.width - 12;
-    final top = 12.0;
+    const top = 12.0;
     final bottom = size.height - 24;
 
     final range = maxValue - minValue;

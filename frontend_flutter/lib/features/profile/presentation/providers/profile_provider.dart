@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/api_service.dart';
-import '../../../../shared/domain/models/api_response.dart';
 import '../../../../shared/domain/models/user_model.dart';
 import '../../domain/services/user_service.dart';
 

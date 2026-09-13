@@ -24,7 +24,8 @@ class InteractRequest(BaseModel):
 class PetSettingsRequest(BaseModel):
     visible: Optional[bool] = Field(None, description="宠物可见性")
     pet_type: Optional[str] = Field(None, description="宠物类型(cat/dog)")
-    pet_name: Optional[str] = Field(None, description="宠物名称")
+    pet_name: Optional[str] = Field(None, description="宠物名称（对应当前皮肤）")
+    skin_key: Optional[str] = Field(None, description="桌宠皮肤key（default/christine），用于切换当前皮肤")
 
 
 class AddExpRequest(BaseModel):
@@ -148,6 +149,7 @@ async def pet_settings(
             visible=request.visible,
             pet_type=request.pet_type,
             pet_name=request.pet_name,
+            skin_key=request.skin_key,
         )
         return BaseResponse(
             success=True,

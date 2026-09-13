@@ -151,15 +151,15 @@ class _ModernCardState extends State<ModernCard>
     switch (widget.variant) {
       case ModernCardVariant.elevated:
         return [
-          BoxShadow(
+          const BoxShadow(
             color: AppColors.shadowLight,
             blurRadius: 10,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
-          BoxShadow(
+          const BoxShadow(
             color: AppColors.shadow,
             blurRadius: 20,
-            offset: const Offset(0, 8),
+            offset: Offset(0, 8),
           ),
         ];
       case ModernCardVariant.filled:
@@ -219,7 +219,7 @@ class _ModernCardState extends State<ModernCard>
           color: AppColors.backgroundCard.withValues(alpha: 0.8),
           borderRadius: BorderRadius.circular(_getBorderRadius()),
         ),
-        child: Center(
+        child: const Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -231,7 +231,7 @@ class _ModernCardState extends State<ModernCard>
                   valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
                 ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               Text(
                 '加载中...',
                 style: AppTextStyles.bodySmall,

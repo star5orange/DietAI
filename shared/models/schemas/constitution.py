@@ -16,6 +16,46 @@ CONSTITUTION_TYPES = {
     "特禀质": "过敏体质，易打喷嚏，易起荨麻疹",
 }
 
+# 英文码 → 中文标准名（前端 constitution_quiz_page 本地自测走 updateUserProfile 存英文码，
+# 后端 /constitution-quiz 落库存中文"X质"，数据库两种格式并存）
+CONSTITUTION_EN_TO_CN = {
+    "pinghe": "平和质",
+    "qixu": "气虚质",
+    "yangxu": "阳虚质",
+    "yinxu": "阴虚质",
+    "tanshi": "痰湿质",
+    "shire": "湿热质",
+    "xueyu": "血瘀质",
+    "qiyu": "气郁质",
+    "tebing": "特禀质",
+}
+
+
+def normalize_constitution(value: str) -> str:
+    """将体质标签归一化为中文标准形式（"X质"）。
+
+    兼容三种历史格式：
+    - 英文码 "tanshi"（前端本地自测落库）
+    - 无"质"后缀 "痰湿"（RAG 布尔字段/工具参数惯例）
+    - 标准 "痰湿质"（后端 /constitution-quiz 落库）
+    """
+    if not value:
+        return value
+    v = str(value).strip()
+    if v in CONSTITUTION_EN_TO_CN:
+        return CONSTITUTION_EN_TO_CN[v]
+    if v in CONSTITUTION_TYPES:
+        return v
+    for ctype in CONSTITUTION_TYPES:
+        if ctype.startswith(v):
+            return ctype
+    return v
+
+
+def constitution_for_rag(value: str) -> str:
+    """将体质标签归一化为 RAG 布尔字段形式（无"质"后缀，如"痰湿"）。"""
+    return normalize_constitution(value).removesuffix("质")
+
 # 体质对应的饮食建议
 CONSTITUTION_DIET_ADVICE: Dict[str, Dict[str, list]] = {
     "平和质": {

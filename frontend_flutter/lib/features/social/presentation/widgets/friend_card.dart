@@ -216,7 +216,7 @@ class FriendCard extends ConsumerWidget {
                               ),
                               child: Text(
                                 friend.note ?? '好友',
-                                style: TextStyle(
+                                style: const TextStyle(
                                   fontSize: 12,
                                   color: AppColors.primary,
                                   fontWeight: FontWeight.w500,

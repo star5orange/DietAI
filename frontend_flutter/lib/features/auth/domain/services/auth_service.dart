@@ -43,7 +43,7 @@ class AuthService {
         );
       }
     } catch (e) {
-      return ApiResponse<AuthResponse>(
+      return const ApiResponse<AuthResponse>(
         success: false,
         message: '网络错误，请检查网络连接',
       );
@@ -83,7 +83,7 @@ class AuthService {
         );
       }
     } catch (e) {
-      return ApiResponse<Map<String, dynamic>>(
+      return const ApiResponse<Map<String, dynamic>>(
         success: false,
         message: '网络错误，请检查网络连接',
       );
@@ -109,7 +109,7 @@ class AuthService {
         );
       }
     } catch (e) {
-      return ApiResponse<User>(
+      return const ApiResponse<User>(
         success: false,
         message: '网络错误，请检查网络连接',
       );
@@ -131,7 +131,7 @@ class AuthService {
     } catch (e) {
       // 即使网络错误，也清除本地令牌
       await _clearLocalTokens();
-      return ApiResponse<void>(
+      return const ApiResponse<void>(
         success: true,
         message: '已退出登录',
       );
@@ -166,7 +166,7 @@ class AuthService {
         );
       }
     } catch (e) {
-      return ApiResponse<void>(
+      return const ApiResponse<void>(
         success: false,
         message: '网络错误，请检查网络连接',
       );
@@ -208,7 +208,7 @@ class AuthService {
         );
       }
     } catch (e) {
-      return ApiResponse<Map<String, dynamic>>(
+      return const ApiResponse<Map<String, dynamic>>(
         success: false,
         message: '网络错误，请检查网络连接',
       );
@@ -243,7 +243,7 @@ class AuthService {
         );
       }
     } catch (e) {
-      return ApiResponse<void>(
+      return const ApiResponse<void>(
         success: false,
         message: '网络错误，请检查网络连接',
       );
@@ -280,7 +280,7 @@ class AuthService {
         );
       }
     } catch (e) {
-      return ApiResponse<void>(
+      return const ApiResponse<void>(
         success: false,
         message: '网络错误，请检查网络连接',
       );

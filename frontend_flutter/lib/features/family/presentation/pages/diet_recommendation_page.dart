@@ -140,11 +140,11 @@ class _DietRecommendationPageState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        const Row(
           children: [
-            const Icon(Icons.group, color: AppColors.primary, size: 20),
-            const SizedBox(width: 8),
-            const Text(
+            Icon(Icons.group, color: AppColors.primary, size: 20),
+            SizedBox(width: 8),
+            Text(
               '家人饮食偏好',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
@@ -174,8 +174,7 @@ class _DietRecommendationPageState
           children: [
             Row(
               children: [
-                Icon(Icons.person,
-                    size: 18, color: Colors.grey[600]),
+                Icon(Icons.person, size: 18, color: Colors.grey[600]),
                 const SizedBox(width: 6),
                 Text(
                   member.displayName,
@@ -185,15 +184,15 @@ class _DietRecommendationPageState
                 if (member.constitutionType?.isNotEmpty == true) ...[
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: AppColors.primary.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
                       member.constitutionType!,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 11,
                         color: AppColors.primary,
                       ),
@@ -237,8 +236,8 @@ class _DietRecommendationPageState
                 runSpacing: 8,
                 children: member.foodDislikes.map((food) {
                   return Chip(
-                    avatar: const Icon(Icons.cancel,
-                        size: 16, color: Colors.red),
+                    avatar:
+                        const Icon(Icons.cancel, size: 16, color: Colors.red),
                     label: Text(food),
                     backgroundColor: Colors.red.withValues(alpha: 0.1),
                     visualDensity: VisualDensity.compact,

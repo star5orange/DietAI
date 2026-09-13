@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/pet_state_calculator.dart';
-import '../../domain/pet_skin_config.dart'; // 导入皮肤配置
+// 导入皮肤配置
 import '../providers/pet_provider.dart';
 import 'pet_bubble.dart';
 import 'pet_animation_widget.dart'; // 导入动画组件

@@ -31,7 +31,7 @@ class ParallaxBackgroundImage extends StatelessWidget {
         
         return Transform.translate(
           offset: Offset(0, -parallaxOffset),
-          child: Container(
+          child: SizedBox(
             height: MediaQuery.of(context).size.height * 0.7,
             width: double.infinity,
             child: Stack(

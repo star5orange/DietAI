@@ -666,9 +666,9 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.tips_and_updates, color: Colors.blue),
-                SizedBox(width: 8),
-                Expanded(
+                const Icon(Icons.tips_and_updates, color: Colors.blue),
+                const SizedBox(width: 8),
+                const Expanded(
                   child: Text(
                     'AI 健康建议',
                     style: TextStyle(
@@ -962,7 +962,7 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    value: metric.isAbnormal ? 'abnormal' : 'normal',
+                    initialValue: metric.isAbnormal ? 'abnormal' : 'normal',
                     decoration: const InputDecoration(
                       labelText: '状态',
                       border: OutlineInputBorder(),

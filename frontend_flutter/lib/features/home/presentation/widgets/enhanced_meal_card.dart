@@ -263,7 +263,7 @@ class _EnhancedMealCardState extends State<EnhancedMealCard>
           ),
         ),
         const SizedBox(height: 12),
-        ...widget.foods.take(3).map((food) => _buildFoodItem(food)).toList(),
+        ...widget.foods.take(3).map((food) => _buildFoodItem(food)),
         if (widget.foods.length > 3)
           Padding(
             padding: const EdgeInsets.only(top: 8),

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -151,7 +150,7 @@ class _AvatarGenerationProgressState extends State<AvatarGenerationProgress>
                     ? widget.progressMessage
                     : '正在生成中...',
                 key: ValueKey(widget.progressMessage),
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 14,
                   color: AppColors.textSecondary,
                 ),

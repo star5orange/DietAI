@@ -178,7 +178,10 @@ def rag_search_by_user_profile(
     if season:
         conditions.append({f"season_{season}": True})
     if constitution:
-        conditions.append({f"constitution_{constitution}": True})
+        # 数据库可能存 "痰湿质"/"痰湿"/英文码"tanshi"（不同入口格式不一），
+        # RAG 布尔字段统一为 constitution_痰湿 形式
+        from shared.models.schemas.constitution import constitution_for_rag
+        conditions.append({f"constitution_{constitution_for_rag(constitution)}": True})
 
     if len(conditions) == 0:
         filter_dict = None

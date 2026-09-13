@@ -622,6 +622,39 @@ class FoodService {
     }
   }
 
+  /// 包装食品营养成分表识别（复用宠物食品 OCR 的 DashScope qwen-vl 模式）
+  Future<ApiResponse<Map<String, dynamic>>> ocrFoodLabel(String imageBase64) async {
+    try {
+      print('📤 包装食品营养成分表识别请求');
+
+      final response = await _apiService.post(
+        '/foods/label-ocr',
+        data: {'image_base64': imageBase64},
+      );
+
+      print('📥 包装食品OCR响应: success=${response.success}');
+
+      if (response.success) {
+        return ApiResponse<Map<String, dynamic>>(
+          success: true,
+          message: response.message,
+          data: response.data as Map<String, dynamic>,
+        );
+      } else {
+        return ApiResponse<Map<String, dynamic>>(
+          success: false,
+          message: response.message,
+        );
+      }
+    } catch (e) {
+      print('❌ 包装食品OCR异常: $e');
+      return ApiResponse<Map<String, dynamic>>(
+        success: false,
+        message: '包装食品识别失败: $e',
+      );
+    }
+  }
+
   /// 语音识别
   Future<ApiResponse<Map<String, dynamic>>> recognizeVoice(
       File audioFile) async {

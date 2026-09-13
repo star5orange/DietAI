@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -43,7 +43,7 @@ class WebSocketChatService {
   /// 连接到 WebSocket 服务器
   Future<void> connect(int userId) async {
     if (_isConnected) {
-      print('⚠️ WebSocket 已连接，跳过重复连接');
+      debugPrint('⚠️ WebSocket 已连接，跳过重复连接');
       return;
     }
 
@@ -53,7 +53,7 @@ class WebSocketChatService {
       // 获取 token
       final token = await _apiService.getAccessToken();
       if (token == null) {
-        print(' WebSocket 连接失败：没有 access token');
+        debugPrint(' WebSocket 连接失败：没有 access token');
         _scheduleReconnect();
         return;
       }
@@ -64,7 +64,7 @@ class WebSocketChatService {
           .replaceFirst('https://', 'wss://');
       final wsUrl = '$baseUrl/api/messages/ws/$token';
 
-      print('🔌 正在连接 WebSocket: $wsUrl');
+      debugPrint('🔌 正在连接 WebSocket: $wsUrl');
 
       _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
@@ -80,9 +80,9 @@ class WebSocketChatService {
       _isConnected = true;
       _reconnectAttempts = 0;
       onConnectionChanged?.call(true);
-      print('✅ WebSocket 连接成功');
+      debugPrint('✅ WebSocket 连接成功');
     } catch (e) {
-      print('❌ WebSocket 连接失败: $e');
+      debugPrint('❌ WebSocket 连接失败: $e');
       _isConnected = false;
       onConnectionChanged?.call(false);
       _scheduleReconnect();
@@ -102,7 +102,7 @@ class WebSocketChatService {
     _isConnected = false;
     _currentUserId = null;
     onConnectionChanged?.call(false);
-    print('🔌 WebSocket 已断开');
+    debugPrint('🔌 WebSocket 已断开');
   }
 
   /// 断线后自动重连（最多 5 次，间隔 3 秒）
@@ -112,11 +112,11 @@ class WebSocketChatService {
     }
     _reconnectAttempts++;
     final attempt = _reconnectAttempts;
-    print('🔄 WebSocket 断线，${attempt}/$_maxReconnectAttempts 秒后重连...');
+    debugPrint('🔄 WebSocket 断线，$attempt/$_maxReconnectAttempts 秒后重连...');
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(const Duration(seconds: 3), () {
       if (_manualClose || _currentUserId == null) return;
-      print('🔄 尝试重连 WebSocket...');
+      debugPrint('🔄 尝试重连 WebSocket...');
       _isConnected = false;
       connect(_currentUserId!);
     });
@@ -126,7 +126,7 @@ class WebSocketChatService {
   Future<bool> sendMessage(int receiverId, String content,
       {String messageType = 'text'}) async {
     if (!_isConnected || _channel == null) {
-      print('⚠️ WebSocket 未连接，无法发送消息');
+      debugPrint('⚠️ WebSocket 未连接，无法发送消息');
       return false;
     }
 
@@ -139,7 +139,7 @@ class WebSocketChatService {
       }));
       return true;
     } catch (e) {
-      print(' WebSocket 发送消息失败: $e');
+      debugPrint(' WebSocket 发送消息失败: $e');
       return false;
     }
   }
@@ -166,7 +166,7 @@ class WebSocketChatService {
           final msgData = data['data'] as Map<String, dynamic>;
           final message = Message.fromJson(msgData);
           onNewMessage(message);
-          print(' 收到新消息: ${message.content}');
+          debugPrint(' 收到新消息: ${message.content}');
           break;
 
         case 'message_sent':
@@ -174,7 +174,7 @@ class WebSocketChatService {
           final msgData = data['data'] as Map<String, dynamic>;
           final message = Message.fromJson(msgData);
           onNewMessage(message);
-          print('✅ 消息发送确认: ${message.content}');
+          debugPrint('✅ 消息发送确认: ${message.content}');
           break;
 
         case 'user_typing':
@@ -190,26 +190,26 @@ class WebSocketChatService {
           break;
 
         case 'error':
-          print('❌ WebSocket 错误: ${data['message']}');
+          debugPrint('❌ WebSocket 错误: ${data['message']}');
           break;
 
         default:
-          print('⚠️ 未知 WebSocket 消息类型: $type');
+          debugPrint('⚠️ 未知 WebSocket 消息类型: $type');
       }
     } catch (e) {
-      print('❌ 解析 WebSocket 消息失败: $e');
+      debugPrint('❌ 解析 WebSocket 消息失败: $e');
     }
   }
 
   void _onError(dynamic error) {
-    print('❌ WebSocket 错误: $error');
+    debugPrint('❌ WebSocket 错误: $error');
     _isConnected = false;
     onConnectionChanged?.call(false);
     _scheduleReconnect();
   }
 
   void _onDone() {
-    print('🔌 WebSocket 连接关闭');
+    debugPrint('🔌 WebSocket 连接关闭');
     _isConnected = false;
     _stopPing();
     onConnectionChanged?.call(false);
@@ -231,3 +231,4 @@ class WebSocketChatService {
     _pingTimer = null;
   }
 }
+

@@ -95,7 +95,7 @@ class HealthGoal(Base):
     goal_type = Column(Integer, nullable=False)  # 1:减重 2:增重 3:维持 4:增肌 5:减脂
     target_weight = Column(Numeric(5, 2), nullable=True)
     target_date = Column(Date, nullable=True)
-    current_status = Column(Integer, default=1)  # 1:进行中 2:已完成 3:已暂停 4:已取消
+    current_status = Column(Integer, default=1)  # 1:进行中 2:已完成 3:已暂停 4:已取消 5:已过期
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     

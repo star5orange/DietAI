@@ -15,7 +15,6 @@ import 'pet_food_library_page.dart';
 import 'pet_weekly_report_page.dart';
 import '../../../chat/presentation/pages/chat_page.dart';
 import '../../data/real_pet_api_service.dart';
-import '../../presentation/providers/pet_provider.dart';
 import '../../../../shared/domain/models/api_response.dart';
 import '../../../../shared/utils/species_utils.dart';
 
@@ -481,7 +480,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                 if (_weightRecords.isNotEmpty) {
                   final latest = _weightRecords.first;
                   final w = latest['weight'];
-                  if (w != null) return '${w} kg';
+                  if (w != null) return '$w kg';
                 }
                 final w = pet['weight'];
                 return w != null ? '$w kg' : '-';
@@ -1346,7 +1345,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                   children: [
                     Text(
                         totalMl >= 1000
-                            ? '${(totalMl / 1000).toStringAsFixed(1)}'
+                            ? (totalMl / 1000).toStringAsFixed(1)
                             : '${totalMl.round()}',
                         style: const TextStyle(
                             fontSize: 32,
@@ -1519,14 +1518,14 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16),
+                  const Padding(
+                    padding: EdgeInsets.all(16),
                     child: Row(
                       children: [
-                        const Icon(LucideIcons.history,
+                        Icon(LucideIcons.history,
                             color: AppColors.primary, size: 18),
-                        const SizedBox(width: 8),
-                        const Text('今日记录',
+                        SizedBox(width: 8),
+                        Text('今日记录',
                             style: TextStyle(
                                 fontSize: 16, fontWeight: FontWeight.w600)),
                       ],
@@ -1534,7 +1533,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                   ),
                   ...todayRecords.map((record) {
                     return _buildWaterRecordItem(record);
-                  }).toList(),
+                  }),
                 ],
               ),
             ),
@@ -1561,7 +1560,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         border: Border(
           bottom: BorderSide(color: AppColors.border, width: 0.5),
         ),
@@ -2063,8 +2062,8 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                     controller: controller,
                     focusNode: focusNode,
                     onSubmitted: (_) => onSubmit(),
-                    decoration: InputDecoration(
-                      label: const Text.rich(
+                    decoration: const InputDecoration(
+                      label: Text.rich(
                         TextSpan(
                           text: '疫苗名称',
                           children: [
@@ -2075,7 +2074,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                         ),
                       ),
                       hintText: '选择或输入疫苗名称',
-                      border: const UnderlineInputBorder(),
+                      border: UnderlineInputBorder(),
                     ),
                   ),
                 ),
@@ -2483,7 +2482,7 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
                 ApiResponse<Map<String, dynamic>> resp;
                 if (isEdit) {
                   resp = await api.updateDeworming(
-                      petId, existing!['id'] as int, data);
+                      petId, existing['id'] as int, data);
                 } else {
                   resp = await api.addDeworming(petId, data);
                 }

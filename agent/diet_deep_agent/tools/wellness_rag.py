@@ -30,7 +30,7 @@ def query_wellness_knowledge(
     Args:
         query: 查询文本（如"夏季养生茶饮"、"痰湿体质饮食建议"）
         crowd: 人群标签过滤（如"减脂"、"健身"、"孕妇"，逗号分隔）
-        constitution: 体质类型过滤（如"气虚"、"痰湿"、"阴虚"）
+        constitution: 体质类型过滤（如"气虚"、"痰湿"、"阴虚"，带"质"后缀如"痰湿质"亦可）
         season: 季节过滤（如"春"、"夏"、"秋"、"冬"）
         data_type: 数据类型过滤（"solar_term"=节气养生, "special_diet"=特殊人群饮食）
         top_k: 返回结果数量（默认 5）
@@ -91,7 +91,7 @@ def get_current_season_wellness(
 
     Args:
         crowd: 人群标签（如"减脂"、"健身"）
-        constitution: 体质类型（如"气虚"、"痰湿"）
+        constitution: 体质类型（如"气虚"、"痰湿"，带"质"后缀如"痰湿质"亦可）
 
     Returns:
         当前季节的养生建议，包含节气饮食、起居建议、宜忌食物

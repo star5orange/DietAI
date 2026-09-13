@@ -21,7 +21,7 @@ class WebSocketService {
   static const Duration _reconnectDelay = Duration(seconds: 3);
   static const Duration _heartbeatInterval = Duration(seconds: 30);
 
-  static final _storage = FlutterSecureStorage();
+  static const _storage = FlutterSecureStorage();
 
   /// 是否抑制新消息本地通知（聊天页/聊天列表页打开时置 true）
   static bool suppressNewMessageNotification = false;

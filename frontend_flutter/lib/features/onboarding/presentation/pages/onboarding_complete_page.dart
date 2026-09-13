@@ -185,7 +185,7 @@ class _OnboardingCompletePageState extends ConsumerState<OnboardingCompletePage>
                             ),
                             child: Row(
                               children: [
-                                Icon(
+                                const Icon(
                                   LucideIcons.lightbulb,
                                   color: AppColors.info,
                                   size: 20,

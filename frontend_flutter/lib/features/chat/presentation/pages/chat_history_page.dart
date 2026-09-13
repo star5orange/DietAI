@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../../services/chat_service.dart';
-import '../../../../shared/domain/models/api_response.dart';
 import '../../../../core/themes/app_colors.dart';
-import '../../../../core/themes/app_text_styles.dart';
 import 'chat_page.dart';
 
 class ChatHistoryPage extends ConsumerStatefulWidget {

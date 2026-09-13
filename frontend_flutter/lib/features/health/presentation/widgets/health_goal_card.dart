@@ -23,17 +23,17 @@ class HealthGoalCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           colors: [AppColors.cardBackground, Colors.white],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(
+          const BoxShadow(
             color: AppColors.shadow,
             blurRadius: 8,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
           BoxShadow(
             color: _getStatusColor().withValues(alpha: 0.1),

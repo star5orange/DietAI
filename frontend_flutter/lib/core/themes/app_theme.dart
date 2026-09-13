@@ -46,7 +46,7 @@ class AppTheme {
       scaffoldBackgroundColor: AppColors.background,
 
       // 文字主题
-      textTheme: TextTheme(
+      textTheme: const TextTheme(
         displayLarge: AppTextStyles.displayLarge,
         displayMedium: AppTextStyles.displayMedium,
         displaySmall: AppTextStyles.displaySmall,
@@ -73,11 +73,11 @@ class AppTheme {
         shadowColor: AppColors.shadowLight,
         titleTextStyle: AppTextStyles.h5,
         centerTitle: false,
-        iconTheme: IconThemeData(
+        iconTheme: const IconThemeData(
           color: AppColors.textPrimary,
           size: 24,
         ),
-        actionsIconTheme: IconThemeData(
+        actionsIconTheme: const IconThemeData(
           color: AppColors.textSecondary,
           size: 22,
         ),
@@ -184,10 +184,10 @@ class AppTheme {
         ).copyWith(
           side: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.pressed)) {
-              return BorderSide(color: AppColors.primary, width: 2);
+              return const BorderSide(color: AppColors.primary, width: 2);
             }
             if (states.contains(WidgetState.focused)) {
-              return BorderSide(color: AppColors.primary, width: 1.5);
+              return const BorderSide(color: AppColors.primary, width: 1.5);
             }
             return const BorderSide(color: AppColors.border, width: 1.5);
           }),
@@ -267,7 +267,7 @@ class AppTheme {
         ),
         disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
+          borderSide: const BorderSide(
             color: AppColors.borderLight,
             width: 1,
           ),
@@ -318,10 +318,10 @@ class AppTheme {
       ),
 
       // 底部表单主题
-      bottomSheetTheme: BottomSheetThemeData(
+      bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: AppColors.backgroundCard,
         surfaceTintColor: Colors.transparent,
-        shape: const RoundedRectangleBorder(
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         elevation: 0,
@@ -330,12 +330,12 @@ class AppTheme {
         modalElevation: 0,
         clipBehavior: Clip.antiAlias,
         dragHandleColor: AppColors.borderStrong,
-        dragHandleSize: const Size(40, 4),
+        dragHandleSize: Size(40, 4),
         showDragHandle: true,
       ),
 
       // 分割线主题
-      dividerTheme: DividerThemeData(
+      dividerTheme: const DividerThemeData(
         color: AppColors.divider,
         thickness: 1,
         space: 1,
@@ -344,15 +344,15 @@ class AppTheme {
       ),
 
       // 浮动操作按钮主题
-      floatingActionButtonTheme: FloatingActionButtonThemeData(
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: AppColors.primary,
         foregroundColor: AppColors.textInverse,
         elevation: 0,
         highlightElevation: 2,
         disabledElevation: 0,
-        shape: const CircleBorder(),
+        shape: CircleBorder(),
         iconSize: 24,
-        sizeConstraints: const BoxConstraints(
+        sizeConstraints: BoxConstraints(
           minWidth: 56,
           minHeight: 56,
           maxWidth: 56,
@@ -361,7 +361,7 @@ class AppTheme {
       ),
 
       // 进度指示器主题
-      progressIndicatorTheme: ProgressIndicatorThemeData(
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
         color: AppColors.primary,
         linearTrackColor: AppColors.borderLight,
         circularTrackColor: AppColors.borderLight,
@@ -442,7 +442,7 @@ class AppTheme {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(4),
         ),
-        side: BorderSide(
+        side: const BorderSide(
           color: AppColors.border,
           width: 2,
         ),
@@ -512,7 +512,7 @@ class AppTheme {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
         ),
-        side: BorderSide(
+        side: const BorderSide(
           color: AppColors.border,
           width: 1,
         ),
@@ -525,12 +525,12 @@ class AppTheme {
         labelStyle: AppTextStyles.labelMedium,
         unselectedLabelStyle:
             AppTextStyles.withOpacity(AppTextStyles.labelMedium, 0.7),
-        indicator: UnderlineTabIndicator(
+        indicator: const UnderlineTabIndicator(
           borderSide: BorderSide(
             color: AppColors.primary,
             width: 3,
           ),
-          insets: const EdgeInsets.symmetric(horizontal: 16),
+          insets: EdgeInsets.symmetric(horizontal: 16),
         ),
         indicatorSize: TabBarIndicatorSize.label,
         dividerColor: AppColors.divider,
@@ -585,7 +585,7 @@ class AppTheme {
         shadowColor: WidgetStateProperty.all(Colors.transparent),
         elevation: WidgetStateProperty.all(0),
         side: WidgetStateProperty.all(
-            BorderSide(color: AppColors.border, width: 1)),
+            const BorderSide(color: AppColors.border, width: 1)),
         shape: WidgetStateProperty.all(
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
@@ -598,12 +598,12 @@ class AppTheme {
       ),
 
       // 搜索视图主题
-      searchViewTheme: SearchViewThemeData(
+      searchViewTheme: const SearchViewThemeData(
         backgroundColor: AppColors.background,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         side: BorderSide(color: AppColors.border, width: 1),
-        shape: const RoundedRectangleBorder(
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
         ),
         headerTextStyle: AppTextStyles.bodyMedium,
@@ -612,7 +612,7 @@ class AppTheme {
       ),
 
       // 延展配置
-      extensions: <ThemeExtension<dynamic>>[
+      extensions: const <ThemeExtension<dynamic>>[
         _CustomThemeExtension(
           glassmorphismOverlay: AppColors.glassmorphismOverlay,
           neumorphismHighlight: AppColors.neumorphismHighlight,
@@ -679,11 +679,11 @@ class AppTheme {
         titleTextStyle: AppTextStyles.withColor(
             AppTextStyles.h5, AppColors.darkTextPrimary),
         centerTitle: false,
-        iconTheme: IconThemeData(
+        iconTheme: const IconThemeData(
           color: AppColors.darkTextPrimary,
           size: 24,
         ),
-        actionsIconTheme: IconThemeData(
+        actionsIconTheme: const IconThemeData(
           color: AppColors.darkTextSecondary,
           size: 22,
         ),

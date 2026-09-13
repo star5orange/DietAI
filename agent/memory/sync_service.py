@@ -144,8 +144,10 @@ class SyncService:
                 dietary_restrictions=self._extract_dietary_restrictions(diseases, allergies)
             )
 
-            # Build behavior patterns (defaults, can be updated from user input)
-            behavior = BehaviorPatterns()
+            # Build behavior patterns: 消费水平按真实月预算推算（无预算时才用默认"中等"）
+            behavior = BehaviorPatterns(
+                budget_level=self._infer_budget_level(profile)
+            )
 
             # Create shared memory data
             shared_data = SharedMemoryData(
@@ -618,3 +620,23 @@ class SyncService:
             restrictions.append(f"避免{allergy.name}")
 
         return restrictions
+
+    def _infer_budget_level(self, profile) -> str:
+        """按用户月食物预算推算消费水平档位（AI Memory「消费水平」用）。
+
+        无预算设置时保留默认"中等"。分档参考一二线城市单人饮食开销：
+        低 ≤500 / 中 500~1500 / 高 1500~3000 / 奢华 >3000（元/月）。
+        """
+        try:
+            budget = float(profile.monthly_food_budget) if profile and profile.monthly_food_budget else None
+        except (TypeError, ValueError):
+            budget = None
+        if not budget:
+            return "中等"
+        if budget <= 500:
+            return "低预算"
+        if budget <= 1500:
+            return "中等"
+        if budget <= 3000:
+            return "高消费"
+        return "奢华"

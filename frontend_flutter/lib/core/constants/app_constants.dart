@@ -27,7 +27,6 @@ class AppConstants {
   static const String historyRoute = '/history';
   static const String healthRoute = '/health';
   static const String profileRoute = '/profile';
-  static const String savedMealsRoute = '/saved-meals';
   // Milestone 4: 社交路由
   static const String socialRoute = '/social';
   static const String familyDashboardRoute = '/family-dashboard';

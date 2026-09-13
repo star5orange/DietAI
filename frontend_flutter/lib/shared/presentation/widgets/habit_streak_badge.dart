@@ -102,7 +102,7 @@ class HabitStreakBadge extends StatelessWidget {
       return _StreakLevel(
         icon: LucideIcons.zap,
         color: AppColors.info,
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           colors: [AppColors.info, AppColors.infoLight],
         ),
       );

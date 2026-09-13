@@ -96,12 +96,15 @@ class PetService {
     }
   }
 
-  /// 设置宠物类型
+  /// 设置当前桌宠皮肤（key: default / christine）
+  ///
+  /// 注意：这里传的是皮肤 key，后端字段为 skin_key（pet_type 保留给物种 cat/dog）。
+  /// 皮肤选择需要持久化到后端，否则重启后会与后端 current_skin 不一致。
   Future<ApiResponse<bool>> setPetType(String petType) async {
     try {
       await _apiService.post(
         '/virtual-pet/settings',
-        data: {'pet_type': petType},
+        data: {'skin_key': petType},
       );
       return ApiResponse.success(message: '设置成功', data: true);
     } catch (e) {

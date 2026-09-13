@@ -244,7 +244,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               ),
               child: Row(
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.error_outline,
                     color: AppColors.error,
                     size: 20,

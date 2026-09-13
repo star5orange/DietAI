@@ -73,6 +73,8 @@ class HealthGoal {
         return '已暂停';
       case 4:
         return '已取消';
+      case 5:
+        return '已过期';
       default:
         return '未知';
     }

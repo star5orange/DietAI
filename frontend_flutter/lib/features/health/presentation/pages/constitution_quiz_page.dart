@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../core/services/api_service.dart';
-import '../../../../shared/domain/models/api_response.dart';
 import '../../../../shared/domain/models/user_model.dart';
 import '../../../../features/profile/domain/services/user_service.dart';
 import '../../../../features/profile/presentation/providers/profile_provider.dart';
@@ -584,7 +583,7 @@ class _ConstitutionQuizPageState extends ConsumerState<ConstitutionQuizPage> {
                                         : Center(
                                             child: Text(
                                               String.fromCharCode(65 + optIdx),
-                                              style: TextStyle(
+                                              style: const TextStyle(
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.w600,
                                                 color: AppColors.textTertiary,
@@ -637,7 +636,7 @@ class _ConstitutionQuizPageState extends ConsumerState<ConstitutionQuizPage> {
                             borderRadius: BorderRadius.circular(12)),
                         side: const BorderSide(color: AppColors.primary),
                       ),
-                      child: Text('上一题',
+                      child: const Text('上一题',
                           style: TextStyle(color: AppColors.primary)),
                     ),
                   ),
@@ -723,7 +722,7 @@ class _ConstitutionQuizPageState extends ConsumerState<ConstitutionQuizPage> {
               children: [
                 Row(
                   children: [
-                    Icon(LucideIcons.fileText,
+                    const Icon(LucideIcons.fileText,
                         size: 18, color: AppColors.primary),
                     const SizedBox(width: 8),
                     Text('体质特征',
@@ -751,7 +750,7 @@ class _ConstitutionQuizPageState extends ConsumerState<ConstitutionQuizPage> {
               children: [
                 Row(
                   children: [
-                    Icon(LucideIcons.lightbulb,
+                    const Icon(LucideIcons.lightbulb,
                         size: 18, color: AppColors.warning),
                     const SizedBox(width: 8),
                     Text('养生建议',
@@ -782,7 +781,7 @@ class _ConstitutionQuizPageState extends ConsumerState<ConstitutionQuizPage> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(LucideIcons.pencil,
+                    const Icon(LucideIcons.pencil,
                         size: 18, color: AppColors.primary),
                     const SizedBox(width: 8),
                     Text('手动修改体质类型',
@@ -836,9 +835,9 @@ class _ConstitutionQuizPageState extends ConsumerState<ConstitutionQuizPage> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
-                side: BorderSide(color: AppColors.textTertiary),
+                side: const BorderSide(color: AppColors.textTertiary),
               ),
-              child: Text('重新测试',
+              child: const Text('重新测试',
                   style: TextStyle(color: AppColors.textSecondary)),
             ),
           ),

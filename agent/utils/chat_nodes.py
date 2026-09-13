@@ -31,91 +31,17 @@ def initialize_chat_session(state: ChatState, config: RunnableConfig) -> ChatSta
                 f"final_prompt_preview={system_prompt[:300]}")
 
     # 如果是宠物健康咨询且提供了pet_id，加载宠物信息
+    # （router 已传入完整 pet_context 时跳过；否则本地兜底构建，
+    #  统一走 real_pet_service.build_pet_chat_context，键名与 analyze_context 消费端一致）
     pet_context = state.get('pet_context')
     if state['session_type'] == 6 and state.get('pet_id') and not pet_context:
         try:
             from shared.models.database import SessionLocal
-            from shared.services.real_pet_service import get_pet, get_feeding_records, get_water_records, get_weight_records
+            from shared.services.real_pet_service import build_pet_chat_context
             db = SessionLocal()
-            pet = get_pet(db, state['pet_id'], state['user_id'])
-            if pet:
-                pet_context = {
-                    'id': pet.id,
-                    'name': pet.name,
-                    'species': pet.species,
-                    'breed': pet.breed,
-                    'gender': pet.gender,
-                    'birth_date': pet.birth_date.isoformat() if pet.birth_date else None,
-                    'is_neutered': pet.is_neutered,
-                }
-                # 加载近7天饮食记录
-                try:
-                    from datetime import timedelta as _timedelta
-                    feedings = get_feeding_records(db, pet.id, limit=50)
-                    recent_feedings = [f for f in feedings
-                        if f.record_time and f.record_time.date() >= (datetime.now() - _timedelta(days=7)).date()]
-                    pet_context['recent_feedings'] = [{
-                        'food_name': f.food_name,
-                        'amount_g': float(f.amount_grams) if f.amount_grams else 0,
-                        'calories': float(f.calories) if f.calories else 0,
-                        'protein': float(f.protein) if f.protein else 0,
-                        'fat': float(f.fat) if f.fat else 0,
-                        'carbs': float(f.carbs) if f.carbs else 0,
-                        'time': f.record_time.isoformat() if f.record_time else None,
-                    } for f in recent_feedings]
-                except Exception:
-                    pet_context['recent_feedings'] = []
-                # 加载近7天饮水记录
-                try:
-                    from datetime import timedelta as _td
-                    waters = get_water_records(db, pet.id, limit=50)
-                    recent_waters = [w for w in waters
-                        if w.record_time and w.record_time.date() >= (datetime.now() - _td(days=7)).date()]
-                    pet_context['recent_waters'] = [{
-                        'amount_ml': w.amount_ml,
-                        'time': w.record_time.isoformat() if w.record_time else None,
-                    } for w in recent_waters]
-                except Exception:
-                    pet_context['recent_waters'] = []
-                # 加载最新体重
-                try:
-                    weights = get_weight_records(db, pet.id, state['user_id'])
-                    recent_weight = weights[0] if weights else None
-                    if recent_weight:
-                        pet_context['latest_weight_kg'] = float(recent_weight.weight) if recent_weight.weight else None
-                        pet_context['weight_date'] = recent_weight.measured_at.isoformat() if recent_weight.measured_at else None
-                except Exception:
-                    pet_context['latest_weight_kg'] = None
-                # 加载疫苗记录
-                try:
-                    from shared.models.pet_models import PetVaccineRecord
-                    vaccines = db.query(PetVaccineRecord).filter(
-                        PetVaccineRecord.pet_id == pet.id
-                    ).order_by(PetVaccineRecord.vaccinated_at.desc()).limit(10).all()
-                    pet_context['vaccines'] = [{
-                        'name': v.vaccine_name or '',
-                        'date': v.vaccinated_at.isoformat() if v.vaccinated_at else '',
-                        'next_date': v.next_vaccination_date.isoformat() if v.next_vaccination_date else '',
-                        'notes': v.notes or '',
-                    } for v in vaccines]
-                except Exception:
-                    pet_context['vaccines'] = []
-                # 加载驱虫记录
-                try:
-                    from shared.models.pet_models import PetDewormingRecord
-                    dewormings = db.query(PetDewormingRecord).filter(
-                        PetDewormingRecord.pet_id == pet.id
-                    ).order_by(PetDewormingRecord.treated_at.desc()).limit(10).all()
-                    pet_context['dewormings'] = [{
-                        'type': d.deworming_type or '',
-                        'date': d.treated_at.isoformat() if d.treated_at else '',
-                        'next_date': d.next_treatment_date.isoformat() if d.next_treatment_date else '',
-                        'notes': d.notes or '',
-                    } for d in dewormings]
-                except Exception:
-                    pet_context['dewormings'] = []
+            pet_context = build_pet_chat_context(db, state['pet_id'], state['user_id'])
             db.close()
-        except Exception as e:
+        except Exception:
             pass  # 如果加载失败，继续使用空上下文
 
     # 初始化对话历史（如果是新会话）
@@ -196,8 +122,8 @@ def analyze_conversation_context(state: ChatState) -> ChatState:
                         'constitution_type': '体质类型',
                     }
                     for k, v in uc.items():
-                        if k == 'exam_report':
-                            continue  # 体检报告单独格式化
+                        if k in ('exam_report', 'cost_summary'):
+                            continue  # 体检报告/消费概况单独格式化
                         label = label_map.get(k, k)
                         profile_lines.append(f"{label}: {v}")
                     context_info.append("【用户档案】\n" + "\n".join(profile_lines))
@@ -229,6 +155,26 @@ def analyze_conversation_context(state: ChatState) -> ChatState:
                             exam_lines.append(f"建议复查日期: {er['followup_date']}")
                         if exam_lines:
                             context_info.append("【最新体检报告】\n" + "\n".join(exam_lines))
+
+                    # 本月消费概况
+                    cs = uc.get('cost_summary')
+                    if isinstance(cs, dict) and cs.get('total_cost') is not None:
+                        cost_lines = [f"本月总消费: {cs.get('total_cost')}元"]
+                        if cs.get('daily_avg') is not None:
+                            cost_lines.append(f"日均消费: {cs.get('daily_avg')}元")
+                        budget = cs.get('budget')
+                        if budget:
+                            budget_line = f"月预算: {budget}元"
+                            rem = cs.get('budget_remaining')
+                            if rem is not None:
+                                budget_line += (
+                                    f"，剩余 {rem}元" if rem >= 0 else f"，已超支 {abs(rem)}元"
+                                )
+                            cost_lines.append(budget_line)
+                        if cs.get('calorie_per_yuan'):
+                            cost_lines.append(f"每元获得热量: {cs.get('calorie_per_yuan')}kcal/元")
+                        cost_lines.append("给饮食建议时请考虑用户的消费预算，超支时应优先推荐高性价比食材。")
+                        context_info.append("【消费概况】\n" + "\n".join(cost_lines))
                 else:
                     context_info.append(f"用户档案: {uc}")
             

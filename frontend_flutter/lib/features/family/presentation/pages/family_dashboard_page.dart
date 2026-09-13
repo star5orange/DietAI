@@ -163,9 +163,9 @@ class _FamilyDashboardPageState extends ConsumerState<FamilyDashboardPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.warning_amber, color: Colors.orange, size: 20),
-                SizedBox(width: 8),
-                Expanded(
+                const Icon(Icons.warning_amber, color: Colors.orange, size: 20),
+                const SizedBox(width: 8),
+                const Expanded(
                   child: Text(
                     '异常提醒',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),

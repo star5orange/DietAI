@@ -189,7 +189,7 @@ class _OnboardingPhysicalDataPageState extends ConsumerState<OnboardingPhysicalD
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(
+                                  const Icon(
                                     LucideIcons.activity,
                                     color: AppColors.primary,
                                     size: 20,
