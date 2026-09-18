@@ -138,6 +138,13 @@ env.example
 *.pub
 !env.example
 
+# ===== 凭据文件（禁止入库）=====
+firebase-service-account.json
+*-service-account.json
+token.json
+*.pem.bak
+*.pub.bak
+
 # ==========================================
 # Database & Storage
 # ==========================================
