@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -13,7 +13,6 @@ import '../../features/auth/presentation/pages/reset_password_page.dart';
 import '../../features/home/presentation/pages/home_page.dart';
 import '../../features/camera/presentation/pages/camera_page.dart';
 import '../../features/history/presentation/pages/history_page.dart';
-import '../../features/history/presentation/pages/food_history_test_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
 import '../../features/profile/presentation/pages/my_pet_page.dart';
 import '../../features/health/presentation/pages/main_health_page.dart';
@@ -245,13 +244,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/history',
             name: 'history',
             builder: (context, state) => const HistoryPage(),
-          ),
-
-          // 图片预览测试页面
-          GoRoute(
-            path: '/history/test',
-            name: 'history_test',
-            builder: (context, state) => const FoodHistoryTestPage(),
           ),
 
           // 健康页面
