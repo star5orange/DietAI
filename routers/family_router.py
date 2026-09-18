@@ -650,20 +650,6 @@ async def remind_family_water(
         except Exception as ws_error:
             logger.warning(f"喝水提醒 WebSocket 推送失败: {ws_error}")
 
-        # 推送通知
-        try:
-            from shared.services.push_service import send_push_to_user
-            await send_push_to_user(
-                db=db,
-                user_id=target_user_id,
-                title="喝水提醒",
-                body=content,
-                data={"type": "water_remind", "sender_id": current_user.id},
-                reminder_type="water_remind"
-            )
-        except Exception as notify_error:
-            logger.warning(f"喝水提醒推送通知失败: {notify_error}")
-
         return BaseResponse(
             success=True,
             message="已发送喝水提醒",
@@ -746,38 +732,6 @@ async def proxy_record_food(
         db.add(proxy_record)
         db.commit()
 
-        # 通知被记录人
-        try:
-            from shared.services.push_service import send_push_to_user
-            # 获取代记录人信息（real_name 在 UserProfile 表，User 上没有该字段）
-            recorder = db.query(User).filter(User.id == current_user.id).first()
-            recorder_profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
-            recorder_name = (recorder_profile.real_name if recorder_profile and recorder_profile.real_name
-                             else (recorder.username if recorder else "家人"))
-            
-            # 构建通知内容
-            food_name = food_record.food_name or "食物"
-            calories = food_record.calories or 0
-            notification_title = f"{recorder_name} 帮你记录了饮食"
-            notification_body = f"{food_name} {calories:.0f}卡"
-            
-            # 发送推送通知
-            await send_push_to_user(
-                db=db,
-                user_id=target_user_id,
-                title=notification_title,
-                body=notification_body,
-                data={
-                    "type": "proxy_record",
-                    "recorded_by": current_user.id,
-                    "food_record_id": food_record_id
-                },
-                reminder_type="proxy_record"
-            )
-            logger.info(f"代记录通知已发送: {target_user_id}")
-        except Exception as notify_error:
-            logger.warning(f"发送代记录通知失败: {notify_error}")
-
         return BaseResponse(
             success=True,
             message="代记录成功",
@@ -849,30 +803,6 @@ async def proxy_record_water(
         db.add(proxy_record)
         db.commit()
         db.refresh(water_record)
-
-        # 通知被代记录的家人
-        try:
-            from shared.services.push_service import send_push_to_user
-            # 获取代记录人信息（real_name 在 UserProfile 表，User 上没有该字段）
-            proxy_user = db.query(User).filter(User.id == current_user.id).first()
-            proxy_profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
-            proxy_name = (proxy_profile.real_name if proxy_profile and proxy_profile.real_name
-                          else (proxy_user.username if proxy_user else "家人"))
-            await send_push_to_user(
-                db=db,
-                user_id=target_user_id,
-                title="饮水已记录",
-                body=f"{proxy_name} 帮您记录了 {amount_ml}ml 饮水",
-                data={
-                    "type": "proxy_record",
-                    "recorded_by": current_user.id,
-                    "amount_ml": amount_ml,
-                },
-                reminder_type="proxy_record"
-            )
-            logger.info(f"代记录饮水通知已发送: {target_user_id}")
-        except Exception as notify_error:
-            logger.warning(f"发送代记录饮水通知失败: {notify_error}")
 
         return BaseResponse(
             success=True,

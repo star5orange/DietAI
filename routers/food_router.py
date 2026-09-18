@@ -52,30 +52,6 @@ def _check_family_relation(db: Session, user_id: int, target_user_id: int) -> bo
     ).first() is not None
 
 
-async def _send_proxy_food_notification(db: Session, recorder_user_id: int, target_user_id: int, food_record):
-    """发送代记录饮食通知给被代记录人"""
-    try:
-        from shared.services.push_service import send_push_to_user
-        recorder = db.query(User).filter(User.id == recorder_user_id).first()
-        recorder_name = recorder.real_name or recorder.username if recorder else "家人"
-        food_name = food_record.food_name or "食物"
-        calories = food_record.calories or 0
-        await send_push_to_user(
-            db=db,
-            user_id=target_user_id,
-            title=f"{recorder_name} 帮你记录了饮食",
-            body=f"{food_name} {float(calories):.0f}卡",
-            data={
-                "type": "proxy_record",
-                "recorded_by": recorder_user_id,
-                "food_record_id": food_record.id
-            },
-            reminder_type="proxy_record"
-        )
-    except Exception as e:
-        logger.warning(f"发送代记录饮食通知失败: {e}")
-
-
 def _get_accessible_food_record(db: Session, record_id: int, user_id: int):
     """获取当前用户可访问的食物记录：记录归属人或代记录人均可"""
     return db.query(FoodRecord).filter(
@@ -264,9 +240,6 @@ async def generate_sse_stream(
                     )
                     db.add(proxy_record)
                     db.commit()
-                    await _send_proxy_food_notification(
-                        db, user_id, owner_user_id, food_record
-                    )
                 except Exception as e:
                     logger.warning(f"代记录溯源/通知失败: {e}")
 
@@ -607,9 +580,6 @@ async def confirm_create_food_record(
                 )
                 db.add(proxy_record)
                 db.commit()
-                await _send_proxy_food_notification(
-                    db, current_user.id, owner_user_id, food_record
-                )
             except Exception as e:
                 logger.warning(f"代记录溯源/通知失败: {e}")
 
@@ -755,7 +725,6 @@ async def create_food_record_traditional(
                 )
                 db.add(proxy_record)
                 db.commit()
-                await _send_proxy_food_notification(db, user_id, owner_user_id, food_record)
             except Exception as e:
                 logger.warning(f"代记录溯源/通知失败: {e}")
 

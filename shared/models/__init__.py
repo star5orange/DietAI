@@ -55,7 +55,6 @@ __all__ = [
     "WaterIntakeRecord",
     "Reminder",
     "NotificationResponse",
-    "DeviceToken",
     "WellnessKnowledge",
     "AiAdvisorSettings",
     "FastingPlan",

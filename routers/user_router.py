@@ -1371,7 +1371,6 @@ async def delete_account(
         # 第二阶段：删除有 user_id 列的直接关联表
         tables_to_delete = [
             "notification_responses",       # 有 user_id + reminder_id FK
-            "device_tokens",                # 有 user_id FK
             "hardware_quick_buttons",       # 有 user_id FK
             "pet_unlocks",                  # 有 user_id FK
             "virtual_pet_states",           # 有 user_id FK

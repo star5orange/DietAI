@@ -107,28 +107,6 @@ def _auto_sync_labels(db: Session, relation: UserRelationship):
             relation.note_from_user = inverse
 
 
-async def _notify_relation_request(db: Session, target_user_id: int, from_user: User, relation_type: str):
-    """向目标用户推送好友/家人申请通知（FCM）"""
-    try:
-        from shared.services.push_service import send_push_to_user
-        type_text = "家人" if relation_type == "family" else "好友"
-        await send_push_to_user(
-            db=db,
-            user_id=target_user_id,
-            title=f"新的{type_text}申请",
-            body=f"{from_user.username} 请求添加您为{type_text}",
-            data={
-                "type": "relation_request",
-                "relation_type": relation_type,
-                "from_user_id": from_user.id,
-                "from_username": from_user.username,
-            },
-            reminder_type="relation_request"
-        )
-    except Exception as e:
-        logger.warning(f"发送申请通知失败: {e}")
-
-
 # ============================================================
 # 搜索用户
 # ============================================================
@@ -284,9 +262,6 @@ async def send_friend_request(
         # 我方确认称谓后，自动同步对方的互逆称谓（参考我方性别）
         _auto_sync_labels(db, relation)
         db.commit()
-
-        # 通知目标用户（FCM 推送）
-        await _notify_relation_request(db, request.target_user_id, current_user, "friend")
 
         return BaseResponse(
             success=True,
@@ -462,9 +437,6 @@ async def add_family_member(
         _auto_sync_labels(db, relation)
         db.commit()
 
-        # 通知目标用户（FCM 推送）
-        await _notify_relation_request(db, request.target_user_id, current_user, "family")
-
         return BaseResponse(
             success=True,
             message="家人申请已发送，等待对方确认",
@@ -612,9 +584,6 @@ async def upgrade_friend_to_family(
         # 我方确认称谓后，自动同步对方的互逆称谓（参考我方性别）
         _auto_sync_labels(db, upgrade_relation)
         db.commit()
-
-        # 通知目标用户（FCM 推送）
-        await _notify_relation_request(db, target_user_id, current_user, "family")
 
         return BaseResponse(
             success=True,

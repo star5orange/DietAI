@@ -193,7 +193,7 @@ async def _notify_friends_online_status(user_id: int, is_online: bool):
 
 
 async def _push_message_event(db: Session, msg: Message, sender_user: Optional[User] = None):
-    """消息实时推送：接收者在线推 WS new_message，离线推 FCM 通知"""
+    """消息实时推送：接收者在线时通过 WebSocket 推送 new_message"""
     try:
         created_at = msg.created_at
         if created_at.tzinfo is None:
@@ -215,20 +215,6 @@ async def _push_message_event(db: Session, msg: Message, sender_user: Optional[U
                     "sender_avatar_url": getattr(sender_user, "avatar_url", None) if sender_user else None,
                 }
             })
-        else:
-            from shared.services.push_service import send_push_to_user
-            await send_push_to_user(
-                db=db,
-                user_id=msg.receiver_id,
-                title=f"{sender_user.username if sender_user else '家人'} 发来新消息",
-                body=msg.content[:50],
-                data={
-                    "type": "new_chat_message",
-                    "sender_id": msg.sender_id,
-                    "sender_username": sender_user.username if sender_user else None,
-                    "message_type": msg.message_type,
-                },
-            )
     except Exception as e:
         logger.warning(f"消息实时推送失败: {e}")
 
@@ -294,7 +280,7 @@ async def send_message(
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=timezone.utc)
 
-        # 接收者在线时通过 WebSocket 实时推送；不在线时发送 FCM 推送通知
+        # 接收者在线时通过 WebSocket 实时推送
         if manager.is_user_online(message.receiver_id):
             try:
                 await manager.send_to_user(message.receiver_id, {
@@ -314,23 +300,6 @@ async def send_message(
                 })
             except Exception as e:
                 logger.warning(f"聊天消息 WebSocket 推送失败: {e}")
-        else:
-            try:
-                from shared.services.push_service import send_push_to_user
-                await send_push_to_user(
-                    db=db,
-                    user_id=message.receiver_id,
-                    title=f"{current_user.username} 发来新消息",
-                    body=message.content[:50],
-                    data={
-                        "type": "new_chat_message",
-                        "sender_id": current_user.id,
-                        "sender_username": current_user.username,
-                        "message_type": msg.message_type,
-                    },
-                )
-            except Exception as e:
-                logger.warning(f"聊天消息推送失败: {e}")
 
         return BaseResponse(
             success=True,
@@ -599,7 +568,7 @@ async def send_poke(
         db.commit()
         db.refresh(msg)
 
-        # 实时推送（接收者在线推 WS，离线推 FCM）
+        # 实时推送（接收者在线时通过 WS）
         await _push_message_event(db, msg, current_user)
 
         # 确保 created_at 带 UTC 时区信息
@@ -715,7 +684,7 @@ async def share_food_record(
         db.commit()
         db.refresh(msg)
 
-        # 实时推送（接收者在线推 WS，离线推 FCM）
+        # 实时推送（接收者在线时通过 WS）
         await _push_message_event(db, msg, current_user)
 
         # 确保 created_at 带 UTC 时区信息
@@ -876,26 +845,6 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
                         db.commit()
                         db.refresh(msg)
 
-                        # 接收者不在线时发送 FCM 推送通知
-                        if not manager.is_user_online(receiver_id):
-                            try:
-                                from shared.services.push_service import send_push_to_user
-                                sender_user = db.query(User).filter(User.id == user_id).first()
-                                await send_push_to_user(
-                                    db=db,
-                                    user_id=receiver_id,
-                                    title=f"{sender_user.username if sender_user else '家人'} 发来新消息",
-                                    body=content[:50],
-                                    data={
-                                        "type": "new_chat_message",
-                                        "sender_id": user_id,
-                                        "sender_username": sender_user.username if sender_user else None,
-                                        "message_type": message_type,
-                                    },
-                                )
-                            except Exception as e:
-                                logger.warning(f"WS 聊天消息推送失败: {e}")
-                        
                         # 获取发送者信息
                         sender = db.query(User).filter(User.id == user_id).first()
 

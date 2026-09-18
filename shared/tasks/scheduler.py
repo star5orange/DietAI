@@ -15,7 +15,6 @@ from typing import List, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -379,18 +378,6 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True
     )
 
-    # Minute task: Check and trigger reminders every 60 seconds
-    from shared.tasks.reminder_check import check_reminders
-    _scheduler.add_job(
-        check_reminders,
-        trigger=IntervalTrigger(minutes=1),
-        id="check_reminders",
-        name="Reminder Check",
-        replace_existing=True,
-        misfire_grace_time=30  # 30s 宽限期，避免堆积
-    )
-    logger.info("Reminder check task registered (interval=1min)")
-
     # Daily task: Check solar term change at 00:05
     _scheduler.add_job(
         check_solar_term_change,
@@ -400,84 +387,6 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
     )
     logger.info("Solar term change check task registered (daily 00:05)")
-
-    # M3: 宠物疫苗/驱虫到期检查 (daily 08:00)
-    try:
-        from shared.tasks.pet_tasks import check_pet_vaccine_reminders, check_pet_weight_anomaly
-        _scheduler.add_job(
-            check_pet_vaccine_reminders,
-            trigger=CronTrigger(hour=8, minute=0),
-            id="check_pet_vaccine_reminders",
-            name="Pet Vaccine/Deworming Reminder Check",
-            replace_existing=True,
-        )
-        logger.info("Pet vaccine reminder check task registered (daily 08:00)")
-        _scheduler.add_job(
-            check_pet_weight_anomaly,
-            trigger=CronTrigger(hour=8, minute=5),
-            id="check_pet_weight_anomaly",
-            name="Pet Weight Anomaly Detection",
-            replace_existing=True,
-        )
-        logger.info("Pet weight anomaly check task registered (daily 08:05)")
-    except ImportError as e:
-        logger.warning(f"Pet scheduled tasks not registered: {e}")
-
-    # 健康报告: 每周一 08:10 周报推送
-    try:
-        from shared.tasks.health_report_tasks import send_weekly_health_report, send_monthly_health_report
-        _scheduler.add_job(
-            send_weekly_health_report,
-            trigger=CronTrigger(day_of_week='mon', hour=8, minute=10),
-            id="weekly_health_report",
-            name="Weekly Health Report Push",
-            replace_existing=True,
-        )
-        logger.info("Weekly health report task registered (Monday 08:10)")
-        _scheduler.add_job(
-            send_monthly_health_report,
-            trigger=CronTrigger(day=1, hour=8, minute=15),
-            id="monthly_health_report",
-            name="Monthly Health Report Push",
-            replace_existing=True,
-        )
-        logger.info("Monthly health report task registered (1st 08:15)")
-    except ImportError as e:
-        logger.warning(f"Health report tasks not registered: {e}")
-
-    # M4: 体检提醒任务
-    try:
-        from shared.tasks.exam_reminder_tasks import (
-            check_annual_exam_reminders,
-            check_followup_exam_reminders,
-            check_missing_exam_reminders
-        )
-        _scheduler.add_job(
-            check_annual_exam_reminders,
-            trigger=CronTrigger(day=1, hour=9, minute=0),
-            id="check_annual_exam_reminders",
-            name="年度体检提醒检查",
-            replace_existing=True,
-        )
-        logger.info("Annual exam reminder task registered (1st 09:00)")
-        _scheduler.add_job(
-            check_followup_exam_reminders,
-            trigger=CronTrigger(hour=8, minute=30),
-            id="check_followup_exam_reminders",
-            name="复查提醒检查",
-            replace_existing=True,
-        )
-        logger.info("Followup exam reminder task registered (daily 08:30)")
-        _scheduler.add_job(
-            check_missing_exam_reminders,
-            trigger=CronTrigger(day_of_week='mon', hour=10, minute=0),
-            id="check_missing_exam_reminders",
-            name="未上传提醒检查",
-            replace_existing=True,
-        )
-        logger.info("Missing exam reminder task registered (Monday 10:00)")
-    except ImportError as e:
-        logger.warning(f"Exam reminder tasks not registered: {e}")
 
     # M3b: 健康目标自动过期（每天 00:05 检查，将超过 target_date 的进行中目标标记为已过期）
     try:
@@ -492,20 +401,6 @@ def setup_scheduler() -> AsyncIOScheduler:
         logger.info("Goal auto-expiry task registered (daily 00:05)")
     except ImportError as e:
         logger.warning(f"Goal expiry task not registered: {e}")
-
-    # M4: 桌宠饥饿主动推送（每天 08:30/12:30/18:30/21:30）
-    try:
-        from shared.tasks.pet_starvation_tasks import check_pet_starvation
-        _scheduler.add_job(
-            check_pet_starvation,
-            trigger=CronTrigger(hour='8,12,18,21', minute=30),
-            id="check_pet_starvation",
-            name="桌宠饥饿提醒检查",
-            replace_existing=True,
-        )
-        logger.info("Pet starvation reminder task registered (daily 08:30/12:30/18:30/21:30)")
-    except ImportError as e:
-        logger.warning(f"Pet starvation tasks not registered: {e}")
 
     _scheduler.start()
     logger.info("Background task scheduler started")
@@ -533,34 +428,12 @@ async def run_task_now(task_name: str) -> bool:
     Returns:
         True if task was triggered successfully
     """
-    from shared.tasks.reminder_check import check_reminders
     task_mapping = {
         "shared_memory": regenerate_shared_memories,
         "goal_tracking": update_goal_workspaces,
         "nutrition": generate_weekly_nutrition_summary,
         "chat": generate_chat_summary,
-        "check_reminders": check_reminders,
-        "pet_vaccine": None,   # lazy import below
-        "pet_weight": None,
-        "weekly_report": None,
-        "monthly_report": None,
     }
-
-    # Lazy import for optional task modules
-    if task_name in ("pet_vaccine", "pet_weight"):
-        try:
-            from shared.tasks.pet_tasks import check_pet_vaccine_reminders, check_pet_weight_anomaly
-            task_mapping["pet_vaccine"] = check_pet_vaccine_reminders
-            task_mapping["pet_weight"] = check_pet_weight_anomaly
-        except ImportError:
-            pass
-    if task_name in ("weekly_report", "monthly_report"):
-        try:
-            from shared.tasks.health_report_tasks import send_weekly_health_report, send_monthly_health_report
-            task_mapping["weekly_report"] = send_weekly_health_report
-            task_mapping["monthly_report"] = send_monthly_health_report
-        except ImportError:
-            pass
 
     task_func = task_mapping.get(task_name)
     if task_func is None:
