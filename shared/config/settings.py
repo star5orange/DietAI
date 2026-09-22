@@ -165,6 +165,12 @@ class Settings(BaseSettings):
     ai_service_url: str = Field(default="http://127.0.0.1:2024", description="AI服务URL")
     ai_service_timeout: int = Field(default=30, description="AI服务超时时间(秒)")
 
+    # 外部依赖超时与重试配置（PRD 5.1：统一超时降级层，请求超时事件归零）
+    llm_request_timeout: int = Field(default=60, description="LLM单次请求超时时间(秒)")
+    llm_max_retries: int = Field(default=2, description="LLM请求失败最大重试次数")
+    external_http_timeout: int = Field(default=30, description="外部HTTP依赖超时时间(秒)")
+    redis_socket_timeout: float = Field(default=0.5, description="Redis连接/读写超时时间(秒)")
+
     # DashScope AI配置（通义万相）
     dashscope_api_key: str = Field(default="", description="DashScope API密钥")
     dashscope_image_model: str = Field(default="wanx-v1", description="DashScope图像生成模型")
@@ -177,9 +183,9 @@ class Settings(BaseSettings):
     volc_asr_api_key: str = Field(default="", description="火山引擎语音识别API密钥")
     volc_asr_resource_id: str = Field(default="volc.seedasr.auc", description="语音识别资源ID(2.0版)")
 
-    # 火山引擎语音合成配置 (TTS v1，需开通"语音技术-语音合成"服务)
-    volc_tts_appid: str = Field(default="", description="火山引擎语音合成APPID")
-    volc_tts_token: str = Field(default="", description="火山引擎语音合成Access Token")
+    # 火山引擎语音合成配置 (TTS)
+    volc_tts_api_key: str = Field(default="", description="火山引擎语音合成API密钥 (可与ASR共用)")
+    volc_tts_resource_id: str = Field(default="seed-tts-1.0", description="语音合成资源ID (TTS 1.0: seed-tts-1.0, TTS 2.0: seed-tts-2.0)")
 
     # 健康检查配置
     health_check_enabled: bool = Field(default=True, description="是否启用健康检查")

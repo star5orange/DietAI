@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/themes/app_colors.dart';
-import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../../social/presentation/providers/social_provider.dart';
 import '../../../health/presentation/pages/health_goals_page.dart';
 import '../providers/exam_provider.dart';
 import '../../domain/exam_models.dart';
@@ -203,24 +201,6 @@ class _ExamResultPageState extends ConsumerState<ExamResultPage> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           ),
         ),
-        const SizedBox(height: 16),
-
-        // 归属修改小字
-        GestureDetector(
-          onTap: _showReassignPicker,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Text(
-              '归属有误？点击修改为谁拍的',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[500],
-                decoration: TextDecoration.underline,
-              ),
-            ),
-          ),
-        ),
         const SizedBox(height: 24),
       ],
     );
@@ -232,68 +212,6 @@ class _ExamResultPageState extends ConsumerState<ExamResultPage> {
       context,
       MaterialPageRoute(builder: (_) => const HealthGoalsPage()),
     );
-  }
-
-  /// 归属修改：自己 + 家人选择，选中后 reassign
-  Future<void> _showReassignPicker() async {
-    final notifier = ref.read(friendListProvider.notifier);
-    final state = ref.read(friendListProvider);
-    if (state.family.isEmpty && !state.isLoading) {
-      await notifier.loadFriendList();
-    }
-    if (!mounted) return;
-    final family = ref.read(friendListProvider).family;
-    final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                '这份报告是谁拍的？',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.person, color: AppColors.primary),
-              title: const Text('自己'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _doReassign(currentUserId);
-              },
-            ),
-            for (final f in family)
-              ListTile(
-                leading:
-                    const Icon(Icons.family_restroom, color: AppColors.primary),
-                title: Text(f.note ?? f.realName ?? f.username),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _doReassign(f.userId);
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _doReassign(int targetUserId) async {
-    final res = await ref
-        .read(examApiServiceProvider)
-        .reassignExamReport(widget.reportId, targetUserId);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(res.success ? '归属已修改' : '修改失败：${res.message}'),
-          backgroundColor: res.success ? Colors.green : Colors.red,
-        ),
-      );
-    }
   }
 
   /// 报告信息卡片：体检日期/医院 + 查看原始照片 + 复查提醒设置
@@ -357,6 +275,7 @@ class _ExamResultPageState extends ConsumerState<ExamResultPage> {
                     label: const Text('查看原始照片'),
                     style: OutlinedButton.styleFrom(
                       visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                       textStyle: const TextStyle(fontSize: 12),
                     ),
                   ),
@@ -369,6 +288,7 @@ class _ExamResultPageState extends ConsumerState<ExamResultPage> {
                       Text(detail.followupDate != null ? '修改复查提醒' : '设置复查提醒'),
                   style: OutlinedButton.styleFrom(
                     visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
                     textStyle: const TextStyle(fontSize: 12),
                   ),
                 ),

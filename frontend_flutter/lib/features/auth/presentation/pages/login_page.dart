@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
+import '../../../../core/utils/landing_preference.dart';
 import '../../../../shared/presentation/widgets/app_button.dart';
 import '../../../../shared/presentation/widgets/app_input.dart';
 import '../providers/auth_provider.dart';
@@ -77,7 +78,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           final onboardingState = ref.read(onboardingProvider);
 
           if (onboardingState.isCompleted) {
-            context.go('/');
+            // 登录落地按用户偏好（PRD D15 扩展）：默认对话直达，可配置为数据看板
+            final userId = authState.value?.id;
+            final landing = userId != null
+                ? await LandingPreference.get(userId)
+                : LandingPreference.chat;
+            if (!mounted) return;
+            context.go(
+                landing == LandingPreference.dashboard ? '/dashboard' : '/');
           } else {
             context.go('/onboarding');
           }

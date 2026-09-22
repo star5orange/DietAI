@@ -23,6 +23,8 @@ class FoodRecordCreate(BaseModel):
     source_tag: Optional[str] = Field(None, max_length=50, description="来源标签")
     # Milestone 4: 代记录
     target_user_id: Optional[int] = Field(None, description="代记录目标用户ID（仅家人关系可用）")
+    # 硬件端传入的预估卡路里 (ESP32 AI 分析结果)
+    estimated_calories: Optional[int] = Field(None, ge=0, description="硬件端AI预估卡路里")
     # M4 增强: 仅分析不落库（AI 拍照识别"先分析、用户确认后再创建记录"）
     analyze_only: Optional[bool] = Field(False, description="仅分析不落库：SSE 只返回分析结果，由用户确认后调用 confirm-create 落库")
     # 包装食品营养成分表识别：预置精确营养值（跳过 AI 估算，仅生成 AI 建议）

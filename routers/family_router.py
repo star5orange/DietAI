@@ -455,109 +455,10 @@ async def get_family_alerts(
 ):
     """获取家庭异常提醒（家人饮水不足/热量超标/宠物异常等）"""
     try:
-        # 查询所有家人
-        family_relations = db.query(UserRelationship).filter(
-            or_(
-                UserRelationship.user_id == current_user.id,
-                UserRelationship.related_user_id == current_user.id
-            ),
-            UserRelationship.relationship_type == "family",
-            UserRelationship.status == "accepted"
-        ).all()
+        # 异常判定统一由 family_care_service 提供（定时主动推送与接口共用同一口径）
+        from shared.services.family_care_service import collect_alerts
 
-        alerts = []
-        today = date.today()
-
-        for rel in family_relations:
-            other_id = rel.related_user_id if rel.user_id == current_user.id else rel.user_id
-            user = db.query(User).filter(User.id == other_id).first()
-            profile = db.query(UserProfile).filter(UserProfile.user_id == other_id).first()
-
-            real_name = profile.real_name if profile and profile.real_name else user.username
-
-            # 数据权限：仅当对应字段对 viewer 可见时才生成提醒
-            visible = get_visible_fields(db, other_id, current_user.id)
-            show_water_alert = not field_hidden(visible, "water")
-            show_calories_alert = not field_hidden(visible, "calories")
-            show_pet_alert = not field_hidden(visible, "virtual_pet")
-            show_exam_alert = not field_hidden(visible, "exam_report")
-
-            # 检查饮水不足
-            today_water = db.query(func.sum(WaterIntakeRecord.amount_ml)).filter(
-                WaterIntakeRecord.user_id == other_id,
-                func.date(WaterIntakeRecord.record_time) == today
-            ).scalar() or 0
-
-            water_goal = profile.daily_water_goal if profile and profile.daily_water_goal else 2000
-            if show_water_alert and today_water < water_goal * 0.5:  # 饮水不足50%
-                alerts.append({
-                    "type": "water_insufficient",
-                    "user_id": other_id,
-                    "user_name": real_name,
-                    "message": f"{real_name}今日喝水不足（{int(today_water)}ml/{water_goal}ml）",
-                    "severity": "warning"
-                })
-
-            # 检查热量超标
-            today_summary = db.query(DailyNutritionSummary).filter(
-                DailyNutritionSummary.user_id == other_id,
-                DailyNutritionSummary.summary_date == today
-            ).first()
-
-            if today_summary and show_calories_alert:
-                total_calories = float(today_summary.total_calories)
-                target_calories = profile.target_calories if profile and profile.target_calories else 2000
-                if total_calories > target_calories * 1.2:  # 热量超标20%
-                    alerts.append({
-                        "type": "calorie_excess",
-                        "user_id": other_id,
-                        "user_name": real_name,
-                        "message": f"{real_name}今日热量超标（{int(total_calories)}/{target_calories}kcal）",
-                        "severity": "warning"
-                    })
-
-            # 检查虚拟桌宠饥饿
-            pet_state = db.query(VirtualPetState).filter(
-                VirtualPetState.user_id == other_id
-            ).first()
-
-            if pet_state and pet_state.mood in ["hungry", "weak"] and show_pet_alert:
-                hunger_hours = 0
-                if pet_state.last_feed_at:
-                    hunger_hours = max(0, int((datetime.now() - pet_state.last_feed_at).total_seconds() // 3600))
-                hour_text = f" {hunger_hours} 小时" if hunger_hours else ""
-                alerts.append({
-                    "type": "pet_hungry",
-                    "user_id": other_id,
-                    "user_name": real_name,
-                    "message": f"{real_name}的桌宠已饥饿{hour_text}",
-                    "severity": "info"
-                })
-
-            # 检查体检异常（最新体检有异常项 / 复查日期临近）
-            if show_exam_alert:
-                latest_exam = db.query(ExamReport).filter(
-                    ExamReport.user_id == other_id
-                ).order_by(ExamReport.exam_date.desc()).first()
-                if latest_exam:
-                    if latest_exam.abnormal_count and latest_exam.abnormal_count > 0:
-                        alerts.append({
-                            "type": "exam_abnormal",
-                            "user_id": other_id,
-                            "user_name": real_name,
-                            "message": f"{real_name}最近体检有 {latest_exam.abnormal_count} 项异常（{latest_exam.exam_date.isoformat()}）",
-                            "severity": "warning"
-                        })
-                    if latest_exam.followup_date:
-                        days_until = (latest_exam.followup_date - today).days
-                        if 0 <= days_until <= 14:
-                            alerts.append({
-                                "type": "exam_followup",
-                                "user_id": other_id,
-                                "user_name": real_name,
-                                "message": f"{real_name}的体检复查日期临近（还有 {days_until} 天，{latest_exam.followup_date.isoformat()}）",
-                                "severity": "info"
-                            })
+        alerts = collect_alerts(db, current_user.id)
 
         return BaseResponse(
             success=True,
@@ -666,7 +567,7 @@ async def remind_family_water(
 
 
 # ============================================================
-# 代记录饮食
+# 代记录饮食 —— 已按 PRD D9 下线（写操作红线：不修改家人数据）
 # ============================================================
 
 @router.post("/proxy-record/food", response_model=BaseResponse)
@@ -676,79 +577,19 @@ async def proxy_record_food(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """代记录饮食（家人为其他家人记录）"""
-    try:
-        # 检查是否是家人关系
-        is_family = db.query(UserRelationship).filter(
-            or_(
-                and_(
-                    UserRelationship.user_id == current_user.id,
-                    UserRelationship.related_user_id == target_user_id
-                ),
-                and_(
-                    UserRelationship.user_id == target_user_id,
-                    UserRelationship.related_user_id == current_user.id
-                )
-            ),
-            UserRelationship.relationship_type == "family",
-            UserRelationship.status == "accepted"
-        ).first()
+    """代记录饮食 —— 接口保留但不再开放
 
-        if not is_family:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="只能为家人代记录"
-            )
-
-        # 更新食物记录的代记录人（支持归属转移：记录可属于代记录人或目标用户）
-        food_record = db.query(FoodRecord).filter(
-            FoodRecord.id == food_record_id,
-            or_(
-                FoodRecord.user_id == target_user_id,
-                FoodRecord.user_id == current_user.id
-            )
-        ).first()
-
-        if not food_record:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="食物记录不存在"
-            )
-
-        # 记录归属转移给目标用户
-        if food_record.user_id == current_user.id:
-            food_record.user_id = target_user_id
-        food_record.recorded_by_user_id = current_user.id
-        db.commit()
-
-        # 创建代记录日志
-        from shared.models.proxy_models import ProxyRecord
-        proxy_record = ProxyRecord(
-            recorded_by_user_id=current_user.id,
-            target_user_id=target_user_id,
-            record_type="food",
-            record_id=food_record_id
-        )
-        db.add(proxy_record)
-        db.commit()
-
-        return BaseResponse(
-            success=True,
-            message="代记录成功",
-            data=None
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"代记录失败: {e}\n{traceback.format_exc()}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="代记录失败"
-        )
+    PRD D9：写操作红线，医疗诊断 / 删除历史 / 修改家人数据不开放；
+    PRD 5.4：家人健康数据绑定与共享需授权，子女仅可查看、不可代改。
+    """
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="家人健康数据不可代记录（仅可查看）；如需提醒家人，请使用「提醒家人」功能"
+    )
 
 
 # ============================================================
-# 代记录饮水
+# 代记录饮水 —— 已按 PRD D9 下线（写操作红线：不修改家人数据）
 # ============================================================
 
 @router.post("/proxy-record/water", response_model=BaseResponse)
@@ -758,69 +599,11 @@ async def proxy_record_water(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """代记录饮水（家人为其他家人记录饮水）"""
-    try:
-        # 校验家人关系
-        is_family = db.query(UserRelationship).filter(
-            or_(
-                and_(
-                    UserRelationship.user_id == current_user.id,
-                    UserRelationship.related_user_id == target_user_id
-                ),
-                and_(
-                    UserRelationship.user_id == target_user_id,
-                    UserRelationship.related_user_id == current_user.id
-                )
-            ),
-            UserRelationship.relationship_type == "family",
-            UserRelationship.status == "accepted"
-        ).first()
-
-        if not is_family:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="只能为家人代记录饮水"
-            )
-
-        # 创建饮水记录
-        water_record = WaterIntakeRecord(
-            user_id=target_user_id,
-            amount_ml=amount_ml,
-            record_time=datetime.now(),
-            recorded_by_user_id=current_user.id,
-        )
-        db.add(water_record)
-        db.flush()  # 先 flush 获取 water_record.id
-
-        # 创建代记录日志
-        from shared.models.proxy_models import ProxyRecord
-        proxy_record = ProxyRecord(
-            recorded_by_user_id=current_user.id,
-            target_user_id=target_user_id,
-            record_type="water",
-            record_id=water_record.id,
-        )
-        db.add(proxy_record)
-        db.commit()
-        db.refresh(water_record)
-
-        return BaseResponse(
-            success=True,
-            message="代记录饮水成功",
-            data={
-                "record_id": water_record.id,
-                "user_id": target_user_id,
-                "amount_ml": amount_ml,
-            }
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"代记录饮水失败: {e}\n{traceback.format_exc()}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="代记录饮水失败"
-        )
+    """代记录饮水 —— 接口保留但不再开放（同上，PRD D9 / 5.4）"""
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="家人健康数据不可代记录（仅可查看）；如需提醒家人，请使用「提醒家人」功能"
+    )
 
 
 # ============================================================

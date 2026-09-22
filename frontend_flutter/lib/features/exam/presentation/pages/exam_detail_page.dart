@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/themes/app_colors.dart';
+import '../../../../core/themes/app_text_styles.dart';
 import '../../../../core/services/tts_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../social/presentation/providers/social_provider.dart';
@@ -23,6 +24,7 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
   final TtsService _ttsService = TtsService();
   bool _isSpeaking = false;
   ExamReportDetail? _detail;
+  bool _savingAiFlag = false; // AI 分析开关保存中
 
   @override
   void initState() {
@@ -106,9 +108,90 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
     return Column(
       children: [
         if (_detail != null) _buildReportInfoCard(_detail!),
+        if (_detail != null) _buildPrivacyCard(_detail!),
         Expanded(child: _buildMetricsContent(metricsState, adviceState)),
       ],
     );
+  }
+
+  /// 隐私提醒 + 「允许 AI 分析」开关（可切换并保存到后端）
+  Widget _buildPrivacyCard(ExamReportDetail detail) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderLight),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.privacy_tip_outlined,
+                  color: AppColors.primary, size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '体检数据为敏感个人信息，仅在本人授权范围内使用',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            value: detail.aiAnalysisEnabled,
+            onChanged: _savingAiFlag ? null : _toggleAiAnalysis,
+            title: const Text(
+              '允许 AI 分析',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            subtitle: Text(
+              detail.aiAnalysisEnabled ? '当前状态：已开启' : '当前状态：已关闭（仅本地私有存储）',
+              style: AppTextStyles.caption,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 切换并保存 AI 分析开关
+  Future<void> _toggleAiAnalysis(bool enabled) async {
+    setState(() => _savingAiFlag = true);
+    final res = await ref
+        .read(examApiServiceProvider)
+        .setAiAnalysisEnabled(widget.reportId, enabled);
+    if (!mounted) return;
+    setState(() => _savingAiFlag = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(res.success
+            ? (enabled ? '已开启 AI 分析' : '未开启 AI 分析，报告仅本地私有存储')
+            : '设置失败：${res.message}'),
+        backgroundColor: res.success ? Colors.green : Colors.red,
+      ),
+    );
+    if (res.success) {
+      await _loadDetail();
+      // 开启后再拉取 AI 健康建议（关闭时后端不会调用 AI）
+      if (enabled) {
+        ref.read(examAdviceProvider.notifier).loadAdvice(widget.reportId);
+      }
+    }
   }
 
   Widget _buildMetricsContent(
@@ -374,7 +457,7 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
     );
   }
 
-  /// 操作按钮排：设置复查提醒 / 应用饮食建议 / 归属修改
+  /// 操作按钮排：设置复查提醒 / 应用饮食建议
   Widget _buildActionButtons() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -397,22 +480,6 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
               ),
             ),
           ],
-        ),
-        const SizedBox(height: 8),
-        GestureDetector(
-          onTap: _showReassignPicker,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Text(
-              '归属有误？修改为谁拍的',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[500],
-                decoration: TextDecoration.underline,
-              ),
-            ),
-          ),
         ),
       ],
     );
@@ -487,69 +554,6 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
       '/family/diet-recommendation/$_effectiveUserId',
       extra: {'name': ownerName},
     );
-  }
-
-  /// 归属修改：自己 + 家人选择
-  Future<void> _showReassignPicker() async {
-    final notifier = ref.read(friendListProvider.notifier);
-    final state = ref.read(friendListProvider);
-    if (state.family.isEmpty && !state.isLoading) {
-      await notifier.loadFriendList();
-    }
-    if (!mounted) return;
-    final family = ref.read(friendListProvider).family;
-    final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                '这份报告是谁拍的？',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.person, color: AppColors.primary),
-              title: const Text('自己'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _doReassign(currentUserId);
-              },
-            ),
-            for (final f in family)
-              ListTile(
-                leading:
-                    const Icon(Icons.family_restroom, color: AppColors.primary),
-                title: Text(f.note ?? f.realName ?? f.username),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _doReassign(f.userId);
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _doReassign(int targetUserId) async {
-    final res = await ref
-        .read(examApiServiceProvider)
-        .reassignExamReport(widget.reportId, targetUserId);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(res.success ? '归属已修改' : '修改失败：${res.message}'),
-          backgroundColor: res.success ? Colors.green : Colors.red,
-        ),
-      );
-      if (res.success) _loadDetail();
-    }
   }
 
   /// 查看原始报告照片（大图预览，支持多页滑动）
@@ -920,9 +924,6 @@ class _ExamDetailPageState extends ConsumerState<ExamDetailPage> {
   void _showEditMetricDialog(ExamMetric metric) {
     final valueController = TextEditingController(
       text: metric.metricValue?.toString() ?? '',
-    );
-    final isAbnormalController = TextEditingController(
-      text: metric.isAbnormal ? '异常' : '正常',
     );
 
     showModalBottomSheet(

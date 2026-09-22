@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../domain/message_models.dart';
+import '../../../chat/presentation/pages/chat_page.dart';
+import '../pages/family_health_page.dart';
 
 /// 消息气泡组件
 class MessageBubble extends StatelessWidget {
   final Message message;
   final bool isMe;
   final int currentUserId;
+
+  /// 老人线主动关怀消息类型（PRD 3.2：饭点关怀询问 / 异常主动提醒 / 父母日报）
+  static const Set<String> carePushTypes = {
+    'care_ask',
+    'family_daily_report',
+  };
 
   const MessageBubble({
     super.key,
@@ -53,6 +62,11 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildMessageContent(BuildContext context, bool isMine) {
+    final pushType = message.extraData?['type'] as String?;
+    if (pushType != null && _isCarePush(pushType)) {
+      return _buildCareCard(context, pushType);
+    }
+
     switch (message.messageType) {
       case 'food_card':
         return _buildFoodCard(context, isMine);
@@ -63,6 +77,153 @@ class MessageBubble extends StatelessWidget {
       default:
         return _buildTextMessage(isMine);
     }
+  }
+
+  bool _isCarePush(String pushType) {
+    return carePushTypes.contains(pushType) ||
+        pushType.startsWith('family_alert_');
+  }
+
+  /// 老人线关怀卡片：饭点关怀询问 / 父母日报 / 异常主动提醒（PRD 3.2）
+  ///
+  /// 与 Agent 卡片风格一致：结论 + 关键数字 + 下一步入口（PRD 4.8）。
+  Widget _buildCareCard(BuildContext context, String pushType) {
+    final extra = message.extraData ?? const {};
+    final isMealCare = pushType == 'care_ask';
+    final isDailyReport = pushType == 'family_daily_report';
+
+    final title = isMealCare
+        ? '家人关怀 · ${extra['meal_name'] ?? '用餐'}'
+        : isDailyReport
+            ? '父母日报 · ${extra['date'] ?? ''}'
+            : '家人提醒';
+
+    final elderId = (extra['elder_id'] ?? extra['user_id']) as int?;
+    final elderName = (extra['elder_name'] ?? extra['user_name']) as String?;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isMealCare
+                    ? LucideIcons.utensils
+                    : isDailyReport
+                        ? LucideIcons.clipboardList
+                        : LucideIcons.alertTriangle,
+                size: 16,
+                color: const Color(0xFF2BAF74),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF2BAF74),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message.content,
+            style: const TextStyle(
+                fontSize: 14, color: Colors.black87, height: 1.4),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              if (isMealCare)
+                _buildCareAction(
+                  context,
+                  label: '去记录',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChatPage(
+                        title: '饮食记录',
+                        pageContext: ChatPageContext(
+                          type: 'meal_care',
+                          title: '${extra['meal_name'] ?? '用餐'} · 待记录',
+                          hint: '用户在「饭点关怀询问」里点了「去记录」，餐次是'
+                              '${extra['meal_name'] ?? '用餐'}（日期 ${extra['date'] ?? '今天'}）。'
+                              '用户接下来若说了吃了什么，请直接按该餐次记录。',
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              if (!isMealCare && elderId != null)
+                _buildCareAction(
+                  context,
+                  label: '查看父母详情',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => FamilyHealthPage(
+                        userId: elderId,
+                        userName: elderName,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCareAction(
+    BuildContext context, {
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2BAF74).withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF2BAF74),
+              ),
+            ),
+            const SizedBox(width: 2),
+            const Icon(LucideIcons.chevronRight,
+                size: 14, color: Color(0xFF2BAF74)),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildTextMessage(bool isMine) {

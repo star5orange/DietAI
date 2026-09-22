@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 from deepagents import create_deep_agent
 from langchain.chat_models import init_chat_model
 
+# V5.0: 动作注册表（Tool Registry，PRD 4.1）
+from agent.diet_deep_agent.actions import registry as action_registry
 from agent.diet_deep_agent.config import DietDeepConfig
 from agent.diet_deep_agent.memory.backend import create_diet_backend
 from agent.diet_deep_agent.memory.md_checkpointer import MarkdownCheckpointSaver
@@ -22,7 +24,6 @@ from agent.diet_deep_agent.tools.food_analysis import analyze_food_image, lookup
 from agent.diet_deep_agent.tools.goal_tracking import (
     calculate_targets,
     get_daily_status,
-    record_weight,
 )
 from agent.diet_deep_agent.tools.memory_tools import learn_preference
 from agent.diet_deep_agent.tools.nutrition_rag import query_nutrition_knowledge
@@ -118,11 +119,30 @@ def create_diet_deep_agent(config: DietDeepConfig | None = None, use_custom_pers
     if ":" not in primary_model:
         primary_model = f"openai:{primary_model}"
 
-    model = init_chat_model(
-        primary_model,
-        base_url=base_url,
-        api_key=api_key,
-    )
+    # PRD 5.1：LLM 请求统一超时与重试，避免外部依赖挂起导致请求无限阻塞
+    from shared.config.settings import get_settings
+
+    _settings = get_settings()
+    _llm_timeout = _settings.llm_request_timeout
+    _llm_max_retries = _settings.llm_max_retries
+
+    try:
+        # init_chat_model 会把额外参数透传给底层 Chat 模型（ChatOpenAI 支持 timeout/max_retries）
+        model = init_chat_model(
+            primary_model,
+            base_url=base_url,
+            api_key=api_key,
+            timeout=_llm_timeout,
+            max_retries=_llm_max_retries,
+        )
+    except Exception:
+        # 个别 provider 不支持上述参数时退化为原始构造，保证不影响启动
+        logger.warning("init_chat_model 附加超时/重试参数失败，退化为默认参数构造")
+        model = init_chat_model(
+            primary_model,
+            base_url=base_url,
+            api_key=api_key,
+        )
 
     # 所有自定义工具
     tools = [
@@ -132,7 +152,6 @@ def create_diet_deep_agent(config: DietDeepConfig | None = None, use_custom_pers
         # 目标追踪
         get_daily_status,
         calculate_targets,
-        record_weight,
         # RAG 知识检索
         query_nutrition_knowledge,
         # 养生知识检索
@@ -175,6 +194,9 @@ def create_diet_deep_agent(config: DietDeepConfig | None = None, use_custom_pers
         remove_background,
         # 宠物反馈
         *PET_FEEDBACK_TOOLS,
+
+        # V5.0: 注册表动作（record_food / undo 等，schema 与撤销策略由注册表统一管理）
+        *action_registry.langchain_tools(),
     ]
 
     extra_kwargs = {}

@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
-import '../../../../core/services/api_service.dart';
 import '../../../../core/utils/route_observer.dart';
 import '../../../../services/food_service.dart';
 import '../../../../services/water_service.dart';
@@ -14,7 +13,6 @@ import '../../../../services/goal_tracking_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/domain/models/api_response.dart';
 import '../../../../shared/domain/models/user_model.dart';
-import '../../../profile/domain/services/user_service.dart';
 import '../../../health/presentation/pages/health_goals_page.dart';
 import '../../../health/presentation/pages/weight_tracking_page.dart';
 import '../../../health/presentation/pages/data_visualization_page.dart';
@@ -43,7 +41,6 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
   double _waterGoal = 2000.0;
   double _targetCalories = 2000.0;
   double _targetProtein = 0.0;
-  bool _isLoading = true;
   Map<String, dynamic>? _weeklySummary;
   bool _summaryExpanded = false;
 
@@ -59,7 +56,6 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
   }
 
   Future<void> _loadTodayData() async {
-    setState(() => _isLoading = true);
     try {
       final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
@@ -78,11 +74,10 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
               ((results[1] as ApiResponse).data?.totalMl ?? 0).toDouble();
           _weeklySummary =
               (results[2] as ApiResponse<Map<String, dynamic>>).data;
-          _isLoading = false;
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      // 静默失败：保留已有数据
     }
   }
 
@@ -231,7 +226,7 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
         title: const Text('设置每日饮水目标'),
         content: TextField(
           controller: controller,
-          keyboardType: TextInputType.numberWithOptions(decimal: true),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(
             labelText: '目标 (升)',
             hintText: '例如：2.5',
@@ -400,16 +395,16 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
     final calories = _dailySummary?.totalCalories ?? 0.0;
 
     // 统一单位显示水量：≥1000ml 用 L，否则用 ml，最多两位小数去尾部零
-    String _fmtLiter(double ml) {
+    String fmtLiter(double ml) {
       final liters = ml / 1000;
       return liters.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
     }
 
     final useLiter = displayWaterGoal >= 1000;
     final waterIntakeDisplay =
-        useLiter ? _fmtLiter(_waterIntake) : _waterIntake.toInt().toString();
+        useLiter ? fmtLiter(_waterIntake) : _waterIntake.toInt().toString();
     final waterGoalDisplay = useLiter
-        ? _fmtLiter(displayWaterGoal)
+        ? fmtLiter(displayWaterGoal)
         : displayWaterGoal.toInt().toString();
     final waterValue = '$waterIntakeDisplay / $waterGoalDisplay';
     final waterUnit = useLiter ? 'L' : 'ml';
@@ -427,7 +422,7 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           colors: [AppColors.primary, AppColors.primaryLight],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -542,7 +537,7 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
                           Expanded(
                             child: _buildSummaryItem(
                               '蛋白质',
-                              '${_formatNumber(_dailySummary?.totalProtein ?? 0)}',
+                              _formatNumber(_dailySummary?.totalProtein ?? 0),
                               'g',
                               proteinProgress,
                               showProgress: _targetProtein > 0,
@@ -577,7 +572,6 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
         data['goal_completion'] as Map<String, dynamic>? ?? {};
     final weightChange = data['weight_change'] as Map<String, dynamic>?;
     final summaryText = data['summary_text'] as String? ?? '';
-    final crowdTag = data['crowd_tag'] as String? ?? '均衡维持';
     final daysWithData = period['days_with_data'] as int? ?? 0;
 
     // 解析趋势数据
@@ -601,11 +595,11 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
             color: AppColors.shadow,
             blurRadius: 8,
-            offset: const Offset(0, 2),
+            offset: Offset(0, 2),
           ),
         ],
       ),
@@ -833,7 +827,6 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
   Widget _buildTrendItem(
       String label, Map<String, dynamic> trend, IconData icon, Color color) {
     final direction = trend['direction'] as String? ?? '持平';
-    final changePct = (trend['change_pct'] as num?)?.toDouble() ?? 0.0;
     final currentAvg = (trend['current_avg'] as num?)?.toDouble() ?? 0.0;
 
     IconData arrowIcon;
@@ -1163,7 +1156,6 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
     final calories = _dailySummary?.totalCalories ?? 0.0;
     final protein = _dailySummary?.totalProtein ?? 0.0;
     final fat = _dailySummary?.totalFat ?? 0.0;
-    final carbs = _dailySummary?.totalCarbohydrates ?? 0.0;
     final fiber = _dailySummary?.totalFiber ?? 0.0;
     final sodium = _dailySummary?.totalSodium ?? 0.0;
     final exerciseCal = _dailySummary?.exerciseCalories ?? 0.0;
@@ -1182,19 +1174,19 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
       tips.add(MapEntry('💧 记得多喝水',
           '今天的饮水量还差${(waterRemaining / 1000).toStringAsFixed(2)}L，保持充足水分有助于新陈代谢。'));
     } else if (_waterIntake > 0) {
-      tips.add(MapEntry('💧 饮水达标', '今天的饮水量已达标，继续保持！'));
+      tips.add(const MapEntry('💧 饮水达标', '今天的饮水量已达标，继续保持！'));
     }
 
     // 热量提示
     if (calories == 0) {
-      tips.add(MapEntry('🍽️ 开始记录', '今日尚未记录饮食，及时记录可获取个性化建议。'));
+      tips.add(const MapEntry('🍽️ 开始记录', '今日尚未记录饮食，及时记录可获取个性化建议。'));
     } else if (remaining > 0) {
       tips.add(MapEntry('🍽️ 热量预算', '今日还可摄入约${remaining.toInt()}kcal，注意营养均衡。'));
     } else if (remaining < 0) {
       tips.add(MapEntry(
           '⚠️ 热量超标', '今日热量已超出目标${(-remaining).toInt()}kcal，建议适当增加运动。'));
     } else {
-      tips.add(MapEntry('🍽️ 热量达标', '今日热量摄入已达到目标，注意保持营养均衡。'));
+      tips.add(const MapEntry('🍽️ 热量达标', '今日热量摄入已达到目标，注意保持营养均衡。'));
     }
 
     // 高钠提醒
@@ -1220,7 +1212,7 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
       tips.add(
           MapEntry('🏃 运动消耗', '今日运动消耗${exerciseCal.toInt()}kcal，继续保持运动习惯！'));
     } else if (calories > _targetCalories * 0.5) {
-      tips.add(MapEntry('🏃 适量运动', '今日尚未记录运动，适当活动有助于消耗多余热量。'));
+      tips.add(const MapEntry('🏃 适量运动', '今日尚未记录运动，适当活动有助于消耗多余热量。'));
     }
 
     // 体质相关提示
@@ -1246,11 +1238,11 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
             color: AppColors.shadow,
             blurRadius: 8,
-            offset: const Offset(0, 2),
+            offset: Offset(0, 2),
           ),
         ],
       ),
@@ -1259,7 +1251,7 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
         children: [
           Row(
             children: [
-              Icon(
+              const Icon(
                 LucideIcons.lightbulb,
                 color: AppColors.accent,
                 size: 20,
@@ -1288,21 +1280,21 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
       String constitution, String crowdTag) {
     switch (constitution) {
       case '阳虚质':
-        return MapEntry('☀️ 阳虚体质', '宜温补，多食羊肉、生姜、桂圆，少食生冷寒凉，注意保暖避寒。');
+        return const MapEntry('☀️ 阳虚体质', '宜温补，多食羊肉、生姜、桂圆，少食生冷寒凉，注意保暖避寒。');
       case '阴虚质':
-        return MapEntry('🌙 阴虚体质', '宜滋阴润燥，多食银耳、百合、枸杞，少食辛辣燥热之物。');
+        return const MapEntry('🌙 阴虚体质', '宜滋阴润燥，多食银耳、百合、枸杞，少食辛辣燥热之物。');
       case '气虚质':
-        return MapEntry('💨 气虚体质', '宜补气健脾，多食山药、黄芪、红枣，避免过度劳累。');
+        return const MapEntry('💨 气虚体质', '宜补气健脾，多食山药、黄芪、红枣，避免过度劳累。');
       case '痰湿质':
-        return MapEntry('💧 痰湿体质', '宜健脾祛湿，少食甜腻厚味，多运动排汗，可饮薏仁红豆汤。');
+        return const MapEntry('💧 痰湿体质', '宜健脾祛湿，少食甜腻厚味，多运动排汗，可饮薏仁红豆汤。');
       case '湿热质':
-        return MapEntry('🌡️ 湿热体质', '宜清热利湿，多食绿豆、苦瓜、薏仁，少食辛辣油腻。');
+        return const MapEntry('🌡️ 湿热体质', '宜清热利湿，多食绿豆、苦瓜、薏仁，少食辛辣油腻。');
       case '血瘀质':
-        return MapEntry('❤️ 血瘀体质', '宜活血化瘀，多食山楂、黑豆、醋，适量运动促进气血运行。');
+        return const MapEntry('❤️ 血瘀体质', '宜活血化瘀，多食山楂、黑豆、醋，适量运动促进气血运行。');
       case '气郁质':
-        return MapEntry('😊 气郁体质', '宜疏肝解郁，多食玫瑰花茶、佛手、柑橘类，保持心情舒畅。');
+        return const MapEntry('😊 气郁体质', '宜疏肝解郁，多食玫瑰花茶、佛手、柑橘类，保持心情舒畅。');
       case '特禀质':
-        return MapEntry('🛡️ 特禀体质', '宜益气固表，避免过敏原，饮食清淡均衡，增强免疫力。');
+        return const MapEntry('🛡️ 特禀体质', '宜益气固表，避免过敏原，饮食清淡均衡，增强免疫力。');
       default:
         return null;
     }

@@ -169,13 +169,33 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
-    """获取当前用户"""
+    """获取当前用户 (同时支持 user JWT 和 device JWT)"""
     try:
         # 验证令牌
         payload = AuthService.verify_token(credentials.credentials)
         
-        # 检查令牌类型
-        if payload.get("type") != "access":
+        token_type = payload.get("type")
+        
+        # --- device token: type=device, payload 含 user_id ---
+        if token_type == "device":
+            user_id = payload.get("user_id")
+            if user_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="设备令牌无效",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            user = db.query(User).filter(User.id == int(user_id)).first()
+            if user is None or user.status != 1:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="设备绑定的用户不存在或已禁用",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            return user
+        
+        # --- user access token ---
+        if token_type != "access":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="令牌类型错误",

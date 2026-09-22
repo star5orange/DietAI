@@ -1,5 +1,5 @@
 """体检报告模型 - Milestone 4 体检报告管理"""
-from sqlalchemy import Column, Integer, String, DateTime, Date, Text, Numeric, Boolean, ForeignKey, Index
+from sqlalchemy import Column, Integer, String, DateTime, Date, Text, Numeric, Boolean, ForeignKey, Index, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from .database import Base
@@ -21,6 +21,13 @@ class ExamReport(Base):
     abnormal_count = Column(Integer, nullable=False, default=0, comment="异常指标数量")
     summary = Column(Text, nullable=True, comment="AI生成的体检综述")
     doctor_advice = Column(Text, nullable=True, comment="医生建议（提取或AI总结）")
+    ai_analysis_enabled = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+        comment="是否允许 AI 分析该份体检报告（默认关闭，仅本地私有存储）",
+    )
     compared_to_last = Column(JSONB, nullable=True, comment="与上次对比 {'血糖': '↑ 0.8', ...}")
     created_at = Column(DateTime, nullable=False, default=func.now())
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, comment="代上传者（家人代传）")

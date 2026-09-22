@@ -62,6 +62,7 @@ class ExamReportListNotifier extends StateNotifier<ExamReportListState> {
     required int userId,
     String? examDate,
     String? hospitalName,
+    bool aiAnalysisEnabled = false,
   }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
@@ -70,6 +71,7 @@ class ExamReportListNotifier extends StateNotifier<ExamReportListState> {
         userId: userId,
         examDate: examDate,
         hospitalName: hospitalName,
+        aiAnalysisEnabled: aiAnalysisEnabled,
       );
       if (response.success && response.data != null) {
         // 重新加载列表

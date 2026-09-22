@@ -54,7 +54,13 @@ from .exam import (
     ExamReportUpload, ExamReportUploadResponse,
     ExamReportResponse, ExamReportListResponse,
     ExamMetricResponse, ExamMetricUpdate,
-    ExamReportFollowupUpdate, ExamReportReassign,
+    ExamReportFollowupUpdate, ExamReportReassign, ExamReportAiAnalysisUpdate,
     MetricTrendPoint, MetricTrendResponse,
     ExamSummaryResponse, ExamAdviceResponse,
+)
+
+# 设备绑定
+from .device import (
+    RequestPairingRequest, PollPairingRequest, ConfirmPairingRequest,
+    PairingCodeResponse, DeviceTokenResponse, DeviceStatusResponse,
 )

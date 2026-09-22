@@ -7,7 +7,6 @@ from shared.models.food_models import FoodRecord
 from shared.models.user_models import UserProfile
 from shared.models.schemas.water import WaterIntakeCreate
 from shared.services.water_service import create_water_record
-from shared.services.pet_service import update_streak
 from datetime import datetime, date, timedelta
 from typing import List, Optional
 
@@ -36,6 +35,10 @@ CROWD_FOOD_MAP = {
         {"label": "🥛 牛奶", "food_name": "牛奶", "calories": 42, "protein": 3.4, "amount": 1},
     ],
 }
+
+# 占位/无效食物名：PRD 5.3 要求「未知食物 / 识别失败」等占位内容入库归零，
+# 这类记录一律不入库，交由 App 端走兜底（文字确认）后补记
+PLACEHOLDER_FOOD_NAMES = {"未知食物", "未知", "未识别", "识别失败", "unknown", "待确认"}
 
 def get_quick_buttons(db: Session, user_id: int) -> dict:
     """Get quick button config for hardware, auto-generate if not exists"""
@@ -119,11 +122,20 @@ def sync_offline_records(db: Session, user_id: int, records: List[dict]) -> dict
                 details.append({"type": "water", "status": "ok"})
 
             elif record_type == "food":
-                food_name = record.get("food_name", "未知食物")
+                food_name = (record.get("food_name") or "").strip()
+                # PRD 5.3：识别失败必须走兜底（文字确认），不得以占位内容落库
+                if not food_name or food_name in PLACEHOLDER_FOOD_NAMES:
+                    failed += 1
+                    details.append({
+                        "type": "food",
+                        "status": "needs_confirmation",
+                        "message": "未识别到食物名称，未入库；请在记录页确认后补记",
+                    })
+                    continue
+
                 meal_type = record.get("meal_type", 1)
-                # Create a simple food record via traditional endpoint
-                from shared.models.food_models import NutritionDetail
-                from decimal import Decimal
+                device_calories = float(record.get("calories") or 0)
+                device_protein = float(record.get("protein") or 0)
 
                 food_record = FoodRecord(
                     user_id=user_id,
@@ -132,21 +144,62 @@ def sync_offline_records(db: Session, user_id: int, records: List[dict]) -> dict
                     meal_type=meal_type,
                     food_name=food_name,
                     recording_method=1,
-                    analysis_status=3,
+                    analysis_status=1,
                     from_source="hardware",
                 )
                 db.add(food_record)
                 db.flush()
 
-                nutrition = NutritionDetail(
-                    food_record_id=food_record.id,
-                    calories=Decimal(str(record.get("calories", 0))),
-                    protein=Decimal(str(record.get("protein", 0))),
-                )
-                db.add(nutrition)
+                from shared.models.food_models import NutritionDetail
+
+                if device_calories > 0:
+                    # 硬件按钮自带的默认值即老人线「默认值记录 + 事后可改」（PRD 4.3/D5），
+                    # 只在设备确实给了非零营养时写入，避免把 0 值当"已分析"落库（PRD 5.3）
+                    db.add(NutritionDetail(
+                        food_record_id=food_record.id,
+                        calories=device_calories,
+                        protein=device_protein,
+                        confidence_score=0.60,
+                        analysis_method="hardware_device",
+                    ))
+                    food_record.analysis_status = 3
+                else:
+                    # 设备未给营养 → 用与对话/页面同一条匹配链路补（口径统一）
+                    from shared.services.food_matching import match_food
+
+                    matched = match_food(db, food_name)
+                    if matched:
+                        portion_g = matched.get("portion_grams") or 100
+                        ratio = portion_g / 100.0
+                        per_100g = matched["per_100g"]
+                        db.add(NutritionDetail(
+                            food_record_id=food_record.id,
+                            calories=round(per_100g["calories"] * ratio, 2),
+                            protein=round(per_100g["protein"] * ratio, 2),
+                            fat=round(per_100g["fat"] * ratio, 2),
+                            carbohydrates=round(per_100g["carbohydrates"] * ratio, 2),
+                            dietary_fiber=round(per_100g["dietary_fiber"] * ratio, 2),
+                            sodium=round(per_100g["sodium"] * ratio, 2),
+                            confidence_score=0.80,
+                            analysis_method="food_database",
+                        ))
+                        food_record.analysis_status = 3
+                    # 未命中 → 保持 analysis_status=1 待分析，不写占位营养
+
                 db.commit()
+
+                # 记录落库即计入当日汇总（与对话/页面链路口径一致）
+                try:
+                    from agent.diet_deep_agent.actions.definitions.record_food import (
+                        refresh_daily_summary,
+                    )
+
+                    refresh_daily_summary(db, user_id, food_record.record_date)
+                except Exception as e:
+                    logger.warning(f"硬件记录重算当日汇总失败（非致命）: {e}")
+
                 synced += 1
-                details.append({"type": "food", "status": "ok"})
+                details.append({"type": "food", "status": "ok", "food_name": food_name})
             else:
                 failed += 1
                 details.append({"type": record_type, "status": "unknown_type"})
@@ -155,11 +208,8 @@ def sync_offline_records(db: Session, user_id: int, records: List[dict]) -> dict
             failed += 1
             details.append({"type": record.get("type", "unknown"), "status": "error", "error": str(e)})
 
-    # Update streak
-    try:
-        update_streak(db, user_id)
-    except Exception:
-        pass
+    # 注：原「update_streak」调用已移除——shared.services.pet_service 并无该函数，
+    # 该 import 会让整个模块导入失败（硬件路由已因此不可用）。连续打卡由宠物喂食链路维护。
 
     # Log sync
     log = OfflineSyncLog(
@@ -261,4 +311,3 @@ def get_pet_feeding_plan_for_hardware(db: Session, pet_id: int) -> dict:
     if not pet:
         return {"error": "宠物不存在"}
     return get_feeding_plan(db, pet_id, pet.user_id)
->>>>>>> origin/frontend

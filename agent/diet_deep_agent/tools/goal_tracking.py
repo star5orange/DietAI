@@ -5,7 +5,7 @@
 """
 
 import logging
-from datetime import date, datetime
+from datetime import date
 from typing import Any, cast
 
 from langchain_core.tools import tool
@@ -116,65 +116,3 @@ def calculate_targets(
     return calculate_full_nutrition_profile(
         weight, height, age, gender, activity_level, goal_type
     )
-
-
-@tool
-def record_weight(user_id: int, weight: float) -> dict[str, Any]:
-    """记录用户的体重数据。
-
-    Args:
-        user_id: 用户 ID
-        weight: 体重（kg）
-
-    Returns:
-        记录结果和目标进度
-    """
-    from shared.models.database import SessionLocal
-    db = SessionLocal()
-    try:
-        from shared.models.user_models import WeightRecord, UserProfile, HealthGoal
-        from shared.utils.nutrition_calc import calculate_goal_progress
-
-        # 记录体重
-        record = WeightRecord(
-            user_id=user_id,
-            weight=weight,
-            measured_at=datetime.now(),
-        )
-        db.add(record)
-
-        # 更新 profile 中的体重
-        profile = db.query(UserProfile).filter(
-            UserProfile.user_id == user_id
-        ).first()
-        if profile:
-            profile.weight = weight
-
-        db.commit()
-
-        # 计算目标进度
-        active_goal = db.query(HealthGoal).filter(
-            HealthGoal.user_id == user_id,
-            HealthGoal.current_status == 1
-        ).first()
-
-        progress = None
-        if active_goal and active_goal.target_weight:
-            starting = weight  # HealthGoal 没有 starting_weight 字段，用当前体重兜底
-            progress = calculate_goal_progress(
-                starting, weight, float(active_goal.target_weight),
-                active_goal.goal_type
-            )
-
-        return {
-            "success": True,
-            "recorded_weight": weight,
-            "date": date.today().isoformat(),
-            "goal_progress": progress,
-        }
-    except Exception as e:
-        db.rollback()
-        logger.error(f"record_weight failed: {e}")
-        return {"success": False, "error": str(e)}
-    finally:
-        db.close()

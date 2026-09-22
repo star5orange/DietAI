@@ -239,44 +239,16 @@ class _MemberSection extends ConsumerWidget {
         children: [
           Row(
             children: [
-              // 头像 + 右上角 📸 入口：点击直接打开相机为家人拍体检报告
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  CircleAvatar(
-                    radius: 14,
-                    backgroundColor: Colors.grey[200],
-                    backgroundImage: member.avatarUrl != null
-                        ? NetworkImage(member.avatarUrl!)
-                        : null,
-                    child: member.avatarUrl == null
-                        ? const Icon(Icons.person, size: 16, color: Colors.grey)
-                        : null,
-                  ),
-                  Positioned(
-                    right: -5,
-                    bottom: -5,
-                    child: GestureDetector(
-                      onTap: () => context.push(
-                        '/exam/upload',
-                        extra: {
-                          'ownerUserId': member.userId,
-                          'ownerName': _displayName,
-                        },
-                      ),
-                      child: Container(
-                        padding: const EdgeInsets.all(3),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 1.5),
-                        ),
-                        child: const Icon(Icons.photo_camera,
-                            size: 10, color: Colors.white),
-                      ),
-                    ),
-                  ),
-                ],
+              // 头像（PRD D9：家人体检数据不可代拍/代改，📸 入口已下线）
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: Colors.grey[200],
+                backgroundImage: member.avatarUrl != null
+                    ? NetworkImage(member.avatarUrl!)
+                    : null,
+                child: member.avatarUrl == null
+                    ? const Icon(Icons.person, size: 16, color: Colors.grey)
+                    : null,
               ),
               const SizedBox(width: 8),
               Expanded(

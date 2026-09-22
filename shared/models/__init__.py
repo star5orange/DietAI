@@ -12,6 +12,8 @@ from .wellness_models import WellnessKnowledge
 from .advisor_models import AiAdvisorSettings
 from .fasting_models import FastingPlan, FastingCheckin
 from .pet_models import VirtualPetState, PetUnlockable
+from .device_models import Device
+
 # 首页模块布局偏好
 from .home_layout_models import UserHomeLayout
 
@@ -61,6 +63,7 @@ __all__ = [
     "FastingCheckin",
     "VirtualPetState",
     "PetUnlockable",
+    "Device",
     "HealthAchievement",
     "UserHomeLayout",
 

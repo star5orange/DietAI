@@ -46,7 +46,8 @@ class MemoryManager:
         "shared": "shared/user_memory.md",
         "goal_tracking": "goal_tracking/user_goals.md",
         "nutrition": "nutrition/user_nutrition.md",
-        "chat": "chat/user_chat.md"
+        "chat": "chat/user_chat.md",
+        "insights": "insights/user_insights.md"
     }
 
     # Agent type to readable workspaces mapping
@@ -77,6 +78,7 @@ class MemoryManager:
             self.user_dir / "goal_tracking",
             self.user_dir / "nutrition",
             self.user_dir / "chat",
+            self.user_dir / "insights",
             self.user_dir / "history"
         ]
         for directory in directories:

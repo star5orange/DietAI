@@ -29,8 +29,6 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
     with TickerProviderStateMixin {
   // Tab controller
   late TabController _tabController;
-  static const int _virtualPetTabIndex = 0;
-  static const int _realPetTabIndex = 1;
 
   // Animation controllers
   late AnimationController _bounceController;
@@ -64,38 +62,6 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
   double _targetCalories = 2000;
   int _waterTotalMl = 0;
   int _waterGoalMl = 2000;
-
-  // Pet types
-  static const List<Map<String, dynamic>> _petTypes = [
-    {
-      'type': 'cat',
-      'name': '灵巧型',
-      'description': '轻盈灵动，陪伴你健康饮食',
-      'icon': Icons.pets,
-      'color': Color(0xFF2BAF74),
-    },
-    {
-      'type': 'dog',
-      'name': '活力型',
-      'description': '元气满满，监督你按时吃饭',
-      'icon': Icons.cruelty_free,
-      'color': Color(0xFFFF9800),
-    },
-    {
-      'type': 'rabbit',
-      'name': '温柔型',
-      'description': '温婉细腻，提醒你营养均衡',
-      'icon': Icons.emoji_nature,
-      'color': Color(0xFFE91E63),
-    },
-    {
-      'type': 'bear',
-      'name': '守护型',
-      'description': '沉稳可靠，守护你的健康目标',
-      'icon': Icons.emoji_food_beverage,
-      'color': Color(0xFF795548),
-    },
-  ];
 
   @override
   void initState() {
@@ -1246,19 +1212,6 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
     if (nextLevelExp <= currentLevelExp) return 1.0;
     return ((petState.exp - currentLevelExp) / (nextLevelExp - currentLevelExp))
         .clamp(0.0, 1.0);
-  }
-
-  String _getExpressionName(PetExpression expression) {
-    const names = {
-      PetExpression.satisfied: '满足',
-      PetExpression.anxious: '焦虑',
-      PetExpression.happy: '开心',
-      PetExpression.calm: '平静',
-      PetExpression.expect: '期待',
-      PetExpression.weak: '虚弱',
-      PetExpression.hungry: '饥饿',
-    };
-    return names[expression] ?? '平静';
   }
 
   void _showRenameDialog(PetState petState) {

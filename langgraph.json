@@ -6,7 +6,8 @@
     "chat_agent": "./agent/chat_agent.py:chat_graph",
     "goal_tracking_agent": "./agent/goal_tracking/goal_agent.py:goal_graph",
     "diet_deep_agent": "./agent/diet_deep_agent/deep_agent.py:agent",
-    "test_agent": "./agent/test_agent.py:test_graph"
+    "test_agent": "./agent/test_agent.py:test_graph",
+    "hardware_nutrition_agent": "./agent/hardware_nutrition/agent.py:graph"
   },
   "env": ".env"
 }

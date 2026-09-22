@@ -6,7 +6,7 @@ LangGraph 聊天 Agent 路由
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional, Dict, Any, List, AsyncGenerator
 import json
 import logging
@@ -26,6 +26,18 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 router = APIRouter(prefix="/chat", tags=["AI对话"])
+
+
+def _iso_utc(dt: Optional[datetime]) -> Optional[str]:
+    """把数据库里的 naive 时间（PostgreSQL now() 落库为 UTC 墙上时间）标注为 UTC 后序列化。
+
+    不带时区标记时，客户端会按本地时间解析，导致「8 小时前」这类显示偏差。
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat()
 
 
 def _coerce_optional_int(value: Any) -> Optional[int]:
@@ -209,8 +221,38 @@ async def send_chat_message_stream(
                 except Exception as e:
                     logger.warning(f"Failed to load pet context: {e}")
 
+            # M3: 宠物健康咨询时加载宠物上下文
+            pet_context = None
+            if session_type == 6 and pet_id:
+                try:
+                    from shared.models.pet_models import PetProfile
+                    from shared.services.pet_nutrition_calc import check_daily_completion
+                    pet = db.query(PetProfile).filter(
+                        PetProfile.id == pet_id,
+                        PetProfile.user_id == current_user.id
+                    ).first()
+                    if pet:
+                        today_summary = check_daily_completion(db, pet_id)
+                        pet_context = {
+                            'pet_id': pet.id,
+                            'pet_name': pet.name,
+                            'species': pet.species,
+                            'breed': pet.breed,
+                            'gender': pet.gender,
+                            'birth_date': str(pet.birth_date) if pet.birth_date else None,
+                            'weight': pet.weight,
+                            'is_neutered': pet.is_neutered,
+                            'daily_calories': pet.daily_calories,
+                            'daily_protein': pet.daily_protein,
+                            'today_intake': today_summary,
+                        }
+                except ImportError:
+                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to load pet context: {e}")
+
             # 4. 调用 LangGraph Agent
-            client = get_client(url=settings.ai_service_url)
+            client = get_client(url=settings.ai_service_url, timeout=settings.external_http_timeout)
 
             # 创建或获取 LangGraph thread
             if not session.langgraph_thread_id or session.langgraph_thread_id.startswith("local-"):
@@ -317,7 +359,7 @@ async def send_chat_message_stream(
             context_data = {
                 "last_user_message": message,
                 "last_ai_response": full_response,
-                "last_message_time": ai_message.created_at.isoformat(),
+                "last_message_time": _iso_utc(ai_message.created_at),
                 "session_type": session.session_type
             }
             cache_service.cache_conversation_context(str(session.id), context_data)
@@ -406,7 +448,7 @@ async def send_chat_message(
         constitution_type = user_context.get('constitution_type')
 
         # 4. 调用 LangGraph Agent
-        client = get_client(url=settings.ai_service_url)
+        client = get_client(url=settings.ai_service_url, timeout=settings.external_http_timeout)
 
         # 创建或获取 LangGraph thread
         if not session.langgraph_thread_id or session.langgraph_thread_id.startswith("local-"):
@@ -485,7 +527,7 @@ async def send_chat_message(
         context_data = {
             "last_user_message": message,
             "last_ai_response": ai_response,
-            "last_message_time": ai_message.created_at.isoformat(),
+            "last_message_time": _iso_utc(ai_message.created_at),
             "session_type": session.session_type
         }
         cache_service.cache_conversation_context(str(session.id), context_data)
@@ -499,13 +541,13 @@ async def send_chat_message(
                 "user_message": {
                     "id": user_message.id,
                     "content": user_message.content,
-                    "created_at": user_message.created_at.isoformat()
+                    "created_at": _iso_utc(user_message.created_at)
                 },
                 "ai_response": {
                     "id": ai_message.id,
                     "content": ai_message.content,
                     "metadata": ai_message.message_metadata,
-                    "created_at": ai_message.created_at.isoformat()
+                    "created_at": _iso_utc(ai_message.created_at)
                 },
                 "suggestions": suggestions
             }
@@ -548,7 +590,7 @@ async def start_chat_session(
                 "langgraph_thread_id": session.langgraph_thread_id,
                 "session_type": session.session_type,
                 "title": session.title,
-                "created_at": session.created_at.isoformat()
+                "created_at": _iso_utc(session.created_at)
             }
         )
         
@@ -611,13 +653,15 @@ async def get_session_context(
 # 辅助函数
 async def get_latest_exam_summary(user_id: int, db: Session) -> Dict[str, Any]:
     """获取用户最新一份有效体检报告摘要（异常指标 + AI综述 + 医生建议），供 AI 顾问参考
-    跳过识别失败产生的 0 指标空报告（如免费额度用尽时上传的）"""
+    跳过识别失败产生的 0 指标空报告（如免费额度用尽时上传的）；
+    跳过未开启 AI 分析的报告（仅本地私有存储，不把体检文本送往 AI）"""
     try:
         from shared.models.exam_models import ExamReport, ExamMetric
 
         # 按体检日期倒序取最近 20 份，找第一份有实际指标的报告
         candidates = db.query(ExamReport).filter(
-            ExamReport.user_id == user_id
+            ExamReport.user_id == user_id,
+            ExamReport.ai_analysis_enabled == True
         ).order_by(ExamReport.exam_date.desc(), ExamReport.id.desc()).limit(20).all()
         report = None
         for candidate in candidates:
@@ -849,7 +893,7 @@ async def get_health_goals(user_id: int, db: Session) -> Dict[str, Any]:
         
         goals = db.query(HealthGoal).filter(
             HealthGoal.user_id == user_id,
-            HealthGoal.status == 1  # 活跃状态
+            HealthGoal.current_status == 1  # 1: 进行中
         ).first()
         
         if not goals:
@@ -901,7 +945,6 @@ async def get_weekly_trends(user_id: int, db: Session) -> Dict[str, Any]:
                 func.coalesce(func.sum(NutritionDetail.protein), 0).label('total_protein'),
                 func.coalesce(func.sum(NutritionDetail.fat), 0).label('total_fat'),
                 func.coalesce(func.sum(NutritionDetail.carbohydrates), 0).label('total_carbs'),
-                func.count(FoodRecord.id).label('meal_count'),
             ).join(
                 NutritionDetail, FoodRecord.id == NutritionDetail.food_record_id
             ).filter(
@@ -909,13 +952,19 @@ async def get_weekly_trends(user_id: int, db: Session) -> Dict[str, Any]:
                 FoodRecord.record_date == day
             ).first()
 
+            # 用餐次数口径：当天全部记录去重 meal_type（与 food_router 的汇总口径一致）
+            meal_count = db.query(func.count(func.distinct(FoodRecord.meal_type))).filter(
+                FoodRecord.user_id == user_id,
+                FoodRecord.record_date == day,
+            ).scalar() or 0
+
             daily_data.append({
                 "date": day.isoformat(),
                 "calories": float(stats.total_calories) if stats else 0,
                 "protein": float(stats.total_protein) if stats else 0,
                 "fat": float(stats.total_fat) if stats else 0,
                 "carbs": float(stats.total_carbs) if stats else 0,
-                "meal_count": stats.meal_count if stats else 0,
+                "meal_count": meal_count,
             })
 
         # 计算平均值
@@ -955,7 +1004,7 @@ async def get_conversation_history(session_id: int, db: Session, limit: int = 10
         history.append({
             "role": "user" if msg.message_type == 1 else "assistant",
             "content": msg.content,
-            "timestamp": msg.created_at.isoformat()
+            "timestamp": _iso_utc(msg.created_at)
         })
     
     return history
@@ -1083,7 +1132,7 @@ async def get_chat_sessions(
                 "session_type_name": get_session_type_name(session.session_type),
                 "last_message": last_message.content[:50] + "..." if last_message and len(
                     last_message.content) > 50 else last_message.content if last_message else "暂无消息",
-                "last_message_time": session.last_message_at.isoformat() if session.last_message_at else session.created_at.isoformat(),
+                "last_message_time": _iso_utc(session.last_message_at or session.created_at),
                 "message_count": db.query(conversation_models.ConversationMessage).filter(
                     conversation_models.ConversationMessage.session_id == session.id
                 ).count()
@@ -1198,7 +1247,7 @@ async def search_chat_messages(
                 "message_type": msg.message_type,
                 "content_snippet": snippet,
                 "highlight_keyword": kw,
-                "created_at": msg.created_at.isoformat()
+                "created_at": _iso_utc(msg.created_at)
             })
 
         return schemas.BaseResponse(
@@ -1246,7 +1295,7 @@ async def get_session_messages(
                 "id": msg.id,
                 "role": "user" if msg.message_type == 1 else "assistant",
                 "content": msg.content,
-                "timestamp": msg.created_at.isoformat(),
+                "timestamp": _iso_utc(msg.created_at),
                 "metadata": msg.message_metadata
             })
 

@@ -7,24 +7,6 @@ import '../domain/social_models.dart';
 class SocialApiService {
   final ApiService _api = ApiService();
 
-  ApiResponse<Map<String, dynamic>> _wrapMap(ApiResponse<dynamic> res) {
-    return ApiResponse<Map<String, dynamic>>(
-      success: res.success,
-      message: res.message,
-      data: res.data is Map<String, dynamic>
-          ? res.data as Map<String, dynamic>
-          : null,
-    );
-  }
-
-  ApiResponse<List<dynamic>> _wrapList(ApiResponse<dynamic> res) {
-    return ApiResponse<List<dynamic>>(
-      success: res.success,
-      message: res.message,
-      data: res.data is List ? res.data as List : [],
-    );
-  }
-
   // ==================== 搜索用户 ====================
 
   /// 搜索用户

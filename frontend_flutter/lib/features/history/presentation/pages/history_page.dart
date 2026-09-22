@@ -15,7 +15,10 @@ import '../../../saved_meals/presentation/pages/saved_meals_page.dart';
 import '../../../../shared/domain/models/saved_meal_model.dart';
 
 class HistoryPage extends ConsumerStatefulWidget {
-  const HistoryPage({super.key});
+  /// 卡片跳转携带的上下文日期（PRD 4.8）：直接定位到该日期，而不是停在列表顶部
+  final DateTime? initialDate;
+
+  const HistoryPage({super.key, this.initialDate});
 
   @override
   ConsumerState<HistoryPage> createState() => _HistoryPageState();
@@ -24,7 +27,7 @@ class HistoryPage extends ConsumerStatefulWidget {
 class _HistoryPageState extends ConsumerState<HistoryPage> {
   final FoodService _foodService = FoodService();
   final ApiService _apiService = ApiService();
-  DateTime _selectedDate = DateTime.now();
+  late DateTime _selectedDate = widget.initialDate ?? DateTime.now();
   bool _isLoading = true;
   List<FoodRecord> _records = [];
   String _searchQuery = '';
@@ -293,18 +296,18 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(
+                                  const Icon(
                                     LucideIcons.calendar,
                                     size: 48,
                                     color: AppColors.textTertiary,
                                   ),
-                                  SizedBox(height: 16),
+                                  const SizedBox(height: 16),
                                   Text(
                                     _searchQuery.isNotEmpty ||
                                             _activeMealFilter != null
                                         ? '没有匹配的记录'
                                         : '该日期暂无记录',
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       color: AppColors.textTertiary,
                                       fontSize: 16,
                                     ),
@@ -343,11 +346,13 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   }
 
   String _getMealNameForNow() {
+    // 口径与后端 record_food._infer_meal_type 一致（PRD 4.7 时间归属）
     final hour = DateTime.now().hour;
-    if (hour < 10) return '早餐';
-    if (hour < 14) return '午餐';
-    if (hour < 20) return '晚餐';
-    return '加餐';
+    if (hour >= 5 && hour < 10) return '早餐';
+    if (hour >= 10 && hour < 15) return '午餐';
+    if (hour >= 15 && hour < 17) return '加餐';
+    if (hour >= 17 && hour < 21) return '晚餐';
+    return '夜宵';
   }
 
   void _showFilterSheet() {
@@ -379,8 +384,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                     _buildFilterChip(null, '全部'),
                     _buildFilterChip(1, '早餐'),
                     _buildFilterChip(2, '午餐'),
-                    _buildFilterChip(3, '晚餐'),
                     _buildFilterChip(4, '加餐'),
+                    _buildFilterChip(3, '晚餐'),
+                    _buildFilterChip(5, '夜宵'),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -535,6 +541,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         return 3;
       case '加餐':
         return 4;
+      case '夜宵':
+        return 5;
       default:
         return 4;
     }
@@ -655,7 +663,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     }
 
     final List<Widget> sections = [];
-    final mealTypes = [1, 2, 3, 4]; // 早餐、午餐、晚餐、加餐
+    final mealTypes = [1, 2, 3, 4, 5]; // 早餐、午餐、晚餐、加餐、夜宵（后端 meal_type 1-5）
 
     for (final mealType in mealTypes) {
       if (mealGroups.containsKey(mealType)) {
@@ -682,6 +690,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         return '晚餐';
       case 4:
         return '加餐';
+      case 5:
+        return '夜宵';
       default:
         return '其他';
     }
@@ -697,6 +707,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         return AppColors.dinnerColor;
       case 4:
         return AppColors.snackColor;
+      case 5:
+        // 夜宵紫，与选餐次页（meal_selection_page）一致
+        return const Color(0xFF6B46C1);
       default:
         return AppColors.primary;
     }
@@ -743,10 +756,10 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(
+          const BoxShadow(
             color: AppColors.shadow,
             blurRadius: 12,
-            offset: const Offset(0, 4),
+            offset: Offset(0, 4),
           ),
           BoxShadow(
             color: color.withValues(alpha: 0.05),
@@ -881,7 +894,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                   borderRadius: BorderRadius.circular(8),
                   color: AppColors.backgroundSecondary,
                 ),
-                child: Icon(
+                child: const Icon(
                   LucideIcons.utensils,
                   color: AppColors.textTertiary,
                   size: 24,
@@ -1010,7 +1023,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                       ],
                     ),
                   ),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: 'delete',
                     child: Row(
                       children: [
@@ -1019,7 +1032,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                           size: 16,
                           color: Colors.red,
                         ),
-                        const SizedBox(width: 8),
+                        SizedBox(width: 8),
                         Text(
                           '删除',
                           style: TextStyle(color: Colors.red),
@@ -1322,7 +1335,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
 
     if (nutritionData != null) {
       // 使用 nutritionData 数据
-      final data = nutritionData!;
+      final data = nutritionData;
 
       // 宏量营养素
       if (data['calories'] != null) {
@@ -1393,7 +1406,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         final confidence = (data['confidence_score'] as num) * 100;
         nutritionRows.add(_buildDetailRow('置信度', '${confidence.round()}%'));
       }
-    } else if (analysisResult != null && analysisResult.nutritionFacts != null) {
+    } else if (analysisResult != null &&
+        analysisResult.nutritionFacts != null) {
       final nutrition = analysisResult.nutritionFacts!;
       final macros = nutrition.macronutrients;
       final vitamins = nutrition.vitaminsMinerals;
@@ -1525,7 +1539,6 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     final TextEditingController descController = TextEditingController(
       text: record.description ?? '',
     );
-    final TextEditingController categoryController = TextEditingController();
 
     String? selectedCategory;
     List<String> selectedTags = [];
@@ -1736,7 +1749,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       protein = nutritionDetail.protein;
       fat = nutritionDetail.fat;
       carbs = nutritionDetail.carbohydrates;
-    } else if (analysisResult != null && analysisResult.nutritionFacts != null) {
+    } else if (analysisResult != null &&
+        analysisResult.nutritionFacts != null) {
       calories = analysisResult.nutritionFacts!.totalCalories;
       protein = analysisResult.nutritionFacts!.macronutrients.protein;
       fat = analysisResult.nutritionFacts!.macronutrients.fat;
@@ -1870,7 +1884,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<int>(
-                  value: selectedMealType,
+                  initialValue: selectedMealType,
                   decoration: const InputDecoration(
                     labelText: '用餐类型',
                     border: OutlineInputBorder(),
@@ -1878,8 +1892,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                   items: const [
                     DropdownMenuItem(value: 1, child: Text('早餐')),
                     DropdownMenuItem(value: 2, child: Text('午餐')),
-                    DropdownMenuItem(value: 3, child: Text('晚餐')),
                     DropdownMenuItem(value: 4, child: Text('加餐')),
+                    DropdownMenuItem(value: 3, child: Text('晚餐')),
+                    DropdownMenuItem(value: 5, child: Text('夜宵')),
                   ],
                   onChanged: (value) {
                     setDialogState(() => selectedMealType = value ?? 1);
@@ -1898,7 +1913,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                 // M2: 消费金额
                 TextField(
                   controller: costController,
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(
                     labelText: '消费金额（选填）',
                     suffixText: '元',
@@ -1908,7 +1924,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                 const SizedBox(height: 16),
                 // M2: 消费来源
                 DropdownButtonFormField<String?>(
-                  value: selectedSourceTag,
+                  initialValue: selectedSourceTag,
                   decoration: const InputDecoration(
                     labelText: '消费来源（选填）',
                     border: OutlineInputBorder(),

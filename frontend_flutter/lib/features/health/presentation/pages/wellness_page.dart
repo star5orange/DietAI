@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
-import '../../../../shared/domain/models/api_response.dart';
 import '../../../../services/wellness_service.dart';
+import '../../../chat/presentation/pages/chat_page.dart';
 import 'recipe_detail_page.dart';
 
 class WellnessPage extends StatefulWidget {
@@ -87,6 +87,35 @@ class _WellnessPageState extends State<WellnessPage>
     }
   }
 
+  /// F4：养生咨询入口归入统一对话内核（PRD D11）
+  ///
+  /// 页面只做可视化，咨询一律进 ChatPage 并携带当前节气/季节上下文，
+  /// 使模型不用重复追问用户所处时令。
+  void _openWellnessChat() {
+    final solarTerm = _recommendation?['current_solar_term']?.toString() ?? '';
+    final season = _recommendation?['current_season']?.toString() ?? '';
+    final facts = <String>[
+      if (solarTerm.isNotEmpty) '当前节气：$solarTerm',
+      if (season.isNotEmpty) '当前季节：$season',
+    ];
+    final contextText = facts.isEmpty ? '' : '${facts.join('，')}。';
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatPage(
+          sessionType: 5,
+          title: '养生咨询',
+          pageContext: ChatPageContext(
+            type: 'wellness',
+            title: '养生推荐 · 咨询',
+            hint: '用户从「养生推荐」页进入养生咨询。$contextText'
+                '用户关注节气/体质/药膳茶饮方向的养生调理，请结合时令给出建议。',
+          ),
+        ),
+      ),
+    );
+  }
+
   /// 安全地从 dynamic 转为 List，避免 Map→List 类型转换异常
   List _safeList(dynamic value) {
     if (value is List) return value;
@@ -109,6 +138,15 @@ class _WellnessPageState extends State<WellnessPage>
         title: Text('养生推荐',
             style: AppTextStyles.h5.copyWith(
                 color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
+        actions: [
+          // F4 / PRD D11：页面入口保留，但咨询统一走对话内核（session_type=5）
+          IconButton(
+            icon:
+                const Icon(LucideIcons.messageCircle, color: AppColors.primary),
+            tooltip: '问养生师',
+            onPressed: _openWellnessChat,
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           labelColor: AppColors.primary,
@@ -682,12 +720,15 @@ class _WellnessPageState extends State<WellnessPage>
   }
 
   List<Color> _quarterGradient(int startMonth) {
-    if (startMonth <= 3)
+    if (startMonth <= 3) {
       return const [Color(0xFF66BB6A), Color(0xFF43A047)]; // 春
-    if (startMonth <= 6)
+    }
+    if (startMonth <= 6) {
       return const [Color(0xFFFF7043), Color(0xFFE64A19)]; // 夏
-    if (startMonth <= 9)
+    }
+    if (startMonth <= 9) {
       return const [Color(0xFFFFA726), Color(0xFFF57C00)]; // 秋
+    }
     return const [Color(0xFF42A5F5), Color(0xFF1E88E5)]; // 冬
   }
 

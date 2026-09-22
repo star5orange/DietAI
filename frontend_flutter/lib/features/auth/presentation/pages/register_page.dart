@@ -185,7 +185,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
               if (value == null || value.trim().isEmpty) {
                 return '请输入用户名';
               }
-              if (value.trim().length < 1) {
+              if (value.trim().isEmpty) {
                 return '用户名至少1位字符';
               }
               if (value.trim().length > 10) {
@@ -196,18 +196,19 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
           ),
           const SizedBox(height: 16),
 
-          // 手机号输入框（可选）
+          // 手机号输入框（必填）
           AppInput(
             controller: _phoneController,
-            label: '手机号（可选）',
-            placeholder: '请输入手机号（选填）',
+            label: '手机号',
+            placeholder: '请输入手机号',
             prefixIcon: Icons.phone_outlined,
             type: AppInputType.number,
             validator: (value) {
-              if (value != null && value.trim().isNotEmpty) {
-                if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(value.trim())) {
-                  return '请输入有效的手机号（11位数字）';
-                }
+              if (value == null || value.trim().isEmpty) {
+                return '请输入手机号';
+              }
+              if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(value.trim())) {
+                return '请输入有效的手机号';
               }
               return null;
             },

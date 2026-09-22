@@ -72,7 +72,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(response.message ?? '重置失败'),
+            content: Text(response.message),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
           ),

@@ -37,7 +37,7 @@ class FriendCard extends ConsumerWidget {
         title: const Text('升级为家人'),
         content: Text(
           '确定要将 ${friend.realName ?? friend.username} 升级为家人吗？\n'
-          '升级后双方可以查看详细健康数据、代记录饮食等。',
+          '升级后双方可以查看详细健康数据、互发健康提醒等（家人数据仅可查看，不可代改）。',
         ),
         actions: [
           TextButton(

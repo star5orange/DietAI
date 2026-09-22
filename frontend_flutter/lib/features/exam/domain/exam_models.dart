@@ -17,6 +17,7 @@ class ExamReport {
   final DateTime createdAt;
   final Map<String, dynamic>? comparedToLast;
   final String? followupDate; // 复查提醒日期 YYYY-MM-DD
+  final bool aiAnalysisEnabled; // 是否允许 AI 分析该报告（默认关闭，仅本地私有存储）
 
   ExamReport({
     required this.id,
@@ -29,6 +30,7 @@ class ExamReport {
     required this.createdAt,
     this.comparedToLast,
     this.followupDate,
+    this.aiAnalysisEnabled = false,
   });
 
   factory ExamReport.fromJson(Map<String, dynamic> json) {
@@ -43,6 +45,7 @@ class ExamReport {
       createdAt: DateTime.parse(json['created_at'] as String),
       comparedToLast: json['compared_to_last'] as Map<String, dynamic>?,
       followupDate: json['followup_date'] as String?,
+      aiAnalysisEnabled: json['ai_analysis_enabled'] as bool? ?? false,
     );
   }
 
@@ -58,6 +61,7 @@ class ExamReport {
       'created_at': createdAt.toIso8601String(),
       'compared_to_last': comparedToLast,
       'followup_date': followupDate,
+      'ai_analysis_enabled': aiAnalysisEnabled,
     };
   }
 }
@@ -99,6 +103,7 @@ class ExamReportDetail {
   final String? followupDate; // 复查提醒日期 YYYY-MM-DD
   final int? createdBy;
   final String? ownerName;
+  final bool aiAnalysisEnabled; // 是否允许 AI 分析该报告（默认关闭，仅本地私有存储）
 
   ExamReportDetail({
     required this.id,
@@ -116,6 +121,7 @@ class ExamReportDetail {
     this.followupDate,
     this.createdBy,
     this.ownerName,
+    this.aiAnalysisEnabled = false,
   });
 
   factory ExamReportDetail.fromJson(Map<String, dynamic> json) {
@@ -138,6 +144,7 @@ class ExamReportDetail {
       followupDate: json['followup_date'] as String?,
       createdBy: json['created_by'] as int?,
       ownerName: json['owner_name'] as String?,
+      aiAnalysisEnabled: json['ai_analysis_enabled'] as bool? ?? false,
     );
   }
 }

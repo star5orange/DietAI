@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
 
@@ -670,7 +669,7 @@ class FoodService {
       print('📂 音频文件: $fileName, 大小: $fileSize bytes, 格式: $ext');
 
       if (fileSize == 0) {
-        return ApiResponse<Map<String, dynamic>>(
+        return const ApiResponse<Map<String, dynamic>>(
           success: false,
           message: '录音文件为空，请重新录音',
         );
@@ -939,7 +938,7 @@ class FoodService {
           data: finalRecord,
         );
       } else {
-        return ApiResponse<FoodRecord>(
+        return const ApiResponse<FoodRecord>(
           success: false,
           message: '创建食物记录失败',
         );
@@ -976,7 +975,7 @@ class FoodService {
       if (cachedData != null && (cachedData as List).isNotEmpty) {
         print('✅ 从内存缓存获取食物记录: date=$date');
         try {
-          final records = (cachedData as List)
+          final records = (cachedData)
               .map((item) => FoodRecord.fromJson(item as Map<String, dynamic>))
               .toList();
           if (records.isNotEmpty) {
@@ -996,7 +995,7 @@ class FoodService {
       if (localCachedData != null && (localCachedData as List).isNotEmpty) {
         print('✅ 从本地缓存获取食物记录: date=$date');
         try {
-          final records = (localCachedData as List)
+          final records = (localCachedData)
               .map((item) => FoodRecord.fromJson(item as Map<String, dynamic>))
               .toList();
           if (records.isNotEmpty) {
@@ -1285,20 +1284,6 @@ class FoodService {
       'fat': 3 * portion,
       'carbs': 15 * portion,
     };
-  }
-
-  List<String> _splitFoodName(String foodName) {
-    final delimiters = ['、', '，', ',', '和', '加', '配', '搭', '跟', '与'];
-    for (final d in delimiters) {
-      if (foodName.contains(d)) {
-        return foodName
-            .split(d)
-            .map((s) => s.trim())
-            .where((s) => s.isNotEmpty)
-            .toList();
-      }
-    }
-    return [foodName];
   }
 
   Map<String, double?> _estimateMultipleFoods(

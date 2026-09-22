@@ -1,4 +1,4 @@
-﻿"""
+"""
 MarkdownCheckpointSaver - StateBackend 的底层持久化实现
 
 将 LangGraph 检查点写入 MD 文件，每个 thread 一个目录：
@@ -6,10 +6,11 @@ MarkdownCheckpointSaver - StateBackend 的底层持久化实现
   sessions/{thread_id}/messages.md    — 人类可读对话记录
 """
 
+import asyncio
 import base64
 import json
 import logging
-from collections.abc import Iterator, Sequence
+from collections.abc import AsyncIterator, Iterator, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -229,6 +230,45 @@ class MarkdownCheckpointSaver(BaseCheckpointSaver):
                     import shutil
                     shutil.rmtree(session_dir)
                     logger.info(f"Deleted session: {session_dir}")
+
+    # ─── 异步接口（ainvoke/astream 依赖；文件 IO 交给线程池，避免阻塞事件循环） ───
+
+    async def aget_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
+        return await asyncio.to_thread(self.get_tuple, config)
+
+    async def aput(
+        self,
+        config: RunnableConfig,
+        checkpoint: Checkpoint,
+        metadata: CheckpointMetadata,
+        new_versions: ChannelVersions,
+    ) -> RunnableConfig:
+        return await asyncio.to_thread(
+            self.put, config, checkpoint, metadata, new_versions
+        )
+
+    async def aput_writes(
+        self,
+        config: RunnableConfig,
+        writes: Sequence[tuple[str, Any]],
+        task_id: str,
+        task_path: str = "",
+    ) -> None:
+        await asyncio.to_thread(self.put_writes, config, writes, task_id, task_path)
+
+    async def alist(
+        self,
+        config: Optional[RunnableConfig],
+        *,
+        filter: Optional[dict[str, Any]] = None,
+        before: Optional[RunnableConfig] = None,
+        limit: Optional[int] = None,
+    ) -> AsyncIterator[CheckpointTuple]:
+        for item in self.list(config, filter=filter, before=before, limit=limit):
+            yield item
+
+    async def adelete_thread(self, thread_id: str) -> None:
+        await asyncio.to_thread(self.delete_thread, thread_id)
 
     # ─── MD 渲染辅助方法 ───
 

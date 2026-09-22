@@ -115,7 +115,7 @@ class AuthStateNotifier extends StateNotifier<AsyncValue<User?>> {
           // 建立 WebSocket 实时连接
           WebSocketService().connect();
         } else {
-          print('️ 用户信息获取失败，清除登录状态: ${userResponse.message}');
+          print('⚠️ 用户信息获取失败，清除登录状态: ${userResponse.message}');
           // 登录成功但获取用户信息失败，清除token并返回失败
           await _authService.logout();
           state = AsyncValue.error(
@@ -179,8 +179,7 @@ class AuthStateNotifier extends StateNotifier<AsyncValue<User?>> {
       }
 
       print('✅ 注册成功，开始自动登录...');
-
-      // 注册成功后自动登录
+      // 注册成功后自动登录，login() 返回 true/false 表示是否成功
       final loginSuccess = await login(username: username, password: password);
 
       if (loginSuccess) {

@@ -31,6 +31,9 @@ class ExamReportUpload(BaseModel):
     exam_date: Optional[date] = Field(None, description="体检日期（AI可自动提取）")
     hospital_name: Optional[str] = Field(None, max_length=200, description="体检机构")
     report_type: Optional[ReportType] = Field(ReportType.FULL, description="报告类型")
+    ai_analysis_enabled: bool = Field(
+        False, description="是否允许 AI 分析该报告（默认关闭，仅本地私有存储）"
+    )
 
 
 class ExamReportUploadResponse(BaseModel):
@@ -41,6 +44,9 @@ class ExamReportUploadResponse(BaseModel):
     hospital_name: Optional[str] = None
     abnormal_count: int = 0
     status: str = Field("processing", description="processing|completed|failed")
+    ai_analysis_enabled: bool = Field(
+        False, description="是否允许 AI 分析该报告（默认关闭，仅本地私有存储）"
+    )
 
 
 # ============================================================
@@ -62,6 +68,9 @@ class ExamReportResponse(BaseModel):
     doctor_advice: Optional[str] = None
     compared_to_last: Optional[Dict[str, Any]] = None
     followup_date: Optional[date] = None
+    ai_analysis_enabled: bool = Field(
+        False, description="是否允许 AI 分析该报告（默认关闭，仅本地私有存储）"
+    )
     created_at: datetime
     created_by: Optional[int] = None
 
@@ -116,6 +125,13 @@ class ExamReportReassign(BaseModel):
     target_user_id: int = Field(..., description="目标用户ID（本人或当前用户的家人）")
 
 
+class ExamReportAiAnalysisUpdate(BaseModel):
+    """体检报告 AI 分析开关请求（体检隐私开关，默认关闭）"""
+    ai_analysis_enabled: bool = Field(
+        ..., description="是否允许 AI 分析该报告（false = 仅本地私有存储）"
+    )
+
+
 # ============================================================
 # 指标趋势
 # ============================================================
@@ -168,4 +184,7 @@ class ExamAdviceResponse(BaseModel):
     followup_reminder: Optional[str] = Field(None, description="复查提醒")
     suggest_weight_loss_goal: bool = Field(
         False, description="是否建议设置减重目标（BMI > 24 或 超重/肥胖 异常时为 true）"
+    )
+    ai_analysis_enabled: bool = Field(
+        True, description="该报告是否允许 AI 分析；false 表示未调用 AI（仅本地私有存储）"
     )

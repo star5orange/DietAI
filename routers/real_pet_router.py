@@ -28,8 +28,31 @@ from shared.services.real_pet_service import (
     compare_pet_foods, calculate_health_score,
     generate_avatar, get_generation_task, regenerate_emotion, upgrade_to_gif,
 )
+from shared.config.minio_config import minio_client
 
 router = APIRouter(prefix="/pets", tags=["真实宠物"])
+
+
+def _refresh_avatar_url(url: Optional[str]) -> Optional[str]:
+    """刷新宠物形象 URL。
+
+    生成形象时存库的是 MinIO 预签名 URL（7 天有效），过期后前端无法加载。
+    这里对 MinIO URL 重新签名；非 MinIO URL（如 DashScope 临时 URL/本地路径）原样返回。
+    """
+    if not url or "X-Amz" not in url:
+        return url
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        # 形如 /<bucket>/pet_avatars/pet_1_happy_123.png，去掉桶名得到 object_name
+        parts = parsed.path.lstrip("/").split("/", 1)
+        if len(parts) != 2:
+            return url
+        object_name = parts[1]
+        refreshed = minio_client.get_file_url(object_name)
+        return refreshed or url
+    except Exception:
+        return url
 
 
 def _pet_to_dict(p, db: Session = None) -> dict:
@@ -43,7 +66,7 @@ def _pet_to_dict(p, db: Session = None) -> dict:
         "id": p.id, "user_id": p.user_id, "name": p.name,
         "species": p.species, "breed": p.breed, "gender": p.gender,
         "birth_date": p.birth_date.isoformat() if p.birth_date else None,
-        "is_neutered": p.is_neutered, "avatar_url": p.avatar_url,
+        "is_neutered": p.is_neutered, "avatar_url": _refresh_avatar_url(p.avatar_url),
         "is_active": p.is_active,
         "created_at": p.created_at.isoformat() if p.created_at else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
@@ -82,12 +105,12 @@ def _pet_to_dict(p, db: Session = None) -> dict:
             ).first()
             if avatar:
                 result["avatar_emotions"] = {
-                    "happy": avatar.emotion_happy_url,
-                    "normal": avatar.emotion_normal_url,
-                    "hungry": avatar.emotion_hungry_url,
-                    "weak": avatar.emotion_weak_url,
+                    "happy": _refresh_avatar_url(avatar.emotion_happy_url),
+                    "normal": _refresh_avatar_url(avatar.emotion_normal_url),
+                    "hungry": _refresh_avatar_url(avatar.emotion_hungry_url),
+                    "weak": _refresh_avatar_url(avatar.emotion_weak_url),
                 }
-                result["avatar_base_url"] = avatar.base_image_url
+                result["avatar_base_url"] = _refresh_avatar_url(avatar.base_image_url)
         except Exception:
             pass
 

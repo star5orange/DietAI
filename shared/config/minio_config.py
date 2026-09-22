@@ -147,7 +147,7 @@ class MinioManager:
                 expires=expires
             )
             return url
-        except S3Error as e:
+        except Exception as e:
             print(f"Error getting file URL: {e}")
             return None
     

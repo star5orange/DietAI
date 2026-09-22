@@ -16,6 +16,7 @@ import '../../features/history/presentation/pages/history_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
 import '../../features/profile/presentation/pages/my_pet_page.dart';
 import '../../features/health/presentation/pages/main_health_page.dart';
+import '../../features/health/presentation/pages/weight_tracking_page.dart';
 import '../../features/health/presentation/pages/reminder_settings_page.dart';
 import '../../features/health/presentation/pages/constitution_quiz_page.dart';
 import '../../features/health/presentation/pages/wellness_page.dart';
@@ -50,6 +51,8 @@ import '../../features/social/presentation/pages/social_page.dart';
 import '../../features/social/presentation/pages/search_user_page.dart';
 import '../../features/social/presentation/pages/friend_requests_page.dart';
 import '../../features/social/presentation/pages/chat_page.dart';
+// Agent 对话页（PRD D15 首页主入口）：与社交私聊页同名，故起别名
+import '../../features/chat/presentation/pages/chat_page.dart' as agent_chat;
 import '../../features/social/presentation/pages/chat_list_page.dart';
 import '../../features/social/presentation/pages/family_health_page.dart';
 import '../../features/social/presentation/pages/leaderboard_page.dart';
@@ -63,6 +66,12 @@ import '../../features/exam/presentation/pages/exam_reports_page.dart';
 import '../../features/exam/presentation/pages/exam_detail_page.dart';
 import '../../features/exam/presentation/pages/exam_upload_page.dart';
 import '../../features/exam/presentation/pages/exam_trend_page.dart';
+
+/// 解析卡片跳转携带的 date 上下文（PRD 4.8）：格式 YYYY-MM-DD，非法值忽略
+DateTime? _parseDateParam(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  return DateTime.tryParse(raw);
+}
 
 /// 认证状态变化监听器 - 仅通知路由刷新，不重建GoRouter实例
 class AuthNotifier extends ChangeNotifier {
@@ -229,21 +238,44 @@ final routerProvider = Provider<GoRouter>((ref) {
           return MainScaffold(key: ValueKey('scaffold_$userId'), child: child);
         },
         routes: [
-          // 首页
+          // 首页主入口：Agent 对话页（PRD D15 —— 对话是唯一主入口）
           GoRoute(
             path: '/',
             name: 'home',
+            builder: (context, state) {
+              final userId = ref.watch(currentUserProvider)?.id ?? 0;
+              return agent_chat.ChatPage(
+                key: ValueKey('home_chat_$userId'),
+                sessionType: 1,
+                isHomeEntry: true,
+              );
+            },
+          ),
+
+          // 数据看板：原首页卡片/图表入口保留在页面层，可切换访问（PRD D15）
+          GoRoute(
+            path: '/dashboard',
+            name: 'dashboard',
             builder: (context, state) {
               final userId = ref.watch(currentUserProvider)?.id ?? 0;
               return HomePage(key: ValueKey('home_$userId'));
             },
           ),
 
-          // 历史页面
+          // 历史页面（卡片跳转可带 date 上下文，PRD 4.8）
           GoRoute(
             path: '/history',
             name: 'history',
-            builder: (context, state) => const HistoryPage(),
+            builder: (context, state) => HistoryPage(
+              initialDate: _parseDateParam(state.uri.queryParameters['date']),
+            ),
+          ),
+
+          // 体重趋势页（趋势卡「查看完整趋势」入口，PRD 4.8）
+          GoRoute(
+            path: '/weight-trend',
+            name: 'weight_trend',
+            builder: (context, state) => const WeightTrackingPage(),
           ),
 
           // 健康页面
@@ -572,17 +604,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             },
           ),
 
-          // M4: 上传体检报告
+          // M4: 上传体检报告（PRD D9：仅本人可上传/修改，不再支持指定家人）
           GoRoute(
             path: '/exam/upload',
             name: 'exam_upload',
-            builder: (context, state) {
-              final extra = state.extra as Map<String, dynamic>?;
-              return ExamUploadPage(
-                ownerUserId: extra?['ownerUserId'] as int?,
-                ownerName: extra?['ownerName'] as String?,
-              );
-            },
+            builder: (context, state) => const ExamUploadPage(),
           ),
         ],
       ),

@@ -5,9 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../../core/themes/app_colors.dart';
 import '../../../core/themes/app_text_styles.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/utils/landing_preference.dart';
 import '../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../features/onboarding/presentation/providers/onboarding_provider.dart';
-import '../../../shared/domain/models/user_model.dart';
 
 /// 启动页面
 class SplashPage extends ConsumerStatefulWidget {
@@ -81,7 +81,15 @@ class _SplashPageState extends ConsumerState<SplashPage>
 
     if (mounted) {
       print('🔄 用户已登录且引导已完成，跳转到首页');
-      context.go('/');
+      // 启动落地页按用户偏好（PRD D15 扩展）：默认对话直达，可配置为数据看板
+      final userId = ref.read(authStateProvider).value?.id;
+      final landing = userId != null
+          ? await LandingPreference.get(userId)
+          : LandingPreference.chat;
+      print('🔄 启动落地页: userId=$userId, landing=$landing');
+      if (!mounted) return;
+      ref.read(landingProvider.notifier).state = landing;
+      context.go(landing == LandingPreference.dashboard ? '/dashboard' : '/');
     }
   }
 
@@ -203,7 +211,7 @@ class _SplashPageState extends ConsumerState<SplashPage>
   }
 
   Widget _buildLoadingIndicator() {
-    return SizedBox(
+    return const SizedBox(
       width: 32,
       height: 32,
       child: CircularProgressIndicator(

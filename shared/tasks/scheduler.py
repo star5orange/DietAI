@@ -340,7 +340,11 @@ def setup_scheduler() -> AsyncIOScheduler:
         logger.warning("Scheduler already initialized")
         return _scheduler
 
-    _scheduler = AsyncIOScheduler()
+    # misfire_grace_time：默认仅 1 秒，调度器晚醒超过 1s 就把整次 cron 触发静默丢弃。
+    # 实测 19 日 20:00 的家庭异常推送因事件循环晚醒 1.35s 被 misfire 跳过；
+    # 放宽到 5 分钟，秒级~分钟级卡顿（GC/事件循环繁忙/短时睡眠恢复）仍会补跑，
+    # 深度休眠数小时的依旧跳过（过时的关怀推送不该在几小时后补发）。
+    _scheduler = AsyncIOScheduler(job_defaults={"misfire_grace_time": 300})
 
     # Daily task: Regenerate shared memories at 02:00
     _scheduler.add_job(
@@ -402,6 +406,48 @@ def setup_scheduler() -> AsyncIOScheduler:
     except ImportError as e:
         logger.warning(f"Goal expiry task not registered: {e}")
 
+    # V5 老人线：饭点关怀询问（早/午/晚饭后询问老人是否已吃，只问不代记）
+    try:
+        from shared.services.family_care_service import ask_meal_care
+        _scheduler.add_job(
+            ask_meal_care,
+            trigger=CronTrigger(hour="9,13,19", minute=30),
+            id="family_meal_care_ask",
+            name="饭点关怀询问",
+            replace_existing=True,
+        )
+        logger.info("Meal-time care ask task registered (daily 09:30/13:30/19:30)")
+    except ImportError as e:
+        logger.warning(f"Meal-time care task not registered: {e}")
+
+    # V5 老人线：家庭异常主动提醒（20:00 把当天异常推给子女）
+    try:
+        from shared.services.family_care_service import push_family_alerts
+        _scheduler.add_job(
+            push_family_alerts,
+            trigger=CronTrigger(hour=20, minute=0),
+            id="family_alerts_push",
+            name="家庭异常主动提醒",
+            replace_existing=True,
+        )
+        logger.info("Family alerts push task registered (daily 20:00)")
+    except ImportError as e:
+        logger.warning(f"Family alerts push task not registered: {e}")
+
+    # V5 老人线：父母日报推送（21:00 生成父母当天摘要推给子女）
+    try:
+        from shared.services.family_care_service import push_daily_reports
+        _scheduler.add_job(
+            push_daily_reports,
+            trigger=CronTrigger(hour=21, minute=0),
+            id="family_daily_report_push",
+            name="父母日报推送",
+            replace_existing=True,
+        )
+        logger.info("Family daily report task registered (daily 21:00)")
+    except ImportError as e:
+        logger.warning(f"Family daily report task not registered: {e}")
+
     _scheduler.start()
     logger.info("Background task scheduler started")
 
@@ -423,7 +469,8 @@ async def run_task_now(task_name: str) -> bool:
     Manually trigger a specific task to run immediately.
 
     Args:
-        task_name: One of "shared_memory", "goal_tracking", "nutrition", "chat"
+        task_name: One of "shared_memory", "goal_tracking", "nutrition", "chat",
+            "care_ask", "family_alerts", "family_report"
 
     Returns:
         True if task was triggered successfully
@@ -434,6 +481,16 @@ async def run_task_now(task_name: str) -> bool:
         "nutrition": generate_weekly_nutrition_summary,
         "chat": generate_chat_summary,
     }
+
+    # V5 老人线关怀任务（手动触发便于验证，无需等到定时点）
+    if task_name in ("care_ask", "family_alerts", "family_report"):
+        from shared.services import family_care_service
+
+        task_mapping.update({
+            "care_ask": family_care_service.ask_meal_care,
+            "family_alerts": family_care_service.push_family_alerts,
+            "family_report": family_care_service.push_daily_reports,
+        })
 
     task_func = task_mapping.get(task_name)
     if task_func is None:

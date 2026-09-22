@@ -124,7 +124,8 @@ async def generate_ai_wellness_recommendation(
         from shared.config.settings import get_settings
 
         settings = get_settings()
-        client = get_client(url=settings.ai_service_url)
+        # PRD 5.1：外部依赖（LangGraph SDK）设置超时，避免请求无限阻塞
+        client = get_client(url=settings.ai_service_url, timeout=settings.external_http_timeout)
 
         # 构建养生推荐提示
         prompt_parts = [

@@ -379,17 +379,13 @@ class _PetWeeklyReportPageState extends State<PetWeeklyReportPage> {
 
   Widget _buildDayItem(Map<String, dynamic> day) {
     Color statusColor;
-    IconData statusIcon;
     switch (day['status']) {
       case '偏低':
         statusColor = AppColors.warning;
-        statusIcon = LucideIcons.trendingDown;
       case '偏高':
         statusColor = AppColors.error;
-        statusIcon = LucideIcons.trendingUp;
       default:
         statusColor = AppColors.success;
-        statusIcon = LucideIcons.check;
     }
 
     return Container(
@@ -431,9 +427,7 @@ class _PetWeeklyReportPageState extends State<PetWeeklyReportPage> {
             ),
           ),
 
-          // 状态图标
-          Icon(statusIcon, color: statusColor, size: 18),
-          const SizedBox(width: 4),
+          // 状态文字
           Text(
             day['status'] as String? ?? '',
             style: TextStyle(

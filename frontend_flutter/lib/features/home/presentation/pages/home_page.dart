@@ -17,12 +17,10 @@ import '../../../../shared/domain/models/saved_meal_model.dart';
 import '../../../../shared/presentation/widgets/error_handler.dart';
 import '../../../../shared/presentation/widgets/water_intake_widget.dart';
 import '../../../../shared/presentation/widgets/solar_term_today_widget.dart';
-import '../../../../shared/utils/species_utils.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../widgets/food_record_modal.dart';
 import '../../../camera/presentation/pages/camera_page.dart';
-import '../../../chat/presentation/pages/chat_page.dart';
 import '../../../pet/presentation/providers/pet_provider.dart';
 import '../../../pet/presentation/widgets/pet_health_score_card.dart';
 import '../../../pet/presentation/widgets/pet_avatar_display.dart';
@@ -51,8 +49,6 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> with RouteAware {
-  Offset _fabOffset = const Offset(0, 0);
-  bool _fabInitialized = false;
   final TtsService _ttsService = TtsService(); // 语音引导（老年人友好）
   final FoodService _foodService = FoodService();
   List<FoodRecord> _todayRecords = [];
@@ -99,12 +95,9 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     return emotions.map((k, v) => MapEntry(k, v?.toString() ?? ''));
   }
 
-  int? _lastUserId;
-
   @override
   void initState() {
     super.initState();
-    _lastUserId = ref.read(currentUserProvider)?.id;
     _loadTodayData();
     _loadPets();
   }
@@ -241,7 +234,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
         // 注意：targetCalories 默认是 0.0 而非 null，需要同时判断 > 0
         if (userProfile?.targetCalories != null &&
             userProfile!.targetCalories! > 0) {
-          _targetCalories = userProfile!.targetCalories!.toDouble();
+          _targetCalories = userProfile.targetCalories!.toDouble();
           print('✅ 使用用户设置的卡路里目标: $_targetCalories');
         }
 
@@ -271,8 +264,8 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
         final records = result.data?.records ?? [];
 
         // M2: 如果汇总有热量但记录列表为空，重试一次 records API
-        if (records.isEmpty && summary != null && summary!.totalCalories > 0) {
-          print('⚠️ 汇总有热量(${summary!.totalCalories})但记录为空，重试records API...');
+        if (records.isEmpty && summary != null && summary.totalCalories > 0) {
+          print('⚠️ 汇总有热量(${summary.totalCalories})但记录为空，重试records API...');
           await Future.delayed(const Duration(milliseconds: 500));
           try {
             final retryResult = await _foodService.getFoodRecords(
@@ -305,7 +298,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ErrorHandler.showError(this.context, e.toString());
+        ErrorHandler.showError(context, e.toString());
       }
     }
   }
@@ -952,12 +945,11 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              const Row(
                 children: [
-                  const Icon(LucideIcons.syringe,
-                      size: 16, color: AppColors.warning),
-                  const SizedBox(width: 6),
-                  const Text('疫苗提醒',
+                  Icon(LucideIcons.syringe, size: 16, color: AppColors.warning),
+                  SizedBox(width: 6),
+                  Text('疫苗提醒',
                       style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -990,7 +982,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
-                          isOverdue ? '已过期 ${-days}天' : '${days}天后',
+                          isOverdue ? '已过期 ${-days}天' : '$days天后',
                           style: TextStyle(
                             fontSize: 11,
                             color:
@@ -1208,6 +1200,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
 
     return Scaffold(
       backgroundColor: AppColors.backgroundSecondary,
+      // 宠物模式保留喂食加号 FAB；人域回对话入口已上移至AppBar右上角（原悬浮聊天FAB冗余，已删）
       floatingActionButton: _selectedPetIndex != null
           ? FloatingActionButton(
               onPressed: _showAddPetFeedingModal,
@@ -1215,63 +1208,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
               heroTag: 'pet_feed_fab',
               child: const Icon(LucideIcons.plus, color: Colors.white),
             )
-          : LayoutBuilder(
-              builder: (context, constraints) {
-                // 初始化位置：右下角默认FAB位置
-                if (!_fabInitialized) {
-                  _fabOffset = Offset(
-                    constraints.maxWidth - 64,
-                    constraints.maxHeight - 160,
-                  );
-                  _fabInitialized = true;
-                }
-                return Stack(
-                  children: [
-                    Positioned(
-                      left: _fabOffset.dx,
-                      top: _fabOffset.dy,
-                      child: GestureDetector(
-                        onPanUpdate: (details) {
-                          setState(() {
-                            _fabOffset = Offset(
-                              (_fabOffset.dx + details.delta.dx)
-                                  .clamp(0, constraints.maxWidth - 56),
-                              (_fabOffset.dy + details.delta.dy)
-                                  .clamp(0, constraints.maxHeight - 56),
-                            );
-                          });
-                        },
-                        onPanEnd: (_) {
-                          // 松手后吸附到左侧或右侧
-                          setState(() {
-                            final snapLeft =
-                                _fabOffset.dx < constraints.maxWidth / 2;
-                            _fabOffset = Offset(
-                              snapLeft ? 16.0 : constraints.maxWidth - 72,
-                              _fabOffset.dy,
-                            );
-                          });
-                        },
-                        child: FloatingActionButton(
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const ChatPage(
-                                  sessionType: 1, title: 'AI营养顾问'),
-                            ),
-                          ),
-                          backgroundColor: AppColors.primary,
-                          elevation: 6,
-                          heroTag: 'ai_chat_fab',
-                          child: const Icon(LucideIcons.messageCircle,
-                              size: 24, color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
+          : null,
       body: SafeArea(
         child: Column(
           children: [
@@ -1560,6 +1497,19 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                 ],
               ),
             ),
+          // 快速切回 AI 对话页（数据看板 → 对话，PRD D15 对话主入口）
+          IconButton(
+            onPressed: () => context.go('/'),
+            tooltip: '回对话',
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            constraints: const BoxConstraints(),
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(
+              LucideIcons.messageCircle,
+              size: 18,
+              color: AppColors.textSecondary,
+            ),
+          ),
           // 首页模块编辑入口（我的健康态可用：显示/隐藏模块 + 调整顺序）
           if (_selectedPetIndex == null)
             IconButton(
@@ -1632,8 +1582,10 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                   const SizedBox(height: 4),
                   Text(
                       crowdTag == '减脂'
-                          ? '上限 ${_targetCalories.round()} kcal'
-                          : '每日 ${_targetCalories.round()} kcal',
+                          ? '今日目标 ${_targetCalories.round()} kcal'
+                          : crowdTag == '健身'
+                              ? '今日目标 ${_targetCalories.round()} kcal'
+                              : '每日目标 ${_targetCalories.round()} kcal',
                       style: AppTextStyles.bodySmall
                           .copyWith(color: AppColors.textSecondary)),
                 ],
@@ -1787,7 +1739,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                 ),
                 child: Text(
                   meal.categoryDisplayName,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 10,
                     color: AppColors.primary,
                     fontWeight: FontWeight.w500,
@@ -1814,20 +1766,22 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
   }
 
   Future<void> _quickAddFromSavedMeal(SavedMeal meal) async {
-    // 判断当前时间段对应的餐次
+    // 判断当前时间段对应的餐次（口径与后端 record_food._infer_meal_type 一致）
     final hour = DateTime.now().hour;
     int mealType;
-    if (hour < 10) {
+    if (hour >= 5 && hour < 10) {
       mealType = 1; // 早餐
-    } else if (hour < 14) {
+    } else if (hour >= 10 && hour < 15) {
       mealType = 2; // 午餐
-    } else if (hour < 20) {
+    } else if (hour >= 15 && hour < 17) {
+      mealType = 4; // 加餐
+    } else if (hour >= 17 && hour < 21) {
       mealType = 3; // 晚餐
     } else {
-      mealType = 4; // 加餐
+      mealType = 5; // 夜宵
     }
 
-    final mealNames = ['早餐', '午餐', '晚餐', '加餐'];
+    final mealNames = ['早餐', '午餐', '晚餐', '加餐', '夜宵'];
 
     // 显示消费输入对话框
     await _showCostInputDialog(
@@ -1872,7 +1826,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('消费金额（可选）', style: AppTextStyles.bodyMedium),
+                const Text('消费金额（可选）', style: AppTextStyles.bodyMedium),
                 const SizedBox(height: 8),
                 TextField(
                   controller: amountController,
@@ -1888,7 +1842,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                   },
                 ),
                 const SizedBox(height: 16),
-                Text('消费来源（可选）', style: AppTextStyles.bodyMedium),
+                const Text('消费来源（可选）', style: AppTextStyles.bodyMedium),
                 const SizedBox(height: 8),
                 TextField(
                   controller: sourceController,
@@ -1974,23 +1928,29 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
         'type': 2
       },
       {
+        'name': '加餐',
+        'icon': LucideIcons.croissant,
+        'gradient': AppColors.snackGradient,
+        'type': 4
+      },
+      {
         'name': '晚餐',
         'icon': LucideIcons.moon,
         'gradient': AppColors.dinnerGradient,
         'type': 3
       },
       {
-        'name': '加餐',
-        'icon': LucideIcons.croissant,
-        'gradient': AppColors.snackGradient,
-        'type': 4
+        'name': '夜宵',
+        'icon': LucideIcons.cookie,
+        'gradient': AppColors.lateNightGradient,
+        'type': 5
       },
     ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('食物摄入', style: AppTextStyles.h5),
+        const Text('食物摄入', style: AppTextStyles.h5),
         const SizedBox(height: 16),
         ...meals.map((meal) => _buildMealItem(
               meal['name'] as String? ?? '',
@@ -2193,7 +2153,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                     ),
                     if (timeText != null) ...[
                       const SizedBox(width: 4),
-                      Icon(LucideIcons.clock,
+                      const Icon(LucideIcons.clock,
                           size: 11, color: AppColors.textTertiary),
                       const SizedBox(width: 1),
                       Text(timeText,
@@ -2298,7 +2258,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('删除食物记录', style: AppTextStyles.h5),
+        title: const Text('删除食物记录', style: AppTextStyles.h5),
         content: Text('确定要删除"${record.foodName ?? '未命名食物'}"吗？此操作不可撤销。',
             style: AppTextStyles.bodyMedium),
         actions: [
@@ -2354,7 +2314,8 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     if (mealName == '早餐' ||
         mealName == '午餐' ||
         mealName == '晚餐' ||
-        mealName == '加餐') {
+        mealName == '加餐' ||
+        mealName == '夜宵') {
       final mealType = _getMealTypeFromName(mealName);
       _showTimePicker(method, mealName, mealType);
     } else {
@@ -2617,7 +2578,8 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
             icon: LucideIcons.leaf,
             color: const Color(0xFF43A047),
             title: '节气养生',
-            subtitle: '${SolarTermTodayWidget.getCurrentSolarTermName()} · 应季养生建议',
+            subtitle:
+                '${SolarTermTodayWidget.getCurrentSolarTermName()} · 应季养生建议',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -2643,14 +2605,13 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
       HomeModuleId.foodIntake: () => _buildFoodIntakeSection(),
       // ---------- 新用户引导卡（完成后由后端信号自动隐藏）----------
       HomeModuleId.onboardingPreference: () => _buildOnboardingCard(
-        icon: LucideIcons.slidersHorizontal,
-        color: const Color(0xFF7C4DFF),
-        title: '让首页更懂你',
-        subtitle: '回答几个小问题，首页更贴合你的日常',
+            icon: LucideIcons.slidersHorizontal,
+            color: const Color(0xFF7C4DFF),
+            title: '让首页更懂你',
+            subtitle: '回答几个小问题，首页更贴合你的日常',
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(
-                  builder: (_) => const HomePreferencePage()),
+              MaterialPageRoute(builder: (_) => const HomePreferencePage()),
             ).then((_) => _reloadHomeLayout()),
           ),
       HomeModuleId.onboardingRecord: () => _buildOnboardingCard(
@@ -3426,7 +3387,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
         Container(
             width: 8,
             height: 8,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
                 color: AppColors.textTertiary, shape: BoxShape.circle)),
         const SizedBox(width: 4),
         Text('其他 $percent%',
@@ -3710,7 +3671,7 @@ class _CalorieGoalDialogState extends State<_CalorieGoalDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('设置每日卡路里目标', style: AppTextStyles.h5),
+      title: const Text('设置每日卡路里目标', style: AppTextStyles.h5),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -3867,7 +3828,7 @@ class _FoodNameDialogState extends State<_FoodNameDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('编辑食物名称', style: AppTextStyles.h5),
+      title: const Text('编辑食物名称', style: AppTextStyles.h5),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

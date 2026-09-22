@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/services/api_service.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../providers/family_provider.dart';
 
@@ -179,107 +178,9 @@ class _FamilyHealthPageState extends ConsumerState<FamilyHealthPage> {
             ),
             const SizedBox(height: 16),
           ],
-          // 代记录饮食按钮
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton.icon(
-              onPressed: () => context.push(
-                '/family/proxy-record/${widget.userId}',
-                extra: {'name': widget.userName ?? '家人'},
-              ),
-              icon: const Icon(Icons.restaurant_outlined, color: Colors.white),
-              label: Text('帮${widget.userName ?? '家人'}记录饮食'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // 代记录饮水按钮
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: OutlinedButton.icon(
-              onPressed: () => _showProxyWaterDialog(context),
-              icon: const Icon(Icons.water_drop_outlined, color: Colors.blue),
-              label: Text('代${widget.userName ?? '家人'}记录饮水'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.blue,
-                side: const BorderSide(color: Colors.blue),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
         ],
       ),
     );
-  }
-
-  /// 代记录饮水弹窗
-  Future<void> _showProxyWaterDialog(BuildContext context) async {
-    final controller = TextEditingController();
-    final amount = await showDialog<int>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('为${widget.userName ?? '家人'}记录饮水'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: '饮水量 (ml)',
-            hintText: '例如：250',
-            suffixText: 'ml',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () {
-              final value = int.tryParse(controller.text.trim());
-              if (value == null || value <= 0) {
-                ScaffoldMessenger.of(ctx).showSnackBar(
-                  const SnackBar(content: Text('请输入有效的饮水量')),
-                );
-                return;
-              }
-              Navigator.pop(ctx, value);
-            },
-            child: const Text('确认', style: TextStyle(color: Colors.blue)),
-          ),
-        ],
-      ),
-    );
-
-    if (amount == null || !mounted) return;
-
-    final api = ApiService();
-    final response = await api.post(
-      '/family/proxy-record/water',
-      queryParameters: {
-        'target_user_id': widget.userId,
-        'amount_ml': amount,
-      },
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(response.success
-                ? '已为${widget.userName ?? '家人'}记录 ${amount}ml 饮水'
-                : '记录失败: ${response.message}')),
-      );
-    }
   }
 
   /// 健康目标卡片

@@ -28,6 +28,7 @@ DietAI/
 │   ├── utils/                  → Shared agent utils (nodes, states, structs, tools, prompts, chat_nodes, chat_states)
 │   ├── UserMemory/             → Per-user memory files (gitignored)
 │   └── VectorStore/            → ChromaDB persistence (gitignored)
+├── agents/                     → Deep Agent user memory store (agents/UserMemory, md_checkpointer/md_store base_path, gitignored)
 ├── routers/                    → All API route handlers (unified)
 │   ├── auth_router.py          → /api/auth
 │   ├── user_router.py          → /api/users

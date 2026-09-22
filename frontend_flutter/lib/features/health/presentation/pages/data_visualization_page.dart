@@ -10,7 +10,6 @@ import '../../../../core/themes/app_text_styles.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../services/food_service.dart';
 import '../../../../services/exercise_service.dart';
-import '../../../../services/wellness_service.dart';
 import '../../../../services/water_service.dart';
 import '../../../../shared/domain/models/api_response.dart';
 import '../../../../shared/domain/models/food_model.dart';
@@ -31,12 +30,10 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
   late TabController _tabController;
   final FoodService _foodService = FoodService();
   final ExerciseService _exerciseService = ExerciseService();
-  final WellnessService _wellnessService = WellnessService();
   final WaterService _waterService = WaterService();
 
   NutritionTrends? _nutritionTrends;
   List<DailyNutritionSummary> _weeklySummaries = [];
-  Map<String, dynamic>? _exerciseStats;
   String? _constitutionType;
   String? _crowdTag;
   bool _isLoading = true;
@@ -98,8 +95,6 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
         setState(() {
           _nutritionTrends = (results[0] as ApiResponse<NutritionTrends>).data;
           _weeklySummaries = results[1] as List<DailyNutritionSummary>;
-          _exerciseStats =
-              (results[2] as ApiResponse<Map<String, dynamic>>).data;
           _constitutionType = results[3] as String?;
           _waterStats = (results[4] as ApiResponse<Map<String, dynamic>>).data;
           _mealRegularity = results[5] as Map<String, dynamic>?;
@@ -167,7 +162,7 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
         backgroundColor: AppColors.background,
         elevation: 0,
         leadingWidth: 44,
-        title: Text('数据分析',
+        title: Text('数据可视化',
             style: AppTextStyles.h5.copyWith(
                 color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
         bottom: TabBar(
@@ -768,9 +763,15 @@ class _DataVisualizationPageState extends ConsumerState<DataVisualizationPage>
           const SizedBox(height: 20),
 
           // 人群标签
-          if (_crowdTag != null && _crowdTag != '均衡维持' && _crowdTag != '普通' && _crowdTag != '普通日常')
+          if (_crowdTag != null &&
+              _crowdTag != '均衡维持' &&
+              _crowdTag != '普通' &&
+              _crowdTag != '普通日常')
             _buildCrowdTagCard(_crowdTag!),
-          if (_crowdTag != null && _crowdTag != '均衡维持' && _crowdTag != '普通' && _crowdTag != '普通日常')
+          if (_crowdTag != null &&
+              _crowdTag != '均衡维持' &&
+              _crowdTag != '普通' &&
+              _crowdTag != '普通日常')
             const SizedBox(height: 20),
 
           // 健康指标环形图

@@ -1,5 +1,6 @@
 import redis
 import json
+import time
 from typing import Any, Optional, Union
 from datetime import timedelta
 import os
@@ -29,7 +30,13 @@ class RedisConfig:
 
 class RedisManager:
     """Redis管理器"""
-    
+
+    # 熔断状态（类级，进程内共享）：Redis 连续失败后暂停使用，避免每次请求都等待超时
+    _circuit_failures = 0
+    _circuit_open_until = 0.0
+    CIRCUIT_FAIL_THRESHOLD = 3
+    CIRCUIT_OPEN_SECONDS = 30
+
     def __init__(self, config: RedisConfig = None):
         self.config = config or RedisConfig()
         self.pool = redis.ConnectionPool(
@@ -38,16 +45,40 @@ class RedisManager:
             password=self.config.password,
             db=self.config.db,
             decode_responses=self.config.decode_responses,
-            max_connections=self.config.max_connections
+            max_connections=self.config.max_connections,
+            # 防止 Redis 连接半开/挂起时请求无限阻塞
+            socket_connect_timeout=0.5,
+            socket_timeout=0.5,
+            retry_on_timeout=False,
+            health_check_interval=30,
         )
         self.client = redis.Redis(connection_pool=self.pool)
-        
+
+    @classmethod
+    def _is_available(cls) -> bool:
+        """熔断打开期间直接跳过 Redis"""
+        return time.time() >= cls._circuit_open_until
+
+    @classmethod
+    def _note_success(cls):
+        cls._circuit_failures = 0
+        cls._circuit_open_until = 0.0
+
+    @classmethod
+    def _note_failure(cls):
+        cls._circuit_failures += 1
+        if cls._circuit_failures >= cls.CIRCUIT_FAIL_THRESHOLD:
+            cls._circuit_open_until = time.time() + cls.CIRCUIT_OPEN_SECONDS
+            cls._circuit_failures = 0
+
     def get_client(self) -> redis.Redis:
         """获取Redis客户端"""
         return self.client
     
     def set(self, key: str, value: Any, expire: Optional[Union[int, timedelta]] = None) -> bool:
         """设置缓存"""
+        if not self._is_available():
+            return False
         try:
             if isinstance(value, (dict, list)):
                 value = json.dumps(value, ensure_ascii=False)
@@ -65,15 +96,20 @@ class RedisManager:
                     except (ValueError, TypeError):
                         print(f"Invalid expire type: {type(expire)}, value: {expire}")
                         return False
-                return self.client.setex(key, expire, value)
+                result = self.client.setex(key, expire, value)
             else:
-                return self.client.set(key, value)
+                result = self.client.set(key, value)
+            self._note_success()
+            return result
         except Exception as e:
             print(f"Redis set error: {e}")
+            self._note_failure()
             return False
     
     def get(self, key: str) -> Optional[Any]:
         """获取缓存"""
+        if not self._is_available():
+            return None
         try:
             value = self.client.get(key)
             if value is None:
@@ -81,64 +117,94 @@ class RedisManager:
             
             # 尝试解析JSON
             try:
+                self._note_success()
                 return json.loads(value)
             except json.JSONDecodeError:
+                self._note_success()
                 return value
         except Exception as e:
             print(f"Redis get error: {e}")
+            self._note_failure()
             return None
     
     def delete(self, key: str) -> bool:
         """删除缓存"""
+        if not self._is_available():
+            return False
         try:
-            return bool(self.client.delete(key))
+            result = bool(self.client.delete(key))
+            self._note_success()
+            return result
         except Exception as e:
             print(f"Redis delete error: {e}")
+            self._note_failure()
             return False
     
     def exists(self, key: str) -> bool:
         """检查键是否存在"""
+        if not self._is_available():
+            return False
         try:
-            return bool(self.client.exists(key))
+            result = bool(self.client.exists(key))
+            self._note_success()
+            return result
         except Exception as e:
             print(f"Redis exists error: {e}")
+            self._note_failure()
             return False
     
     def expire(self, key: str, seconds: int) -> bool:
         """设置过期时间"""
+        if not self._is_available():
+            return False
         try:
-            return bool(self.client.expire(key, seconds))
+            result = bool(self.client.expire(key, seconds))
+            self._note_success()
+            return result
         except Exception as e:
             print(f"Redis expire error: {e}")
+            self._note_failure()
             return False
     
     def hset(self, name: str, key: str, value: Any) -> bool:
         """设置哈希字段"""
+        if not self._is_available():
+            return False
         try:
             if isinstance(value, (dict, list)):
                 value = json.dumps(value, ensure_ascii=False)
-            return bool(self.client.hset(name, key, value))
+            result = bool(self.client.hset(name, key, value))
+            self._note_success()
+            return result
         except Exception as e:
             print(f"Redis hset error: {e}")
+            self._note_failure()
             return False
     
     def hget(self, name: str, key: str) -> Optional[Any]:
         """获取哈希字段"""
+        if not self._is_available():
+            return None
         try:
             value = self.client.hget(name, key)
             if value is None:
                 return None
             
             try:
+                self._note_success()
                 return json.loads(value)
             except json.JSONDecodeError:
+                self._note_success()
                 return value
         except Exception as e:
             print(f"Redis hget error: {e}")
+            self._note_failure()
             return None
     
     def hgetall(self, name: str) -> dict:
         """获取所有哈希字段"""
+        if not self._is_available():
+            return {}
         try:
             data = self.client.hgetall(name)
             result = {}
@@ -147,9 +213,11 @@ class RedisManager:
                     result[key] = json.loads(value)
                 except json.JSONDecodeError:
                     result[key] = value
+            self._note_success()
             return result
         except Exception as e:
             print(f"Redis hgetall error: {e}")
+            self._note_failure()
             return {}
 
 class CacheService:
@@ -225,20 +293,27 @@ class CacheService:
     
     def clear_user_cache(self, user_id: int):
         """清除用户相关缓存"""
+        if not self.redis._is_available():
+            return
         patterns = [
             f"user:profile:{user_id}",
             f"user:session:{user_id}",
             f"nutrition:daily:{user_id}:*",
             f"health:score:{user_id}"
         ]
-        for pattern in patterns:
-            if "*" in pattern:
-                # 使用SCAN命令查找匹配的键
-                keys = self.redis.client.keys(pattern)
-                if keys:
-                    self.redis.client.delete(*keys)
-            else:
-                self.redis.delete(pattern)
+        try:
+            for pattern in patterns:
+                if "*" in pattern:
+                    # 使用SCAN命令查找匹配的键
+                    keys = self.redis.client.keys(pattern)
+                    if keys:
+                        self.redis.client.delete(*keys)
+                else:
+                    self.redis.delete(pattern)
+            self.redis._note_success()
+        except Exception as e:
+            print(f"Redis clear_user_cache error: {e}")
+            self.redis._note_failure()
 
 
 # 全局实例
