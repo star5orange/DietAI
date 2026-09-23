@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/themes/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/utils/landing_preference.dart';
 import '../../../core/services/modal_tracker.dart';
 import '../../../features/pet/presentation/widgets/pet_widget.dart';
 import '../../../features/pet/presentation/providers/pet_provider.dart';
@@ -280,8 +281,48 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     );
   }
 
+  /// 域高亮：非 tab 页面按业务归属点亮所属 tab（如体检页点亮「健康」、家人页点亮「社交」）
+  bool _inDomain(String location, String tabRoute) {
+    switch (tabRoute) {
+      case AppConstants.homeRoute: // 首页域：对话页 + 数据看板（跟随启动偏好）
+        return location == '/' || location == '/dashboard';
+      case AppConstants.historyRoute:
+        return location == '/history';
+      case AppConstants.healthRoute: // 健康域：健康/体重趋势/养生/体检/断食/花销/宠物健康
+        return location == '/health' ||
+            location == '/weight-trend' ||
+            location == '/constitution-quiz' ||
+            location == '/wellness' ||
+            location == '/cost-statistics' ||
+            location.startsWith('/exam') ||
+            location.startsWith('/fasting') ||
+            location == '/my-pet' ||
+            location == '/add-pet' ||
+            location == '/pet-feeding' ||
+            location == '/pet-food-library' ||
+            location == '/generate-pet-avatar' ||
+            location == '/pet-weekly-report' ||
+            location.startsWith('/real-pet-detail');
+      case AppConstants.socialRoute: // 社交域：社交/家人看板/家人周报等
+        return location.startsWith('/social') ||
+            location == '/family-dashboard' ||
+            location.startsWith('/family');
+      case AppConstants.profileRoute: // 我的域：我的/提醒设置/AI 风格
+        return location == '/profile' ||
+            location == '/reminder-settings' ||
+            location == '/advisor-style';
+      default:
+        return location == tabRoute;
+    }
+  }
+
   Widget _buildBottomNavigationBar(BuildContext context) {
     final currentLocation = GoRouterState.of(context).matchedLocation;
+    // 「首页」tab 跟随启动落地偏好动态指向（对话页 ↔ 数据看板）
+    final landing = ref.watch(landingProvider);
+    final homeTabRoute = landing == LandingPreference.dashboard
+        ? '/dashboard'
+        : AppConstants.homeRoute;
 
     return Container(
       decoration: BoxDecoration(
@@ -304,36 +345,36 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
                 context,
                 icon: LucideIcons.home,
                 label: '首页',
-                route: AppConstants.homeRoute,
-                isActive: currentLocation == AppConstants.homeRoute,
+                route: homeTabRoute,
+                isActive: _inDomain(currentLocation, AppConstants.homeRoute),
               ),
               _buildNavItem(
                 context,
                 icon: LucideIcons.clock,
                 label: '历史',
                 route: AppConstants.historyRoute,
-                isActive: currentLocation == AppConstants.historyRoute,
+                isActive: _inDomain(currentLocation, AppConstants.historyRoute),
               ),
               _buildNavItem(
                 context,
                 icon: LucideIcons.activity,
                 label: '健康',
                 route: AppConstants.healthRoute,
-                isActive: currentLocation == AppConstants.healthRoute,
+                isActive: _inDomain(currentLocation, AppConstants.healthRoute),
               ),
               _buildNavItem(
                 context,
                 icon: LucideIcons.users,
                 label: '社交',
                 route: AppConstants.socialRoute,
-                isActive: currentLocation == AppConstants.socialRoute,
+                isActive: _inDomain(currentLocation, AppConstants.socialRoute),
               ),
               _buildNavItem(
                 context,
                 icon: LucideIcons.user,
                 label: '我的',
                 route: AppConstants.profileRoute,
-                isActive: currentLocation == AppConstants.profileRoute,
+                isActive: _inDomain(currentLocation, AppConstants.profileRoute),
               ),
             ],
           ),

@@ -246,13 +246,14 @@ class _SavedMealsPageState extends State<SavedMealsPage>
     if (_useInProgress) return;
     _useInProgress = true;
 
-    // 与全 App"记录餐食"入口保持一致：仅早餐/午餐/晚餐/加餐
-    // 图标与配色对齐首页"食物摄入"餐次卡（coffee/salad/moon/croissant）
+    // 与全 App"记录餐食"入口保持一致：早餐/午餐/晚餐/加餐/夜宵
+    // 图标与配色对齐首页"食物摄入"餐次卡（coffee/salad/moon/croissant/cookie）
     const meals = <(String, int, IconData, Color)>[
       ('早餐', 1, LucideIcons.coffee, Color(0xFF8B4513)),
       ('午餐', 2, LucideIcons.salad, Color(0xFF3ECC7A)),
-      ('晚餐', 3, LucideIcons.moon, Color(0xFF9C27B0)),
       ('加餐', 4, LucideIcons.croissant, Color(0xFFEC407A)),
+      ('晚餐', 3, LucideIcons.moon, Color(0xFF9C27B0)),
+      ('夜宵', 5, LucideIcons.cookie, Color(0xFF6B46C1)),
     ];
     const commonSources = <String>['外卖', '食堂', '餐厅', '自制', '便利店', '其他'];
 

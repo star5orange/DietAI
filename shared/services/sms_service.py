@@ -18,12 +18,16 @@ class SMSService:
 
     def __init__(self):
         self.settings = get_settings()
+        # PRD 5.1：外部依赖（Redis）必须设置超时，避免故障时无限阻塞短信链路
         self.redis_client = redis.Redis(
             host=self.settings.redis_host,
             port=self.settings.redis_port,
             password=self.settings.redis_password,
             db=self.settings.redis_db,
-            decode_responses=True
+            decode_responses=True,
+            socket_connect_timeout=self.settings.redis_socket_timeout,
+            socket_timeout=self.settings.redis_socket_timeout,
+            retry_on_timeout=False,
         )
         # 验证码有效期（秒）
         self.code_expire_seconds = 300  # 5分钟
@@ -57,13 +61,22 @@ class SMSService:
         """
         # 检查发送间隔
         interval_key = self._get_redis_key(phone, "interval")
-        if self.redis_client.exists(interval_key):
-            ttl = self.redis_client.ttl(interval_key)
-            return False, f"发送过于频繁，请{ttl}秒后再试"
+        try:
+            if self.redis_client.exists(interval_key):
+                ttl = self.redis_client.ttl(interval_key)
+                return False, f"发送过于频繁，请{ttl}秒后再试"
+        except Exception as e:
+            # Redis 故障时采用「安全失败」：拒绝发送，避免击穿频率限制
+            logger.warning(f"[降级] 短信发送间隔检查失败(Redis不可用): {e}")
+            return False, "短信服务暂时不可用，请稍后重试"
 
         # 检查每日发送次数
         daily_key = self._get_redis_key(phone, "daily")
-        daily_count = int(self.redis_client.get(daily_key) or 0)
+        try:
+            daily_count = int(self.redis_client.get(daily_key) or 0)
+        except Exception as e:
+            logger.warning(f"[降级] 短信每日次数检查失败(Redis不可用): {e}")
+            return False, "短信服务暂时不可用，请稍后重试"
         if daily_count >= self.daily_limit:
             return False, "今日发送次数已达上限"
 
@@ -94,22 +107,33 @@ class SMSService:
 
         # 存储验证码到 Redis
         code_key = self._get_redis_key(phone, "code")
-        self.redis_client.setex(code_key, self.code_expire_seconds, f"{code}:{purpose}")
+        try:
+            self.redis_client.setex(code_key, self.code_expire_seconds, f"{code}:{purpose}")
+        except Exception as e:
+            # 验证码无法落库时后续校验必然失败，直接返回明确失败结果
+            logger.warning(f"[降级] 短信验证码写入失败(Redis不可用): {e}")
+            return {"success": False, "message": "短信服务暂时不可用，请稍后重试"}
 
-        # 设置发送间隔
+        # 设置发送间隔（限流为尽力而为，失败仅告警不影响本次发送）
         interval_key = self._get_redis_key(phone, "interval")
-        self.redis_client.setex(interval_key, self.send_interval, "1")
+        try:
+            self.redis_client.setex(interval_key, self.send_interval, "1")
+        except Exception as e:
+            logger.warning(f"[降级] 短信发送间隔写入失败(Redis不可用): {e}")
 
-        # 增加每日发送次数
+        # 增加每日发送次数（同上，失败仅告警）
         daily_key = self._get_redis_key(phone, "daily")
-        if not self.redis_client.exists(daily_key):
-            # 如果不存在，设置过期时间为当天结束
-            now = datetime.now()
-            end_of_day = datetime(now.year, now.month, now.day, 23, 59, 59)
-            ttl = int((end_of_day - now).total_seconds())
-            self.redis_client.setex(daily_key, ttl, 1)
-        else:
-            self.redis_client.incr(daily_key)
+        try:
+            if not self.redis_client.exists(daily_key):
+                # 如果不存在，设置过期时间为当天结束
+                now = datetime.now()
+                end_of_day = datetime(now.year, now.month, now.day, 23, 59, 59)
+                ttl = int((end_of_day - now).total_seconds())
+                self.redis_client.setex(daily_key, ttl, 1)
+            else:
+                self.redis_client.incr(daily_key)
+        except Exception as e:
+            logger.warning(f"[降级] 短信每日次数写入失败(Redis不可用): {e}")
 
         # 发送短信（根据配置选择模式）
         if self.settings.debug:
@@ -179,7 +203,11 @@ class SMSService:
         code_key = self._get_redis_key(phone, "code")
 
         # 检查验证码是否存在
-        stored_value = self.redis_client.get(code_key)
+        try:
+            stored_value = self.redis_client.get(code_key)
+        except Exception as e:
+            logger.warning(f"[降级] 短信验证码读取失败(Redis不可用): {e}")
+            return False, "验证码校验服务暂时不可用，请稍后重试"
         if not stored_value:
             return False, "验证码已过期或不存在"
 
@@ -199,14 +227,21 @@ class SMSService:
 
         # 验证成功，根据参数决定是否删除验证码
         if consume:
-            self.redis_client.delete(code_key)
+            try:
+                self.redis_client.delete(code_key)
+            except Exception as e:
+                # 删除失败不影响本次校验结果，验证码会按 TTL 自然过期
+                logger.warning(f"[降级] 短信验证码删除失败(Redis不可用): {e}")
 
         return True, "验证成功"
 
     def clear_daily_limit(self, phone: str):
         """清除每日发送限制（用于测试）"""
         daily_key = self._get_redis_key(phone, "daily")
-        self.redis_client.delete(daily_key)
+        try:
+            self.redis_client.delete(daily_key)
+        except Exception as e:
+            logger.warning(f"[降级] 清除短信每日次数失败(Redis不可用): {e}")
 
 
 # 单例模式

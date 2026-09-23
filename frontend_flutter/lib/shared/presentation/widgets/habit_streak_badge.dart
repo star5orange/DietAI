@@ -22,7 +22,6 @@ class HabitStreakBadge extends StatelessWidget {
     if (streakDays <= 0) return const SizedBox.shrink();
 
     final level = _getStreakLevel();
-    final size = isMini ? 36.0 : 48.0;
     final iconSize = isMini ? 16.0 : 22.0;
 
     return Container(
@@ -48,8 +47,9 @@ class HabitStreakBadge extends StatelessWidget {
           SizedBox(width: isMini ? 4 : 6),
           Text(
             '$streakDays天',
-            style: (isMini ? AppTextStyles.labelSmall : AppTextStyles.labelMedium)
-                .copyWith(
+            style:
+                (isMini ? AppTextStyles.labelSmall : AppTextStyles.labelMedium)
+                    .copyWith(
               color: AppColors.textInverse,
               fontWeight: FontWeight.w700,
             ),
@@ -70,8 +70,6 @@ class HabitStreakBadge extends StatelessWidget {
       ),
     );
   }
-
-  _StreakLevel get _streakLevel => _getStreakLevel();
 
   _StreakLevel _getStreakLevel() {
     if (streakDays >= 30) {

@@ -14,7 +14,6 @@ class FastingAssessmentPage extends ConsumerStatefulWidget {
 }
 
 class _FastingAssessmentPageState extends ConsumerState<FastingAssessmentPage> {
-  final _formKey = GlobalKey<FormState>();
   int _currentStep = 0;
   
   // 评估数据

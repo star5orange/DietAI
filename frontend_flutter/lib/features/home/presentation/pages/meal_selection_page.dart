@@ -18,8 +18,8 @@ class MealSelectionPage extends StatelessWidget {
     final meals = [
       {'name': '早餐', 'icon': LucideIcons.coffee, 'color': const Color(0xFF8B4513), 'type': 1},
       {'name': '午餐', 'icon': LucideIcons.salad, 'color': const Color(0xFF3ECC7A), 'type': 2},
-      {'name': '晚餐', 'icon': LucideIcons.utensils, 'color': const Color(0xFF1E90FF), 'type': 3},
       {'name': '加餐', 'icon': LucideIcons.cookie, 'color': const Color(0xFFFF9500), 'type': 4},
+      {'name': '晚餐', 'icon': LucideIcons.utensils, 'color': const Color(0xFF1E90FF), 'type': 3},
       {'name': '夜宵', 'icon': LucideIcons.moon, 'color': const Color(0xFF6B46C1), 'type': 5},
     ];
 

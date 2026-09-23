@@ -277,6 +277,8 @@ class FoodRecord {
         return '晚餐';
       case 4:
         return '加餐';
+      case 5:
+        return '夜宵';
       default:
         return '未知';
     }

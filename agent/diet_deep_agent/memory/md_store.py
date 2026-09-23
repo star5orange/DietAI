@@ -1,4 +1,4 @@
-﻿"""
+"""
 MarkdownStore - StoreBackend 的底层持久化实现
 
 将 Agent 的 /memories/* 虚拟路径转换为 MD 文件读写操作，
@@ -6,8 +6,13 @@ MarkdownStore - StoreBackend 的底层持久化实现
 
 数据流：
   Agent write_file("/memories/profile.md", content)
-    → StoreBackend → store.put(namespace, key="profile.md", value={"content": ...})
-    → MarkdownStore.batch([PutOp(...)]) → MemoryManager 写入物理 MD 文件
+    → StoreBackend → store.put(namespace, key, value={"content": [行...], ...})
+    → MarkdownStore.batch([PutOp(...)]) → 写入物理 MD 文件
+
+value 协议（deepagents >= 0.4 的 StoreBackend 强校验，见 backends/store.py）：
+  {"content": list[str]（按 "\n" 切分的行）, "created_at": ISO 字符串, "modified_at": ISO 字符串}
+  写入时 SDK 传 list，落到 MD 文件需还原成文本；读回/搜索时反之必须还原成 list，
+  否则 SDK 侧 _convert_store_item_to_file_data 会直接抛 ValueError。
 """
 
 import asyncio
@@ -30,9 +35,20 @@ from langgraph.store.base import (
 
 from agent.diet_deep_agent.memory.namespaces import (
     MEMORIES_DIR,
+    VIRTUAL_FILE_TO_WORKSPACE,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _memory_manager(user_id: str):
+    """按 user_id 取 MemoryManager（失败返回 None，走兜底目录）"""
+    try:
+        from agent.memory.memory_manager import MemoryManager
+
+        return MemoryManager(int(user_id))
+    except Exception:
+        return None
 
 
 class MarkdownStore(BaseStore):
@@ -42,22 +58,64 @@ class MarkdownStore(BaseStore):
     将 Store 操作映射为 MD 文件读写，适配现有 MemoryManager 的工作区结构。
 
     Namespace 约定:
-      ("memories", "{user_id}") → agent/UserMemory/{user_id}/memories/
+      ("memories", "{user_id}")
+        → 已登记的虚拟文件落到 MemoryManager 工作区文件（单一事实来源，
+          与 chat / goal_tracking 等链路共用同一份用户记忆）
+        → 未登记的文件落到 {base_path}/{user_id}/memories/
     """
 
     def __init__(self, base_path: str = "agents/UserMemory"):
         self.base_path = Path(base_path)
 
     def _resolve_path(self, namespace: tuple[str, ...], key: str) -> Path:
-        """将 namespace + key 映射为物理 MD 文件路径"""
+        """将 namespace + key 映射为物理 MD 文件路径。
+
+        StoreBackend 经 CompositeBackend 路由后，key 是已剥离路径前缀的绝对路径
+        （如 "/profile.md"），这里只取文件名，避免拼出仓库之外的路径。
+        """
         # namespace 格式: ("memories", "{user_id}") 或更多层级
         if len(namespace) >= 2:
             user_id = namespace[1]
         else:
             user_id = "default"
 
-        # key 即文件名，如 "profile.md"
-        return self.base_path / str(user_id) / MEMORIES_DIR / key
+        filename = key.replace("\\", "/").rstrip("/").split("/")[-1] or "untitled.md"
+
+        manager = _memory_manager(str(user_id))
+        if manager is not None:
+            workspace = VIRTUAL_FILE_TO_WORKSPACE.get(filename)
+            if workspace:
+                try:
+                    return manager.get_workspace_path(workspace)
+                except ValueError:
+                    pass  # 未登记的 workspace → 走兜底目录
+            return manager.user_dir / MEMORIES_DIR / filename
+
+        return self.base_path / str(user_id) / MEMORIES_DIR / filename
+
+    def _iter_entries(self, user_id: str) -> list[tuple[str, Path]]:
+        """列出该用户所有记忆文件：(虚拟文件名, 物理路径)"""
+        entries: list[tuple[str, Path]] = []
+        manager = _memory_manager(user_id)
+
+        if manager is not None:
+            for filename, workspace in VIRTUAL_FILE_TO_WORKSPACE.items():
+                try:
+                    entries.append((filename, manager.get_workspace_path(workspace)))
+                except ValueError:
+                    continue
+            fallback_dir = manager.user_dir / MEMORIES_DIR
+        else:
+            fallback_dir = self.base_path / str(user_id) / MEMORIES_DIR
+
+        if fallback_dir.exists():
+            known = {p for _, p in entries}
+            for md_file in sorted(fallback_dir.glob("*.md")):
+                if md_file not in known:
+                    entries.append((md_file.name, md_file))
+
+        entries.sort(key=lambda item: item[0])
+        return entries
 
     def _read_file(self, path: Path) -> Optional[str]:
         """同步读取 MD 文件"""
@@ -69,11 +127,16 @@ class MarkdownStore(BaseStore):
             logger.error(f"Error reading {path}: {e}")
             return None
 
-    def _write_file(self, path: Path, content: str) -> None:
-        """同步写入 MD 文件"""
+    def _write_file(self, path: Path, content: Any) -> None:
+        """同步写入 MD 文件（SDK 传的是按行切分的 list，需还原为文本）"""
         path.parent.mkdir(parents=True, exist_ok=True)
+        text = (
+            content
+            if isinstance(content, str)
+            else "\n".join(str(line) for line in content or [])
+        )
         try:
-            path.write_text(content, encoding="utf-8")
+            path.write_text(text, encoding="utf-8")
             logger.info(f"Wrote store file: {path}")
         except Exception as e:
             logger.error(f"Error writing {path}: {e}")
@@ -89,13 +152,23 @@ class MarkdownStore(BaseStore):
             logger.error(f"Error deleting {path}: {e}")
             raise
 
+    @staticmethod
+    def _store_value(content: str) -> dict[str, Any]:
+        """按 StoreBackend 协议构造 value（content 为行列表；时间戳为 ISO 字符串）"""
+        iso_now = datetime.now(tz=timezone.utc).isoformat()
+        return {
+            "content": content.split("\n"),
+            "created_at": iso_now,
+            "modified_at": iso_now,
+        }
+
     def _make_item(
         self, namespace: tuple[str, ...], key: str, content: str
     ) -> Item:
-        """从文件内容构造 Item"""
+        """从文件内容构造 Item（value 字段需符合 SDK 的 FileData 协议）"""
         now = datetime.now(tz=timezone.utc)
         return Item(
-            value={"content": content},
+            value=self._store_value(content),
             key=key,
             namespace=namespace,
             created_at=now,
@@ -151,27 +224,22 @@ class MarkdownStore(BaseStore):
         limit: int = 10,
         offset: int = 0,
     ) -> list[SearchItem]:
-        """列出指定 namespace 下的所有 MD 文件"""
+        """列出指定 namespace 下的所有 MD 文件（工作区文件 + 兜底目录）"""
         if len(namespace_prefix) >= 2:
             user_id = namespace_prefix[1]
         else:
             user_id = "default"
 
-        memories_dir = self.base_path / str(user_id) / MEMORIES_DIR
-        if not memories_dir.exists():
-            return []
-
         items: list[SearchItem] = []
-        md_files = sorted(memories_dir.glob("*.md"))
-
-        for md_file in md_files[offset : offset + limit]:
-            content = self._read_file(md_file)
+        for filename, path in self._iter_entries(str(user_id))[offset : offset + limit]:
+            content = self._read_file(path)
             if content:
                 now = datetime.now(tz=timezone.utc)
                 items.append(
                     SearchItem(
-                        value={"content": content},
-                        key=md_file.name,
+                        value=self._store_value(content),
+                        # key 需为后端内部根路径（与 read/write 传入的 "/xxx.md" 一致）
+                        key=f"/{filename}",
                         namespace=namespace_prefix,
                         created_at=now,
                         updated_at=now,
@@ -183,15 +251,16 @@ class MarkdownStore(BaseStore):
 
     def _list_namespaces(self, op: ListNamespacesOp) -> list[tuple[str, ...]]:
         """列出所有用户的 namespace"""
-        if not self.base_path.exists():
+        from agent.memory.memory_manager import MemoryManager
+
+        root = MemoryManager.BASE_PATH
+        if not root.exists():
             return []
 
         namespaces = []
-        for user_dir in self.base_path.iterdir():
+        for user_dir in root.iterdir():
             if user_dir.is_dir():
-                memories_dir = user_dir / MEMORIES_DIR
-                if memories_dir.exists():
-                    ns = (MEMORIES_DIR, user_dir.name)
-                    namespaces.append(ns)
+                ns = (MEMORIES_DIR, user_dir.name)
+                namespaces.append(ns)
 
         return namespaces[op.offset : op.offset + op.limit]

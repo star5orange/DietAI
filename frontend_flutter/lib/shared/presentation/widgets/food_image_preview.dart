@@ -1,14 +1,10 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:photo_view/photo_view.dart';
-import 'package:photo_view/photo_view_gallery.dart';
 
 import '../../domain/models/food_model.dart';
 import '../../../services/food_service.dart';
 import '../../../core/cache/cache_manager.dart';
-import '../../../core/constants/api_config.dart';
 
 /// 食物图片预览组件
 class FoodImagePreview extends StatefulWidget {
@@ -40,7 +36,6 @@ class _FoodImagePreviewState extends State<FoodImagePreview> {
   String? _imageBase64;
   String? _contentType;
   String? _errorMessage;
-  int _retryCount = 0;
 
   @override
   void initState() {
@@ -53,7 +48,6 @@ class _FoodImagePreviewState extends State<FoodImagePreview> {
     super.didUpdateWidget(oldWidget);
     // 父组件刷新时，如果图片还未加载成功且未在加载中，自动重试加载
     if (_imageBase64 == null && !_isLoading) {
-      _retryCount = 0; // 重置重试计数
       _loadImageData();
     }
   }
@@ -126,7 +120,7 @@ class _FoodImagePreviewState extends State<FoodImagePreview> {
       } else {
         print('❌ 图片数据加载失败：${response.message}');
         setState(() {
-          _errorMessage = response.message ?? '获取图片失败';
+          _errorMessage = response.message;
           _isLoading = false;
         });
       }
@@ -203,9 +197,9 @@ class _FoodImagePreviewState extends State<FoodImagePreview> {
                         size: 64,
                       ),
                       const SizedBox(height: 16),
-                      Text(
+                      const Text(
                         '图片加载失败',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: Colors.white,
                           fontSize: 18,
                         ),

@@ -28,8 +28,9 @@ class _ProxyRecordPageState extends State<ProxyRecordPage> {
   static const List<Map<String, String>> _mealTypes = [
     {'value': 'breakfast', 'label': '早餐'},
     {'value': 'lunch', 'label': '午餐'},
-    {'value': 'dinner', 'label': '晚餐'},
     {'value': 'snack', 'label': '加餐'},
+    {'value': 'dinner', 'label': '晚餐'},
+    {'value': 'late_night', 'label': '夜宵'},
   ];
 
   int _getMealTypeInt(String value) {
@@ -40,6 +41,10 @@ class _ProxyRecordPageState extends State<ProxyRecordPage> {
         return 2;
       case 'dinner':
         return 3;
+      case 'snack':
+        return 4;
+      case 'late_night':
+        return 5;
       default:
         return 4;
     }

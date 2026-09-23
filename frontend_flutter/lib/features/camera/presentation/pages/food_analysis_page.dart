@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'dart:async';
 import '../../../../services/food_service.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../services/goal_tracking_service.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/presentation/widgets/error_handler.dart';
@@ -176,7 +177,6 @@ class _FoodAnalysisPageState extends ConsumerState<FoodAnalysisPage>
         if (!mounted) return;
 
         final type = event['type'] as String?;
-        final success = event['success'] as bool? ?? false;
         final data = event['data'] as Map<String, dynamic>? ?? {};
 
         setState(() {
@@ -796,7 +796,7 @@ class _FoodAnalysisPageState extends ConsumerState<FoodAnalysisPage>
                     ),
                     child: Text(
                       _isTextAnalysis ? '重试' : '重新拍摄',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
@@ -1168,7 +1168,7 @@ class _FoodAnalysisPageState extends ConsumerState<FoodAnalysisPage>
                   ],
                 ),
               );
-            }).toList(),
+            }),
           ],
         ),
       ),
@@ -1438,9 +1438,11 @@ class _FoodAnalysisPageState extends ConsumerState<FoodAnalysisPage>
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const ChatPage(
+                    // 统一走 Agent 对话内核（PRD D11），并携带当前这条饮食记录（PRD 4.8）
+                    builder: (context) => ChatPage(
                       sessionType: 3,
                       title: '食物营养咨询',
+                      pageContext: _buildChatPageContext(),
                     ),
                   ),
                 );
@@ -1893,15 +1895,15 @@ class _FoodAnalysisPageState extends ConsumerState<FoodAnalysisPage>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    const Row(
                       children: [
-                        const Icon(
+                        Icon(
                           LucideIcons.listChecks,
                           size: 16,
                           color: Color(0xFFF57C00),
                         ),
-                        const SizedBox(width: 6),
-                        const Text(
+                        SizedBox(width: 6),
+                        Text(
                           '建议行动',
                           style: TextStyle(
                             fontSize: 14,
@@ -1949,7 +1951,7 @@ class _FoodAnalysisPageState extends ConsumerState<FoodAnalysisPage>
                           ],
                         ),
                       );
-                    }).toList(),
+                    }),
                   ],
                 ),
               ),
@@ -1959,73 +1961,67 @@ class _FoodAnalysisPageState extends ConsumerState<FoodAnalysisPage>
 
             // 健康提示
             if (healthTips.isNotEmpty) ...[
-              ...healthTips
-                  .take(3)
-                  .map((tip) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              margin: const EdgeInsets.only(top: 8),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF2BAF74),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                tip.toString(),
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Color(0xFF222222),
-                                  height: 1.4,
-                                ),
-                              ),
-                            ),
-                          ],
+              ...healthTips.take(3).map((tip) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          margin: const EdgeInsets.only(top: 8),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF2BAF74),
+                            shape: BoxShape.circle,
+                          ),
                         ),
-                      ))
-                  .toList(),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            tip.toString(),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF222222),
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )),
             ],
 
             // 饮食建议
             if (dietaryAdvice.isNotEmpty) ...[
               const SizedBox(height: 12),
-              ...dietaryAdvice
-                  .take(2)
-                  .map((advice) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              margin: const EdgeInsets.only(top: 8),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFA6E3C1),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                advice.toString(),
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Color(0xFF222222),
-                                  height: 1.4,
-                                ),
-                              ),
-                            ),
-                          ],
+              ...dietaryAdvice.take(2).map((advice) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          margin: const EdgeInsets.only(top: 8),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFA6E3C1),
+                            shape: BoxShape.circle,
+                          ),
                         ),
-                      ))
-                  .toList(),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            advice.toString(),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF222222),
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )),
             ],
 
             // 营养师问答按钮
@@ -2037,9 +2033,11 @@ class _FoodAnalysisPageState extends ConsumerState<FoodAnalysisPage>
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const ChatPage(
+                      // 统一走 Agent 对话内核（PRD D11），并携带当前这条饮食记录（PRD 4.8）
+                      builder: (context) => ChatPage(
                         sessionType: 3,
                         title: '食物营养咨询',
+                        pageContext: _buildChatPageContext(),
                       ),
                     ),
                   );
@@ -2073,6 +2071,37 @@ class _FoodAnalysisPageState extends ConsumerState<FoodAnalysisPage>
     );
   }
 
+  /// 页面 → 对话携带的上下文（PRD 4.8）：当前正在看的这条饮食记录，
+  /// 使 Agent 能直接对这条记录执行动作（如「这条记错了，改成 200 克」），
+  /// 而不是另开一条新记录。
+  ChatPageContext _buildChatPageContext() {
+    final record = _currentRecord;
+    final recordFoodName = record?.foodName?.trim() ?? '';
+    final foodName = recordFoodName.isNotEmpty
+        ? recordFoodName
+        : (_foodName == '分析中...' ? '本次分析的食物' : _foodName);
+    final date = record?.recordDate ?? '';
+    final mealLabel =
+        record == null ? '' : (AppConstants.mealTypes[record.mealType] ?? '');
+
+    final titleParts = <String>[
+      foodName,
+      if (mealLabel.isNotEmpty) mealLabel,
+      if (date.isNotEmpty) date,
+    ];
+
+    return ChatPageContext(
+      type: 'food_record',
+      title: titleParts.join(' · '),
+      hint: '用户正在查看一条饮食记录：$foodName'
+          '${date.isEmpty ? '' : '，日期 $date'}'
+          '${mealLabel.isEmpty ? '' : '，餐次 $mealLabel'}'
+          '${record == null ? '（该记录尚未落库）' : '，记录ID ${record.id}'}。'
+          '用户若要求修改或纠正这条记录，请针对这条记录处理（先撤销再按正确内容重记），'
+          '不要另开一条新记录。',
+    );
+  }
+
   Widget _buildIngredientsCard() {
     final foodItems = _nutritionFacts['food_items'] as List? ?? [];
 
@@ -2101,37 +2130,34 @@ class _FoodAnalysisPageState extends ConsumerState<FoodAnalysisPage>
             const SizedBox(height: 16),
 
             // 食物列表
-            ...foodItems
-                .take(5)
-                .map((item) => Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE6FAF0),
-                        borderRadius: BorderRadius.circular(16),
+            ...foodItems.take(5).map((item) => Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE6FAF0),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        LucideIcons.utensils,
+                        size: 20,
+                        color: Color(0xFF2BAF74),
                       ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            LucideIcons.utensils,
-                            size: 20,
-                            color: Color(0xFF2BAF74),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          item.toString(),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF222222),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              item.toString(),
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                                color: Color(0xFF222222),
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ))
-                .toList(),
+                    ],
+                  ),
+                )),
           ],
         ),
       ),
@@ -2186,7 +2212,7 @@ class _FoodAnalysisPageState extends ConsumerState<FoodAnalysisPage>
               ),
             ),
             child: _isLoading
-                ? Row(
+                ? const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       SizedBox(
@@ -2195,12 +2221,12 @@ class _FoodAnalysisPageState extends ConsumerState<FoodAnalysisPage>
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            const Color(0xFF2BAF74),
+                            Color(0xFF2BAF74),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      const Text(
+                      SizedBox(width: 12),
+                      Text(
                         '分析中...',
                         style: TextStyle(
                           fontSize: 16,

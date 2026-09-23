@@ -321,21 +321,10 @@ class _FamilyDashboardPageState extends ConsumerState<FamilyDashboardPage> {
                 ],
               ),
               const SizedBox(height: 8),
-              // 快捷操作：拍照 / 提醒喝水 / 帮记录
+              // 快捷操作：提醒喝水 / 看详情
+              // PRD D9：家人数据的「拍照/代记录」写入口已下线，仅保留提醒与查看
               Row(
                 children: [
-                  _ActionButton(
-                    icon: Icons.photo_camera,
-                    label: '拍照',
-                    onPressed: () => context.push(
-                      '/exam/upload',
-                      extra: {
-                        'ownerUserId': member.userId,
-                        'ownerName': member.realName ?? member.username,
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 4),
                   _ActionButton(
                     icon: Icons.water_drop_outlined,
                     label: '提醒喝水',
@@ -354,8 +343,8 @@ class _FamilyDashboardPageState extends ConsumerState<FamilyDashboardPage> {
                   ),
                   const SizedBox(width: 4),
                   _ActionButton(
-                    icon: Icons.restaurant_outlined,
-                    label: '帮记录',
+                    icon: Icons.visibility_outlined,
+                    label: '看详情',
                     onPressed: () =>
                         context.push('/social/family-health/${member.userId}'),
                   ),

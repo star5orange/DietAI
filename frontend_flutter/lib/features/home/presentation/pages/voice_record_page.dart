@@ -49,7 +49,6 @@ class _VoiceRecordPageState extends State<VoiceRecordPage>
   int _recordDuration = 0;
   Timer? _timer;
   String? _errorMessage;
-  String? _recognizedText;
 
   late AnimationController _pulseController;
 
@@ -104,7 +103,6 @@ class _VoiceRecordPageState extends State<VoiceRecordPage>
         _recordingPath = path;
         _recordDuration = 0;
         _errorMessage = null;
-        _recognizedText = null;
       });
       _pulseController.repeat();
 
@@ -176,7 +174,6 @@ class _VoiceRecordPageState extends State<VoiceRecordPage>
         if (text.isNotEmpty && mounted) {
           setState(() {
             _isRecognizing = false;
-            _recognizedText = text;
           });
           // 弹出确认弹窗
           _showConfirmDialog(text);
@@ -237,10 +234,10 @@ class _VoiceRecordPageState extends State<VoiceRecordPage>
             ),
             const SizedBox(height: 20),
             // 标题
-            Row(
+            const Row(
               children: [
-                const Icon(LucideIcons.mic, color: AppColors.primary, size: 22),
-                const SizedBox(width: 8),
+                Icon(LucideIcons.mic, color: AppColors.primary, size: 22),
+                SizedBox(width: 8),
                 Text('识别结果', style: AppTextStyles.h6),
               ],
             ),
@@ -311,7 +308,6 @@ class _VoiceRecordPageState extends State<VoiceRecordPage>
                 onPressed: () {
                   Navigator.pop(context);
                   setState(() {
-                    _recognizedText = null;
                     _errorMessage = null;
                   });
                 },

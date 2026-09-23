@@ -15,7 +15,6 @@ class InviteCodePage extends ConsumerStatefulWidget {
 class _InviteCodePageState extends ConsumerState<InviteCodePage> {
   final TextEditingController _codeController = TextEditingController();
   String? _myInviteCode;
-  String? _myUsername;
   bool _loadingCode = true;
   bool _joining = false;
 
@@ -40,7 +39,6 @@ class _InviteCodePageState extends ConsumerState<InviteCodePage> {
       if (res.success && res.data != null) {
         setState(() {
           _myInviteCode = res.data!['invite_code'] as String?;
-          _myUsername = res.data!['username'] as String?;
           _loadingCode = false;
         });
       } else {

@@ -113,14 +113,13 @@ class _FoodRecordModalState extends State<FoodRecordModal> {
   }
 
   Widget _buildOptionTile(_RecordOption option) {
-    const isDisabled = false;
     return GestureDetector(
-      onTap: isDisabled ? null : () => _handleRecordMethod(option.methodId),
+      onTap: () => _handleRecordMethod(option.methodId),
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isDisabled ? Colors.grey[50] : Colors.white,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
@@ -136,8 +135,8 @@ class _FoodRecordModalState extends State<FoodRecordModal> {
             Container(
               width: 48,
               height: 48,
-              decoration: BoxDecoration(
-                color: isDisabled ? Colors.grey[400] : const Color(0xFF3ECC7A),
+              decoration: const BoxDecoration(
+                color: Color(0xFF3ECC7A),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -156,18 +155,18 @@ class _FoodRecordModalState extends State<FoodRecordModal> {
                 children: [
                   Text(
                     option.title,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
-                      color: isDisabled ? Colors.grey[500] : Colors.black,
+                      color: Colors.black,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     option.subtitle,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 12,
-                      color: isDisabled ? Colors.grey[400] : Colors.grey[500],
+                      color: Colors.grey,
                     ),
                   ),
                 ],

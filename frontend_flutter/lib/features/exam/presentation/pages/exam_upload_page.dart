@@ -4,22 +4,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/themes/app_colors.dart';
+import '../../../../core/themes/app_text_styles.dart';
 import '../../../../core/services/tts_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../../social/presentation/providers/social_provider.dart';
-import '../../../social/domain/social_models.dart';
 import '../providers/exam_provider.dart';
+import 'exam_detail_page.dart';
 import 'exam_result_page.dart';
 
 /// 体检报告上传页面（一步式拍照 + AI 自动识别 + 语音引导）
 ///
-/// 从家庭看板点 📸 进入时传入 [ownerUserId]（为谁拍），
-/// 进入后直接打开相机，拍照后自动上传分析并跳转结果页。
+/// PRD D9 / 5.4：体检数据属敏感个人信息，仅本人可录入与修改，
+/// 因此本页固定上传到当前登录账号，不再提供「为家人拍」切换。
 class ExamUploadPage extends ConsumerStatefulWidget {
-  final int? ownerUserId; // null = 自己
-  final String? ownerName;
-
-  const ExamUploadPage({super.key, this.ownerUserId, this.ownerName});
+  const ExamUploadPage({super.key});
 
   @override
   ConsumerState<ExamUploadPage> createState() => _ExamUploadPageState();
@@ -29,33 +26,16 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
   final _imagePicker = ImagePicker();
   final _ttsService = TtsService();
   final List<File> _selectedImages = []; // 多页报告：一次可拍多张
-  int? _selectedUserId; // null = 自己
   bool _isUploading = false;
-  bool _autoCameraOpened = false;
+  // 隐私开关：是否允许 AI 分析（默认关闭，仅本地私有存储）
+  bool _aiAnalysisEnabled = false;
 
   @override
   void initState() {
     super.initState();
-    _selectedUserId = widget.ownerUserId;
     Future.microtask(() async {
-      // 加载家人列表（用于"为谁拍"切换）
-      ref.read(friendListProvider.notifier).loadFriendList();
-      // 普通进入时记住上次的选择（需求：上次选过就记住，顶部小字提示）
-      if (widget.ownerUserId == null) {
-        final prefs = await SharedPreferences.getInstance();
-        final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
-        final lastId = prefs.getInt('last_exam_owner_user_id_$currentUserId');
-        if (lastId != null && mounted) {
-          setState(() => _selectedUserId = lastId);
-        }
-      }
       // 语音引导：一步式拍照
       _ttsService.speak('您好，请把体检报告平放在桌面上，保证光线充足，然后拍摄照片。').catchError((_) {});
-      // 从家庭看板 📸 进入：直接打开相机
-      if (widget.ownerUserId != null && !_autoCameraOpened) {
-        _autoCameraOpened = true;
-        _takePhoto();
-      }
     });
   }
 
@@ -116,28 +96,28 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
 
     setState(() => _isUploading = true);
     try {
-      final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
-      final targetUserId = _selectedUserId ?? currentUserId;
-      final uploadResult = await ref
-          .read(examReportListProvider.notifier)
-          .uploadReport(photos: List.of(_selectedImages), userId: targetUserId);
+      final targetUserId = ref.read(currentUserProvider)?.id ?? 0;
+      final uploadResult =
+          await ref.read(examReportListProvider.notifier).uploadReport(
+                photos: List.of(_selectedImages),
+                userId: targetUserId,
+                aiAnalysisEnabled: _aiAnalysisEnabled,
+              );
 
       if (!mounted) return;
       setState(() => _isUploading = false);
 
       if (uploadResult != null) {
         final report = uploadResult.report;
-        // 记住"最近为谁拍"，首页大按钮展示 + 下次进入默认选中（按登录账号隔离）
-        final ownerName = _resolveOwnerName(targetUserId);
+        // 记住"最近一次体检"（首页大按钮展示，仅本人）
         final prefs = await SharedPreferences.getInstance();
-        final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
-        await prefs.setString('last_exam_owner_name_$currentUserId', ownerName);
+        await prefs.setString('last_exam_owner_name_$targetUserId', '自己');
         await prefs.setInt(
-            'last_exam_owner_user_id_$currentUserId', targetUserId);
+            'last_exam_owner_user_id_$targetUserId', targetUserId);
         // 记住本次体检月份（首页展示"最近：$owner · YYYY-MM"）
         final now = DateTime.now();
         await prefs.setString(
-          'last_exam_owner_date_$currentUserId',
+          'last_exam_owner_date_$targetUserId',
           '${now.year}-${now.month.toString().padLeft(2, '0')}',
         );
 
@@ -151,17 +131,31 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
               SnackBar(content: Text(blurMessage)),
             );
           }
-        } else {
+        } else if (_aiAnalysisEnabled) {
           _ttsService.speak('体检报告上传成功，正在为您展示识别结果。').catchError((_) {});
+        } else {
+          _ttsService.speak('体检报告已保存到本地私有空间，未开启 AI 分析。').catchError((_) {});
         }
         if (!mounted) return;
+        if (!_aiAnalysisEnabled) {
+          // 未开启 AI 分析：没有识别结果，直接进详情页查看本地存储的报告
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => ExamDetailPage(
+                reportId: report.id,
+                userId: targetUserId,
+              ),
+            ),
+          );
+          return;
+        }
         // 跳转识别结果页：展示提取的指标 + AI 饮食/运动建议
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) => ExamResultPage(
               reportId: report.id,
               userId: targetUserId,
-              ownerName: ownerName,
+              ownerName: '自己',
               comparedToLast: report.comparedToLast,
             ),
           ),
@@ -181,24 +175,8 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
     }
   }
 
-  String _resolveOwnerName(int userId) {
-    if (userId == (ref.read(currentUserProvider)?.id ?? 0)) {
-      return '自己';
-    }
-    final family = ref.read(friendListProvider).family;
-    for (final f in family) {
-      if (f.userId == userId) {
-        return f.note ?? f.realName ?? f.username;
-      }
-    }
-    return '家人';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final friendState = ref.watch(friendListProvider);
-    final family = friendState.family;
-
     return PopScope(
       // 未拍照时拦截返回，询问是否退出；已拍照/分析中不拦截
       canPop: _selectedImages.isNotEmpty || _isUploading,
@@ -232,8 +210,8 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 顶部小字提示"为谁拍"：正在为 妈妈 拍照
-                    _buildOwnerBanner(),
+                    // 隐私提醒 + AI 分析开关（默认关闭）
+                    _buildPrivacyCard(),
                     const SizedBox(height: 16),
 
                     // 一步式拍照区（支持多页：已拍 0 张显示拍摄入口，否则显示多页预览）
@@ -242,9 +220,6 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
                     else
                       _buildPreviewSection(),
 
-                    // 底部小字切换：不点就不管
-                    const SizedBox(height: 12),
-                    _buildSwitchRow(family),
                     const SizedBox(height: 16),
 
                     // 提示信息
@@ -299,90 +274,84 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
     return result ?? false;
   }
 
-  /// 顶部小字提示"为谁拍"：正在为 妈妈 拍照
-  Widget _buildOwnerBanner() {
-    final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
-    final ownerName = _resolveOwnerName(_selectedUserId ?? currentUserId);
+  /// 隐私提醒 + 「允许 AI 分析」开关（默认关闭，仅本地私有存储）
+  Widget _buildPrivacyCard() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.08),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderLight),
       ),
-      child: Text(
-        '正在为 $ownerName 拍照',
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: AppColors.primary,
-        ),
-      ),
-    );
-  }
-
-  /// 底部小字切换"为谁拍"：不点就不管
-  Widget _buildSwitchRow(List<UserRelation> family) {
-    final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
-    final selectedId = _selectedUserId ?? currentUserId;
-
-    final targets = <({String label, int? userId})>[
-      (label: '自己', userId: null),
-      ...family.map((f) => (
-            label: f.note ?? f.realName ?? f.username,
-            userId: f.userId,
-          )),
-    ];
-    final others = targets
-        .where((t) => (t.userId ?? currentUserId) != selectedId)
-        .toList();
-    if (others.isEmpty) return const SizedBox.shrink();
-
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 20,
-      runSpacing: 4,
-      children: [
-        for (final t in others)
-          GestureDetector(
-            onTap: () => setState(() => _selectedUserId = t.userId),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text(
-                '切换为 ${t.label}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w500,
-                  decoration: TextDecoration.underline,
-                  decorationColor: AppColors.primary,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.privacy_tip_outlined,
+                  color: AppColors.primary, size: 20),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '体检数据为敏感个人信息，仅在本人授权范围内使用',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '关闭时报告照片与文字仅存储在本地私有空间，不会送往 AI 分析。',
+            style: AppTextStyles.bodySmall,
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            value: _aiAnalysisEnabled,
+            onChanged: _isUploading
+                ? null
+                : (v) => setState(() => _aiAnalysisEnabled = v),
+            title: const Text(
+              '允许 AI 分析',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            subtitle: Text(
+              _aiAnalysisEnabled ? 'AI 将识别指标并生成健康建议' : '默认关闭（仅本地私有存储）',
+              style: AppTextStyles.caption,
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 
   /// 拍照后分析中界面：✅ 已开始分析 → 缩略图 → ⏳ AI 正在提取
   Widget _buildAnalyzingCard() {
-    final currentUserId = ref.read(currentUserProvider)?.id ?? 0;
-    final ownerName = _resolveOwnerName(_selectedUserId ?? currentUserId);
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Row(
+            Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.check_circle, color: Colors.green, size: 18),
-                SizedBox(width: 6),
+                const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                const SizedBox(width: 6),
                 Text(
-                  '已开始分析...',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  _aiAnalysisEnabled ? '已开始分析...' : '正在上传...',
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -397,21 +366,28 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
               ),
             ),
             const SizedBox(height: 20),
-            const Row(
+            Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                SizedBox(
+                const SizedBox(
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                SizedBox(width: 10),
-                Text('AI 正在提取体检指标...', style: TextStyle(fontSize: 14)),
+                const SizedBox(width: 10),
+                Text(
+                  _aiAnalysisEnabled
+                      ? 'AI 正在提取体检指标...'
+                      : '正在保存到本地私有空间（未开启 AI 分析）...',
+                  style: const TextStyle(fontSize: 14),
+                ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
-              '正在为 $ownerName 上传（共 ${_selectedImages.length} 张），分析完成后自动跳转结果页',
+              _aiAnalysisEnabled
+                  ? '正在上传（共 ${_selectedImages.length} 张），分析完成后自动跳转结果页'
+                  : '正在上传（共 ${_selectedImages.length} 张），保存完成后自动跳转报告详情',
               style: TextStyle(fontSize: 12, color: Colors.grey[500]),
             ),
           ],

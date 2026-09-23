@@ -7,16 +7,6 @@ import '../domain/message_models.dart';
 class MessageApiService {
   final ApiService _api = ApiService();
 
-  ApiResponse<Map<String, dynamic>> _wrapMap(ApiResponse<dynamic> res) {
-    return ApiResponse<Map<String, dynamic>>(
-      success: res.success,
-      message: res.message,
-      data: res.data is Map<String, dynamic>
-          ? res.data as Map<String, dynamic>
-          : null,
-    );
-  }
-
   // ==================== 发送消息 ====================
 
   /// 发送消息

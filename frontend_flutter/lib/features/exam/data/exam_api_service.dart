@@ -15,6 +15,7 @@ class ExamApiService {
     String? examDate,
     String? hospitalName,
     String reportType = 'full',
+    bool aiAnalysisEnabled = false,
   }) async {
     try {
       final formData = FormData();
@@ -32,6 +33,10 @@ class ExamApiService {
         formData.fields.add(MapEntry('hospital_name', hospitalName));
       }
       formData.fields.add(MapEntry('report_type', reportType));
+      // 隐私开关：默认关闭（仅本地私有存储，不送往 AI 分析）
+      formData.fields.add(
+        MapEntry('ai_analysis_enabled', aiAnalysisEnabled ? 'true' : 'false'),
+      );
 
       final res = await _api.post(
         '/health/exam/upload',
@@ -56,6 +61,7 @@ class ExamApiService {
     String? examDate,
     String? hospitalName,
     String reportType = 'full',
+    bool aiAnalysisEnabled = false,
   }) {
     return uploadExamReports(
       photos: [photo],
@@ -63,6 +69,7 @@ class ExamApiService {
       examDate: examDate,
       hospitalName: hospitalName,
       reportType: reportType,
+      aiAnalysisEnabled: aiAnalysisEnabled,
     );
   }
 
@@ -119,6 +126,25 @@ class ExamApiService {
       return ApiResponse.failure(message: res.message);
     } catch (e) {
       return ApiResponse.failure(message: '设置复查提醒失败', error: e.toString());
+    }
+  }
+
+  /// 开启/关闭该报告的 AI 分析（隐私开关，默认关闭，仅本地私有存储）
+  Future<ApiResponse<dynamic>> setAiAnalysisEnabled(
+    int reportId,
+    bool enabled,
+  ) async {
+    try {
+      final res = await _api.put(
+        '/health/exam/reports/$reportId/ai-analysis',
+        data: {'ai_analysis_enabled': enabled},
+      );
+      if (res.success) {
+        return ApiResponse.success(message: res.message, data: res.data);
+      }
+      return ApiResponse.failure(message: res.message);
+    } catch (e) {
+      return ApiResponse.failure(message: '设置 AI 分析开关失败', error: e.toString());
     }
   }
 

@@ -160,17 +160,16 @@ class Settings(BaseSettings):
     cache_user_profile_ttl: int = Field(default=1800, description="用户资料缓存过期时间(秒)")
     cache_nutrition_ttl: int = Field(default=7200, description="营养数据缓存过期时间(秒)")
 
-    # FCM 推送配置
-    fcm_enabled: bool = Field(default=False, description="是否启用FCM推送")
-    fcm_service_account_path: str = Field(
-        default="firebase-service-account.json",
-        description="Firebase 服务账号 JSON 文件路径"
-    )
-
     # AI服务配置（预留）
     ai_service_enabled: bool = Field(default=False, description="是否启用AI服务")
     ai_service_url: str = Field(default="http://127.0.0.1:2024", description="AI服务URL")
     ai_service_timeout: int = Field(default=30, description="AI服务超时时间(秒)")
+
+    # 外部依赖超时与重试配置（PRD 5.1：统一超时降级层，请求超时事件归零）
+    llm_request_timeout: int = Field(default=60, description="LLM单次请求超时时间(秒)")
+    llm_max_retries: int = Field(default=2, description="LLM请求失败最大重试次数")
+    external_http_timeout: int = Field(default=30, description="外部HTTP依赖超时时间(秒)")
+    redis_socket_timeout: float = Field(default=0.5, description="Redis连接/读写超时时间(秒)")
 
     # DashScope AI配置（通义万相）
     dashscope_api_key: str = Field(default="", description="DashScope API密钥")

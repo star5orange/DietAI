@@ -416,8 +416,8 @@ def get_pet_daily_summary(pet_id: int, days: int = 7) -> dict[str, Any]:
             for day, data in sorted(daily_totals.items())[-days:]
         ]
 
-        # 营养目标
-        target = calculate_pet_nutrition_target(pet_id)
+        # 营养目标（calculate_pet_nutrition_target 是 @tool 对象，必须用 .invoke 调用）
+        target = calculate_pet_nutrition_target.invoke({"pet_id": pet_id})
         target_cal = target.get("daily_targets", {}).get("calories_kcal", 0)
 
         total_calories = sum(s["total_calories"] for s in daily_summaries)

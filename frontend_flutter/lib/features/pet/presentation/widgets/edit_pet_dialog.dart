@@ -19,7 +19,6 @@ class _EditPetDialogState extends State<EditPetDialog> {
   late TextEditingController _weightController;
   String _selectedGender = 'male';
   bool _isNeutered = false;
-  bool _isSaving = false;
 
   @override
   void initState() {
@@ -226,7 +225,6 @@ class _EditPetDialogState extends State<EditPetDialog> {
       _showError('名称不能为空');
       return;
     }
-    setState(() => _isSaving = true);
 
     final api = RealPetApiService();
     final petId = (widget.pet['id'] as num?)?.toInt() ?? 0;
@@ -248,7 +246,6 @@ class _EditPetDialogState extends State<EditPetDialog> {
     }
 
     if (!mounted) return;
-    setState(() => _isSaving = false);
 
     if (result.isSuccess) {
       ScaffoldMessenger.of(context).showSnackBar(

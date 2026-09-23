@@ -15,6 +15,7 @@ from shared.models.schemas import (
     ExamReportResponse, ExamReportListResponse,
     ExamMetricResponse, ExamMetricUpdate,
     ExamReportFollowupUpdate, ExamReportReassign,
+    ExamReportAiAnalysisUpdate,
     MetricTrendPoint, MetricTrendResponse,
     ExamSummaryResponse, ExamAdviceResponse,
 )
@@ -357,32 +358,18 @@ async def upload_exam_report(
     exam_date: Optional[str] = Form(None, description="体检日期 YYYY-MM-DD"),
     hospital_name: Optional[str] = Form(None, description="体检机构"),
     report_type: Optional[str] = Form("full", description="报告类型"),
+    ai_analysis_enabled: bool = Form(False, description="是否允许 AI 分析该报告（默认关闭，仅本地私有存储）"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """上传体检报告照片，AI提取指标"""
     try:
-        # 权限检查：本人或家人
+        # PRD D9 / 5.4：家人体检数据仅可查看，不可代改（含代上传）
         if user_id != current_user.id:
-            is_family = db.query(UserRelationship).filter(
-                or_(
-                    and_(
-                        UserRelationship.user_id == current_user.id,
-                        UserRelationship.related_user_id == user_id
-                    ),
-                    and_(
-                        UserRelationship.user_id == user_id,
-                        UserRelationship.related_user_id == current_user.id
-                    )
-                ),
-                UserRelationship.relationship_type == "family",
-                UserRelationship.status == "accepted"
-            ).first()
-            if not is_family:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="只能为自己或家人上传体检报告"
-                )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="家人体检数据不可代上传（仅可查看）"
+            )
 
         # 收集待处理照片：photos 优先（多页），兼容单张 photo
         file_list = []
@@ -445,6 +432,13 @@ async def upload_exam_report(
             # 第一张照片的 URL 作为报告主图
             if idx == 0:
                 photo_url = page_url
+
+            # 隐私开关关闭：照片/文本仅本地私有存储，不送往 AI 分析
+            if not ai_analysis_enabled:
+                logger.info(
+                    f"报告未开启 AI 分析，跳过视觉模型调用（仅本地私有存储）: {object_name}"
+                )
+                continue
 
             result = await _call_qwen_vl(content, f.content_type)
             if not result:
@@ -511,6 +505,7 @@ async def upload_exam_report(
             photo_urls=photo_urls,
             followup_date=followup_date,
             abnormal_count=abnormal_count,
+            ai_analysis_enabled=ai_analysis_enabled,
             summary=ai_result.get("summary") if ai_result else None,
             doctor_advice=ai_result.get("doctor_advice") if ai_result else None,
             created_by=current_user.id if user_id != current_user.id else None
@@ -606,7 +601,11 @@ async def upload_exam_report(
 
         return BaseResponse(
             success=True,
-            message="体检报告上传成功，AI正在分析",
+            message=(
+                "体检报告上传成功，AI正在分析"
+                if ai_analysis_enabled
+                else "体检报告上传成功，未开启 AI 分析（仅本地私有存储）"
+            ),
             data=data
         )
     except HTTPException:
@@ -860,20 +859,17 @@ async def reassign_exam_report(
 
         target_user_id = body.target_user_id
 
-        # 校验当前用户：报告创建者 或 报告所属用户本人/家人
-        is_creator = report.created_by is not None and report.created_by == current_user.id
-        is_owner = report.user_id == current_user.id
-        if not (is_creator or is_owner or _is_family(db, current_user.id, report.user_id)):
+        # PRD D9 / 5.4：家人体检数据仅可查看，不可代改
+        # 仅报告归属人本人可修正，且只能修正为本人（不允许把报告改归给家人）
+        if report.user_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="无权修正该报告的归属"
+                detail="家人体检数据不可代改（仅可查看）"
             )
-
-        # 校验目标用户：必须是本人或当前用户的家人
-        if target_user_id != current_user.id and not _is_family(db, current_user.id, target_user_id):
+        if target_user_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="只能将报告归属给本人或家人"
+                detail="体检报告不可改归给家人（仅可归属本人）"
             )
 
         report.user_id = target_user_id
@@ -912,11 +908,11 @@ async def set_exam_report_followup(
                 detail="体检报告不存在"
             )
 
-        # 权限检查：本人或家人
-        if report.user_id != current_user.id and not _is_family(db, current_user.id, report.user_id):
+        # PRD D9 / 5.4：复查提醒属家人数据写入，仅本人可设置
+        if report.user_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="只能为自己或家人设置复查提醒"
+                detail="家人体检数据不可代改（仅可查看）"
             )
 
         report.followup_date = body.followup_date
@@ -938,6 +934,52 @@ async def set_exam_report_followup(
         )
 
 
+@router.put("/reports/{report_id}/ai-analysis", response_model=BaseResponse)
+async def set_exam_report_ai_analysis(
+    report_id: int,
+    body: ExamReportAiAnalysisUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """开启/关闭体检报告的 AI 分析（体检隐私开关，默认关闭，仅本地私有存储）"""
+    try:
+        report = db.query(ExamReport).filter(ExamReport.id == report_id).first()
+        if not report:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="体检报告不存在"
+            )
+
+        # PRD D9 / 5.4：AI 分析开关属隐私设置，仅报告本人可开关
+        if report.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="家人体检数据不可代改（仅可查看）"
+            )
+
+        report.ai_analysis_enabled = body.ai_analysis_enabled
+        db.commit()
+        db.refresh(report)
+
+        return BaseResponse(
+            success=True,
+            message=(
+                "已开启 AI 分析"
+                if body.ai_analysis_enabled
+                else "未开启 AI 分析，报告仅本地私有存储"
+            ),
+            data=ExamReportResponse.model_validate(report).model_dump()
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"设置 AI 分析开关失败: {e}\n{traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="设置 AI 分析开关失败"
+        )
+
+
 @router.delete("/reports/{report_id}", response_model=BaseResponse)
 async def delete_exam_report(
     report_id: int,
@@ -953,11 +995,11 @@ async def delete_exam_report(
                 detail="体检报告不存在"
             )
 
-        # 权限检查：本人或家人
-        if report.user_id != current_user.id and not _is_family(db, current_user.id, report.user_id):
+        # PRD D9：删除历史不开放，家人体检报告更不可由他人删除，仅本人可删
+        if report.user_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="只能删除自己或家人的体检报告"
+                detail="家人体检数据不可删除（仅可查看）"
             )
 
         # 删除指标明细（显式删除，外键级联兜底）
@@ -1076,28 +1118,18 @@ async def update_exam_metric(
                 detail="指标不存在"
             )
 
-        # 权限检查
+        # PRD D9 / 5.4：体检指标属家人敏感数据，仅报告本人可修正
         report = db.query(ExamReport).filter(ExamReport.id == metric.report_id).first()
+        if report is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="体检报告不存在"
+            )
         if report.user_id != current_user.id:
-            is_family = db.query(UserRelationship).filter(
-                or_(
-                    and_(
-                        UserRelationship.user_id == current_user.id,
-                        UserRelationship.related_user_id == report.user_id
-                    ),
-                    and_(
-                        UserRelationship.user_id == report.user_id,
-                        UserRelationship.related_user_id == current_user.id
-                    )
-                ),
-                UserRelationship.relationship_type == "family",
-                UserRelationship.status == "accepted"
-            ).first()
-            if not is_family:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="只能修正自己或家人的指标"
-                )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="家人体检数据不可代改（仅可查看）"
+            )
 
         if update.metric_value is not None:
             metric.metric_value = update.metric_value
@@ -1298,10 +1330,18 @@ async def get_exam_advice(
         followup = None
 
         ai_advice = None
-        if abnormal_metrics:
+        ai_analysis_skipped = not report.ai_analysis_enabled
+        if ai_analysis_skipped:
+            # 隐私开关关闭：仅本地私有存储，不把指标文本送往 AI
+            logger.info(
+                f"体检报告 {report_id} 未开启 AI 分析，跳过 AI 健康建议调用（仅本地私有存储）"
+            )
+        elif abnormal_metrics:
             ai_advice = await _call_advice_ai(report, abnormal_metrics)
 
-        if ai_advice:
+        if ai_analysis_skipped:
+            advice_parts = ["该体检报告未开启 AI 分析，体检数据仅本地私有存储，未生成 AI 健康建议。"]
+        elif ai_advice:
             advice_parts = [ai_advice["advice"]]
             diet_recs = ai_advice["diet_recommendations"]
             exercise_recs = ai_advice["exercise_recommendations"]
@@ -1353,14 +1393,19 @@ async def get_exam_advice(
 
         return BaseResponse(
             success=True,
-            message="获取健康建议成功",
+            message=(
+                "获取健康建议成功（未开启 AI 分析，仅本地私有存储）"
+                if ai_analysis_skipped
+                else "获取健康建议成功"
+            ),
             data=ExamAdviceResponse(
                 report_id=report_id,
                 advice="。".join(advice_parts),
                 diet_recommendations=diet_recs,
                 exercise_recommendations=exercise_recs,
                 followup_reminder=followup,
-                suggest_weight_loss_goal=suggest_weight_loss_goal
+                suggest_weight_loss_goal=suggest_weight_loss_goal,
+                ai_analysis_enabled=report.ai_analysis_enabled
             ).model_dump()
         )
     except HTTPException:

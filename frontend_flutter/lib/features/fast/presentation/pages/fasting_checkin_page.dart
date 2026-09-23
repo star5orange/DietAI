@@ -27,7 +27,6 @@ class _FastingCheckinPageState extends ConsumerState<FastingCheckinPage> {
   int _weeklyTarget = 0;
   bool _isFastingDay = false; // 今天是否是断食日
   String? _todayWeekday; // 今天是周几
-  FastingPlan? _plan; // 当前计划
 
   @override
   void initState() {
@@ -64,7 +63,6 @@ class _FastingCheckinPageState extends ConsumerState<FastingCheckinPage> {
 
       if (mounted) {
         setState(() {
-          _plan = activePlan;
           _daysElapsed = (activePlan?.daysElapsed ?? 0) + 1;
           _weeklyCheckins = progress?.weeklyCheckins ?? 0;
           _weeklyTarget = progress?.weeklyTarget ?? 0;

@@ -47,7 +47,11 @@ class AgentOrchestrator:
     async def _get_client(self):
         """Get or create LangGraph SDK client."""
         if self.client is None:
-            self.client = get_client(url=self._ai_service_url)
+            # PRD 5.1：外部依赖（LangGraph SDK）设置超时，避免请求无限阻塞
+            self.client = get_client(
+                url=self._ai_service_url,
+                timeout=settings.external_http_timeout,
+            )
         return self.client
 
     async def analyze_food_with_goals(

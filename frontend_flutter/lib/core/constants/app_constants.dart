@@ -11,7 +11,9 @@ class AppConstants {
   static const String apiPrefix = '/api';
 
   // WebSocket配置（从 baseUrl 转换 http:// → ws://）
-  static String get wsUrl => baseUrl.replaceFirst('http://', 'ws://').replaceFirst('https://', 'wss://');
+  static String get wsUrl => baseUrl
+      .replaceFirst('http://', 'ws://')
+      .replaceFirst('https://', 'wss://');
 
   // 存储键
   static const String accessTokenKey = 'access_token';
@@ -64,7 +66,8 @@ class AppConstants {
     1: '早餐',
     2: '午餐',
     3: '晚餐',
-    4: '零食',
+    4: '加餐',
+    5: '夜宵',
   };
 
   // 记录方式

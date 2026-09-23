@@ -31,7 +31,6 @@ class _BreedSelectorWidgetState extends State<BreedSelectorWidget> {
   List<String> _filteredBreeds = [];
   bool _showDropdown = false;
   bool _showCustomInput = false;
-  bool _isLoadingBreeds = false;
 
   static const _customBreedKeys = ['混血（串串）', '其他'];
 
@@ -110,7 +109,6 @@ class _BreedSelectorWidgetState extends State<BreedSelectorWidget> {
     // 其他物种不需要请求品种列表
     if (widget.species != 'cat' && widget.species != 'dog') return;
 
-    setState(() => _isLoadingBreeds = true);
     try {
       final response = await ApiService().get(
         '/pets/breeds',
@@ -136,8 +134,6 @@ class _BreedSelectorWidgetState extends State<BreedSelectorWidget> {
       }
     } catch (_) {
       // API 失败，使用硬编码回退数据
-    } finally {
-      if (mounted) setState(() => _isLoadingBreeds = false);
     }
   }
 

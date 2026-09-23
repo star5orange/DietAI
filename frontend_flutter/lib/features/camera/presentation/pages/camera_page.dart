@@ -26,6 +26,15 @@ class CameraPage extends ConsumerStatefulWidget {
   // 代记录：目标家人用户ID（为空表示记录给自己）
   final int? proxyTargetUserId;
   final String? proxyTargetName;
+  // 自动弹出相册选择（对话页「拍照/相册」二选一弹窗的相册路径）：
+  // 进入后不初始化相机、直接弹系统相册；取消后再降级初始化取景器
+  final bool autoPickGallery;
+  // 初始识别模式：false=餐食识别（默认），true=包装食品（营养成分表 OCR）；
+  // 取景器内仍可随时用顶部 chip 切换
+  final bool initialLabelMode;
+  // 是否允许取景器内切换识别模式：拍照记录弹窗已选定目的时传 false（锁定模式，
+  // 顶部仅显示当前模式指示，防止误切换）；其他入口默认 true 保持原行为
+  final bool allowModeSwitch;
 
   const CameraPage({
     super.key,
@@ -37,6 +46,9 @@ class CameraPage extends ConsumerStatefulWidget {
     this.costSource,
     this.proxyTargetUserId,
     this.proxyTargetName,
+    this.autoPickGallery = false,
+    this.initialLabelMode = false,
+    this.allowModeSwitch = true,
   });
 
   @override
@@ -56,7 +68,17 @@ class _CameraPageState extends ConsumerState<CameraPage> {
   @override
   void initState() {
     super.initState();
-    _initializeCamera();
+    _isLabelMode = widget.initialLabelMode;
+    if (widget.autoPickGallery && !_isDesktop) {
+      // 相册直达模式：不初始化相机（避免相机权限弹窗打扰），直接弹系统相册；
+      // 用户取消时在 _pickFromGallery 里降级初始化取景器
+      setState(() => _isLoading = false);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _pickFromGallery();
+      });
+    } else {
+      _initializeCamera();
+    }
   }
 
   @override
@@ -155,12 +177,28 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         } else {
           await _processImage(file);
         }
+      } else if (_cameraController == null && !_isDesktop && mounted) {
+        // 相册直达模式取消了选择：降级初始化相机，留在取景器可继续拍照
+        _initializeCamera();
       }
     } catch (e) {
       NetworkErrorHandler.handleApiError(context, e);
     } finally {
       setState(() => _isProcessing = false);
     }
+  }
+
+  /// 按用餐时间推断默认餐次（PRD 4.7 时间归属；口径与后端 record_food._infer_meal_type 一致）：
+  /// 5-10 早餐(1)、10-15 午餐(2)、15-17 加餐(4)、17-21 晚餐(3)、其余夜宵(5)。
+  /// 仅在调用方未显式指定 mealType 时兜底，避免「晚上拍的照挂到早餐」。
+  int _inferMealType() {
+    final t = widget.recordTime ?? DateTime.now().toIso8601String();
+    final hour = DateTime.tryParse(t)?.hour ?? DateTime.now().hour;
+    if (hour >= 5 && hour < 10) return 1;
+    if (hour >= 10 && hour < 15) return 2;
+    if (hour >= 15 && hour < 17) return 4;
+    if (hour >= 17 && hour < 21) return 3;
+    return 5;
   }
 
   Future<void> _processImage(File imageFile) async {
@@ -172,7 +210,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       final analysisStream = _foodService.createFoodRecordWithImageStream(
         imageFile: imageFile,
         recordDate: recordDate,
-        mealType: widget.mealType ?? 1,
+        mealType: widget.mealType ?? _inferMealType(),
         foodName: '',
         description: '通过AI扫描识别',
         recordTime: widget.recordTime,
@@ -186,7 +224,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       final pendingData = FoodRecordCreate(
         recordDate: recordDate,
         recordTime: widget.recordTime,
-        mealType: widget.mealType ?? 1,
+        mealType: widget.mealType ?? _inferMealType(),
         foodName: '',
         description: '通过AI扫描识别',
         recordingMethod: 1, // AI扫描
@@ -204,15 +242,6 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     } catch (e) {
       NetworkErrorHandler.handleApiError(context, e);
     }
-  }
-
-  void _showSuccessDialog() {
-    ErrorHandler.showSuccess(
-      context,
-      '食物图片已成功上传并创建记录',
-      title: '上传成功',
-      onOk: () => Navigator.pop(context),
-    );
   }
 
   // ============================================================
@@ -247,13 +276,13 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         }
       } else {
         ErrorHandler.showError(
-          this.context,
+          context,
           res.message.isEmpty ? '包装食品识别失败，请重试' : res.message,
         );
       }
     } catch (e) {
       if (mounted) {
-        ErrorHandler.showError(this.context, '包装食品识别出错: $e');
+        ErrorHandler.showError(context, '包装食品识别出错: $e');
       }
     }
   }
@@ -433,8 +462,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
         'sodium': scaled('sodium'),
       },
       'health_level': 3,
-      'source_description':
-          '包装食品营养成分表（每100克标注值 × 食用量${_fmtNum(amount)}克）',
+      'source_description': '包装食品营养成分表（每100克标注值 × 食用量${_fmtNum(amount)}克）',
     };
   }
 
@@ -448,7 +476,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     final pending = FoodRecordCreate(
       recordDate: widget.recordDate,
       recordTime: widget.recordTime ?? DateTime.now().toIso8601String(),
-      mealType: widget.mealType ?? 1,
+      mealType: widget.mealType ?? _inferMealType(),
       foodName: displayName,
       description: _buildLabelDescription(
         displayName,
@@ -502,19 +530,6 @@ class _CameraPageState extends ConsumerState<CameraPage> {
       ),
     ).then((result) {
       // 分析页返回后，自动关闭相机页回到首页
-      if (result == true && mounted) {
-        Navigator.of(context).pop(true);
-      }
-    });
-  }
-
-  void _navigateToAnalysisPage(dynamic foodRecord) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => FoodAnalysisPage(foodRecord: foodRecord),
-      ),
-    ).then((result) {
       if (result == true && mounted) {
         Navigator.of(context).pop(true);
       }
@@ -602,25 +617,44 @@ class _CameraPageState extends ConsumerState<CameraPage> {
             child: Column(
               children: [
                 // 识别模式切换：餐食识别 / 包装食品
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(24),
+                // 弹窗已选定目的（allowModeSwitch=false）时锁定模式，仅显示当前模式指示
+                if (widget.allowModeSwitch)
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildModeChip(false, '餐食识别'),
+                        _buildModeChip(true, '包装食品'),
+                      ],
+                    ),
+                  )
+                else
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Text(
+                      _isLabelMode ? '包装食品识别' : '餐食识别',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildModeChip(false, '餐食识别'),
-                      _buildModeChip(true, '包装食品'),
-                    ],
-                  ),
-                ),
                 const SizedBox(height: 12),
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 40),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(20),
@@ -847,32 +881,32 @@ class _CameraPageState extends ConsumerState<CameraPage> {
               ),
               const SizedBox(height: 8),
               Text(
-                _isLabelMode
-                    ? '请选择包装食品营养成分表照片进行识别'
-                    : '请从本地选择食物图片进行 AI 识别',
+                _isLabelMode ? '请选择包装食品营养成分表照片进行识别' : '请从本地选择食物图片进行 AI 识别',
                 style: const TextStyle(
                   fontSize: 14,
                   color: AppColors.textSecondary,
                 ),
               ),
               const SizedBox(height: 20),
-              // 识别模式切换
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ChoiceChip(
-                    label: const Text('餐食识别'),
-                    selected: !_isLabelMode,
-                    onSelected: (_) => setState(() => _isLabelMode = false),
-                  ),
-                  const SizedBox(width: 12),
-                  ChoiceChip(
-                    label: const Text('包装食品'),
-                    selected: _isLabelMode,
-                    onSelected: (_) => setState(() => _isLabelMode = true),
-                  ),
-                ],
-              ),
+              // 识别模式切换：弹窗已选定目的（allowModeSwitch=false）时隐藏锁定；
+              // 数据看板等直接入口（true）保留供用户自选
+              if (widget.allowModeSwitch)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('餐食识别'),
+                      selected: !_isLabelMode,
+                      onSelected: (_) => setState(() => _isLabelMode = false),
+                    ),
+                    const SizedBox(width: 12),
+                    ChoiceChip(
+                      label: const Text('包装食品'),
+                      selected: _isLabelMode,
+                      onSelected: (_) => setState(() => _isLabelMode = true),
+                    ),
+                  ],
+                ),
               const SizedBox(height: 32),
               SizedBox(
                 width: 240,
@@ -913,4 +947,3 @@ class _CameraPageState extends ConsumerState<CameraPage> {
     );
   }
 }
-

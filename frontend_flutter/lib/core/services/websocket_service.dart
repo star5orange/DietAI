@@ -90,7 +90,7 @@ class WebSocketService {
 
         if (type == 'new_message' && data['data'] != null) {
           final msg = data['data'] as Map<String, dynamic>;
-          // 本地通知兜底（FCM 未启用时）：不在聊天页时弹系统通知提示新消息
+          // 本地通知兜底：不在聊天页时弹系统通知提示新消息
           if (!suppressNewMessageNotification) {
             _showLocalNotification(msg);
           }

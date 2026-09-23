@@ -1,4 +1,4 @@
-﻿
+
 import 'package:flutter/foundation.dart';
 import '../core/services/api_service.dart';
 import '../shared/domain/models/api_response.dart';
@@ -235,6 +235,7 @@ class SavedMealService {
       '午餐',
       '晚餐',
       '零食',
+      '夜宵',
       '健康',
       '低卡',
       '高蛋白',

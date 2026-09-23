@@ -250,11 +250,6 @@ class _WeightRecordsSheetState extends ConsumerState<WeightRecordsSheet> {
       );
     }
 
-    // 按时间排序
-    final sortedRecords = List<WeightRecord>.from(records)
-      ..sort((a, b) =>
-          DateTime.parse(a.measuredAt).compareTo(DateTime.parse(b.measuredAt)));
-
     // 获取最近30天的记录
     final recentRecords =
         ref.read(weightRecordsProvider.notifier).recentRecords;

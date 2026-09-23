@@ -790,7 +790,8 @@ class _ChatHistoryPageState extends ConsumerState<ChatHistoryPage> {
 
   String _formatTime(String timestamp) {
     try {
-      final dateTime = DateTime.parse(timestamp);
+      // 后端返回带时区的时间戳（UTC），统一转成本地时间再比较/展示
+      final dateTime = DateTime.parse(timestamp).toLocal();
       final now = DateTime.now();
       final difference = now.difference(dateTime);
 

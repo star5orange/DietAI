@@ -993,8 +993,6 @@ class _ExerciseRecordPageState extends State<ExerciseRecordPage>
       child: Column(
         children: typeList.map((t) {
           final total = typeList.fold<double>(0, (s, i) => s + i.calories);
-          final pct =
-              total > 0 ? (t.calories / total * 100).toStringAsFixed(0) : '0';
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Row(

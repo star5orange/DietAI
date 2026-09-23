@@ -18,8 +18,8 @@ settings = get_settings()
 
 
 async def _get_langgraph_client():
-    """获取 LangGraph SDK 客户端"""
-    return get_client(url=settings.ai_service_url)
+    """获取 LangGraph SDK 客户端（PRD 5.1：外部依赖设置超时，避免请求无限阻塞）"""
+    return get_client(url=settings.ai_service_url, timeout=settings.external_http_timeout)
 
 
 async def _load_user_preferences(user_id: int) -> dict:
@@ -57,10 +57,10 @@ async def _load_user_preferences(user_id: int) -> dict:
                     "notes": d.notes or "",
                 })
 
-            # 加载健康目标
+            # 加载健康目标（HealthGoal 只有 current_status，没有 status / daily_calorie_target）
             goals = db.query(HealthGoal).filter(
                 HealthGoal.user_id == user_id,
-                HealthGoal.status == 1,
+                HealthGoal.current_status == 1,
             ).first()
 
             health_goals = {}
@@ -69,8 +69,6 @@ async def _load_user_preferences(user_id: int) -> dict:
                     health_goals["goal_type"] = goals.goal_type
                 if goals.target_weight:
                     health_goals["target_weight"] = float(goals.target_weight)
-                if goals.daily_calorie_target:
-                    health_goals["daily_calorie_target"] = int(goals.daily_calorie_target)
 
             return {
                 "dietary_restrictions": dietary_restrictions,
@@ -159,37 +157,35 @@ def lookup_food_database(food_name: str) -> dict[str, Any]:
     """
     try:
         from shared.models.database import SessionLocal
-        from shared.models.food_models import FoodRecord, NutritionDetail
+        from shared.services.food_matching import match_food
 
         db = SessionLocal()
         try:
-            # 模糊搜索最近的匹配记录
-            records = db.query(FoodRecord).filter(
-                FoodRecord.food_name.ilike(f"%{food_name}%")
-            ).limit(5).all()
-
-            if not records:
+            matched = match_food(db, food_name)
+            if not matched:
                 return {
                     "found": False,
-                    "message": f"未在数据库中找到「{food_name}」的记录，可以使用 analyze_food_image 工具通过图片分析",
+                    "message": (
+                        f"食物库中没有「{food_name}」的营养数据，"
+                        "可以使用 analyze_food_image 工具通过图片分析"
+                    ),
                 }
 
-            results = []
-            for record in records:
-                detail = db.query(NutritionDetail).filter(
-                    NutritionDetail.food_record_id == record.id
-                ).first()
-
-                if detail:
-                    results.append({
-                        "food_name": record.food_name if hasattr(record, 'food_name') else food_name,
-                        "calories": float(str(detail.calories)) if detail.calories else None,
-                        "protein": float(str(detail.protein)) if detail.protein else None,
-                        "carbs": float(str(detail.carbohydrates)) if detail.carbohydrates else None,
-                        "fat": float(str(detail.fat)) if detail.fat else None,
-                    })
-
-            return {"found": True, "results": results}
+            per_100g = matched["per_100g"]
+            return {
+                "found": True,
+                "results": [
+                    {
+                        "food_name": matched["matched_name"],
+                        "calories": per_100g["calories"],
+                        "protein": per_100g["protein"],
+                        "carbs": per_100g["carbohydrates"],
+                        "fat": per_100g["fat"],
+                    }
+                ],
+                "per_100g": per_100g,
+                "message": f"命中食物库「{matched['matched_name']}」（每 100g 数据）",
+            }
         finally:
             db.close()
 

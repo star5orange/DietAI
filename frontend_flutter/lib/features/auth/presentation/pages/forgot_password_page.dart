@@ -23,7 +23,6 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
 
   bool _isLoading = false;
   bool _codeSent = false;
-  bool _codeVerified = false;
   int _countdown = 0;
   Timer? _timer;
 
@@ -62,7 +61,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     setState(() => _isLoading = true);
 
     try {
-      final response = await _authService.forgotPassword(_phoneController.text.trim());
+      final response =
+          await _authService.forgotPassword(_phoneController.text.trim());
 
       if (!mounted) return;
 
@@ -72,7 +72,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         // 显示成功消息
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(response.message ?? '验证码已发送'),
+            content: Text(response.message),
             backgroundColor: AppColors.success,
             behavior: SnackBarBehavior.floating,
           ),
@@ -97,7 +97,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(response.message ?? '发送失败'),
+            content: Text(response.message),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
           ),
@@ -146,8 +146,6 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       if (!mounted) return;
 
       if (response.success) {
-        setState(() => _codeVerified = true);
-
         // 显示成功消息
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -162,7 +160,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           if (mounted) {
             context.push('/reset-password', extra: {
               'phone': _phoneController.text.trim(),
-              'code': _codeController.text.trim(),  // 传递验证码
+              'code': _codeController.text.trim(), // 传递验证码
             });
           }
         });
@@ -170,7 +168,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(response.message ?? '验证码错误'),
+            content: Text(response.message),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
           ),
@@ -223,7 +221,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                         const SizedBox(height: 8),
                         Text(
                           '请输入注册时使用的手机号和验证码',
-                          style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
+                          style: AppTextStyles.bodyMedium
+                              .copyWith(color: AppColors.textSecondary),
                         ),
                       ],
                     ),
@@ -275,7 +274,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                         _codeSent && _countdown > 0
                             ? '$_countdown秒后可重新发送'
                             : '发送验证码',
-                        style: TextStyle(color: _countdown > 0 ? AppColors.textSecondary : AppColors.primary),
+                        style: TextStyle(
+                            color: _countdown > 0
+                                ? AppColors.textSecondary
+                                : AppColors.primary),
                       ),
                     ),
                   ),
@@ -327,12 +329,14 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.info_outline, color: AppColors.info, size: 20),
+                        const Icon(Icons.info_outline,
+                            color: AppColors.info, size: 20),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
                             '验证码有效期为5分钟，请及时使用',
-                            style: AppTextStyles.caption.copyWith(color: AppColors.info),
+                            style: AppTextStyles.caption
+                                .copyWith(color: AppColors.info),
                           ),
                         ),
                       ],

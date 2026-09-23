@@ -38,7 +38,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final MessageApiService _messageApiService = MessageApiService();
   WebSocketChatService? _ws;
   List<FoodRecord> _foodRecords = [];
-  bool _isLoadingRecords = false;
 
   int get _currentUserId {
     final user = ref.watch(currentUserProvider);
@@ -390,8 +389,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Future<void> _showFoodShareDialog() async {
-    setState(() => _isLoadingRecords = true);
-
     // Load today's food records
     final today = DateTime.now();
     final todayString =
@@ -400,7 +397,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     if (mounted) {
       setState(() {
-        _isLoadingRecords = false;
         if (response.success && response.data != null) {
           _foodRecords = response.data!;
         }

@@ -138,6 +138,13 @@ env.example
 *.pub
 !env.example
 
+# ===== 凭据文件（禁止入库）=====
+firebase-service-account.json
+*-service-account.json
+token.json
+*.pem.bak
+*.pub.bak
+
 # ==========================================
 # Database & Storage
 # ==========================================
@@ -257,6 +264,7 @@ Milestone2_*.md
 # AI Agent User Memory (用户隐私数据)
 # ==========================================
 agent/UserMemory/
+agents/UserMemory/
 nul
 .claude/
 .mcp.json
@@ -268,3 +276,6 @@ README-local.md
 pack_beta.ps1
 test_connection.dart
 test_redis_fix.py
+
+# Flutter local pub cache residue (jni build artifacts)
+frontend_flutter/.local_pub/

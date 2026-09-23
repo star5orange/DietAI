@@ -185,7 +185,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
               if (value == null || value.trim().isEmpty) {
                 return '请输入用户名';
               }
-              if (value.trim().length < 1) {
+              if (value.trim().isEmpty) {
                 return '用户名至少1位字符';
               }
               if (value.trim().length > 10) {

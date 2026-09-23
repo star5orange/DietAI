@@ -234,8 +234,6 @@ class _GoalProgressDetailPageState
 
     final targets = _dailyStatus!['daily_targets'] as Map<String, dynamic>?;
     final consumed = _dailyStatus!['today_consumed'] as Map<String, dynamic>?;
-    final bmr = _dailyStatus!['bmr'];
-    final tdee = _dailyStatus!['tdee'];
 
     if (targets == null) return const SizedBox.shrink();
 

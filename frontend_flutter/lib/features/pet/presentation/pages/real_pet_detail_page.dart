@@ -256,7 +256,6 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
   Widget build(BuildContext context) {
     final pet = widget.pet;
     final speciesIcon = getSpeciesIcon(pet['species'] as String?);
-    final speciesLabel = getSpeciesLabel(pet['species'] as String?);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -409,7 +408,6 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
   Widget _buildProfileTab() {
     final pet = widget.pet;
     final speciesIcon = getSpeciesIcon(pet['species'] as String?);
-    final speciesLabel = getSpeciesLabel(pet['species'] as String?);
 
     // 仅使用本页状态，不依赖 petProvider（真实宠物形象与虚拟桌宠独立）
     final hasEmotions = _emotionUrls.isNotEmpty;
@@ -1177,15 +1175,46 @@ class _RealPetDetailPageState extends ConsumerState<RealPetDetailPage>
     }
   }
 
+  /// 页面 → 对话携带的上下文（PRD 4.8 / D18）：当前这只宠物的档案摘要，
+  /// 使 Agent 首轮即可针对这只宠物执行动作（如「今天喂了半个罐头」）。
+  ChatPageContext _buildPetChatContext() {
+    final name = (widget.pet['name'] ?? '宠物').toString();
+    final speciesLabel = getSpeciesLabel(widget.pet['species'] as String?);
+    final breed = (widget.pet['breed'] ?? '').toString();
+    final latestWeight = _weightRecords.isEmpty
+        ? null
+        : (_weightRecords.first['weight'] as num?)?.toDouble();
+    final weightText =
+        latestWeight == null ? '' : '${latestWeight.toStringAsFixed(1)}kg';
+
+    final titleParts = <String>[
+      name,
+      if (breed.isNotEmpty) breed else speciesLabel,
+      if (weightText.isNotEmpty) weightText,
+    ];
+
+    return ChatPageContext(
+      type: 'pet',
+      title: titleParts.join(' · '),
+      hint: '用户正在查看宠物「$name」（宠物ID $_petId）的健康档案'
+          '${speciesLabel.isEmpty ? '' : '，物种 $speciesLabel'}'
+          '${breed.isEmpty ? '' : '，品种 $breed'}'
+          '${weightText.isEmpty ? '' : '，最新体重 $weightText'}。'
+          '回答与记录只针对这只宠物，不要写入主人自己的饮食记录。',
+    );
+  }
+
   /// 启动宠物 AI 对话
   void _startPetChat() {
     Navigator.push(
       context,
       MaterialPageRoute(
+        // 统一走 Agent 对话内核（PRD D11 / D18）：宠物上下文域 + 宠物档案上下文（PRD 4.8）
         builder: (_) => ChatPage(
           sessionType: 6,
           petId: _petId,
           title: '${widget.pet['name']} - 健康咨询',
+          pageContext: _buildPetChatContext(),
         ),
       ),
     );

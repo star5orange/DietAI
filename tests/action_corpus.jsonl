@@ -1,0 +1,60 @@
+{"id": "record_food-1", "action": "record_food", "text": "帮我记录：午饭吃了宫保鸡丁", "tags": ["明确指令"]}
+{"id": "record_food-2", "action": "record_food", "text": "我今天吃了中份鸡公煲", "tags": ["叙述性"], "fallback_keywords": ["要帮你记录吗", "要不要记录"]}
+{"id": "record_food-3", "action": "record_food", "text": "记一下，晚上吃了半碗米饭和一份青菜", "tags": ["明确指令", "模糊量词"]}
+{"id": "record_food-4", "action": "record_food", "text": "早上喝了一碗小米粥", "tags": ["叙述性", "老人线口语"], "fallback_keywords": ["要不要记录", "帮你记录到", "记录吗"]}
+{"id": "record_water-1", "action": "record_water", "text": "帮我记录：我刚喝了一瓶水，500ml", "tags": ["明确指令"]}
+{"id": "record_water-2", "action": "record_water", "text": "我喝了一杯牛奶", "tags": ["叙述性"], "fallback_keywords": ["要帮你记录", "要不要记录"]}
+{"id": "record_water-3", "action": "record_water", "text": "刚才喝了两大杯水", "tags": ["叙述性", "模糊量词"], "fallback_keywords": ["帮你记上", "要帮你记录", "要不要记录"]}
+{"id": "record_water-4", "action": "record_water", "text": "帮我记一下，喝了 300 毫升水", "tags": ["明确指令"]}
+{"id": "record_weight-1", "action": "record_weight", "text": "我今天 91 斤", "tags": ["叙述性"]}
+{"id": "record_weight-2", "action": "record_weight", "text": "帮我记录：我早上称了 70.5 公斤", "tags": ["明确指令"]}
+{"id": "record_weight-3", "action": "record_weight", "text": "今天体重 65.2 公斤，帮我记一下", "tags": ["明确指令"]}
+{"id": "record_weight-4", "action": "record_weight", "text": "我刚称完体重，58 公斤", "tags": ["叙述性"]}
+{"id": "query_today-1", "action": "query_today", "text": "我今天吃了多少", "tags": ["查询"]}
+{"id": "query_today-2", "action": "query_today", "text": "我今天热量超了吗", "tags": ["查询"]}
+{"id": "query_today-3", "action": "query_today", "text": "昨天喝了多少水", "tags": ["查询", "时间归属"]}
+{"id": "query_today-4", "action": "query_today", "text": "我今天摄入的卡路里够不够", "tags": ["查询"]}
+{"id": "query_family-1", "action": "query_family", "text": "我妈今天吃了吗", "tags": ["查询", "老人线"]}
+{"id": "query_family-2", "action": "query_family", "text": "我爸今天吃了什么", "tags": ["查询", "老人线"]}
+{"id": "query_family-3", "action": "query_family", "text": "家里人今天吃得好吗", "tags": ["查询", "老人线"]}
+{"id": "query_family-4", "action": "query_family", "text": "奶奶今天有按时吃饭吗", "tags": ["查询", "老人线"]}
+{"id": "undo-1", "action": "undo", "text": "刚才那条记错了，撤销", "tags": ["撤销"], "fallback_keywords": ["撤销"]}
+{"id": "undo-2", "action": "undo", "text": "删掉刚记录的午餐", "tags": ["撤销"], "fallback_keywords": ["撤销", "删除"]}
+{"id": "undo-3", "action": "undo", "text": "撤销我刚才那条", "tags": ["撤销"], "fallback_keywords": ["撤销"]}
+{"id": "undo-4", "action": "undo", "text": "刚才记错了，帮我撤了", "tags": ["撤销"], "fallback_keywords": ["撤销", "记错"]}
+{"id": "query_nutrition-1", "action": "query_nutrition", "text": "我这周蛋白质够吗", "tags": ["查询"]}
+{"id": "query_nutrition-2", "action": "query_nutrition", "text": "最近一个月脂肪吃多了没", "tags": ["查询"]}
+{"id": "query_nutrition-3", "action": "query_nutrition", "text": "这几天纤维达标了吗", "tags": ["查询"]}
+{"id": "query_nutrition-4", "action": "query_nutrition", "text": "我这个月碳水摄入怎么样", "tags": ["查询"]}
+{"id": "query_weight_trend-1", "action": "query_weight_trend", "text": "我这一个月瘦了吗", "tags": ["查询"]}
+{"id": "query_weight_trend-2", "action": "query_weight_trend", "text": "这周体重有变化吗", "tags": ["查询"]}
+{"id": "query_weight_trend-3", "action": "query_weight_trend", "text": "最近体重降了多少", "tags": ["查询"]}
+{"id": "query_weight_trend-4", "action": "query_weight_trend", "text": "我这个月体重趋势怎么样", "tags": ["查询"]}
+{"id": "record_pet_feeding-1", "action": "record_pet_feeding", "text": "帮我记一下喂了猫", "tags": ["养宠线"], "fallback_keywords": ["宠物", "猫", "狗"]}
+{"id": "record_pet_feeding-2", "action": "record_pet_feeding", "text": "刚才给咪咪喂了一碗猫粮", "tags": ["养宠线"], "fallback_keywords": ["宠物", "猫", "狗"]}
+{"id": "record_pet_feeding-3", "action": "record_pet_feeding", "text": "给旺财喂了 50 克狗粮", "tags": ["养宠线"], "fallback_keywords": ["宠物", "猫", "狗"]}
+{"id": "record_pet_feeding-4", "action": "record_pet_feeding", "text": "记一下，晚上给猫喂了一勺罐头", "tags": ["养宠线"], "fallback_keywords": ["宠物", "猫", "狗"]}
+{"id": "query_pet-1", "action": "query_pet", "text": "我家猫这周吃得怎么样", "tags": ["养宠线"], "fallback_keywords": ["宠物", "猫", "狗"]}
+{"id": "query_pet-2", "action": "query_pet", "text": "咪咪最近吃得好吗", "tags": ["养宠线"], "fallback_keywords": ["宠物", "猫", "狗"]}
+{"id": "query_pet-3", "action": "query_pet", "text": "旺财这两天吃了多少", "tags": ["养宠线"], "fallback_keywords": ["宠物", "猫", "狗"]}
+{"id": "query_pet-4", "action": "query_pet", "text": "我家狗最近的饮食情况如何", "tags": ["养宠线"], "fallback_keywords": ["宠物", "猫", "狗"]}
+{"id": "query_exam-1", "action": "query_exam", "text": "我上次体检血糖是多少", "tags": ["查询", "体检隐私"], "fallback_keywords": ["体检"]}
+{"id": "query_exam-2", "action": "query_exam", "text": "我的低密度脂蛋白正常吗", "tags": ["查询", "体检隐私"], "fallback_keywords": ["体检", "指标"]}
+{"id": "query_exam-3", "action": "query_exam", "text": "看看我最近的体检报告", "tags": ["查询", "体检隐私"], "fallback_keywords": ["体检"]}
+{"id": "query_exam-4", "action": "query_exam", "text": "我的体检指标有没有异常", "tags": ["查询", "体检隐私"], "fallback_keywords": ["体检", "指标"]}
+{"id": "set_reminder-1", "action": "set_reminder", "text": "明早 7 点提醒我喝水", "tags": ["写操作", "提醒"]}
+{"id": "set_reminder-2", "action": "set_reminder", "text": "每天 21:30 提醒我别吃夜宵", "tags": ["写操作", "提醒"]}
+{"id": "set_reminder-3", "action": "set_reminder", "text": "下午 3 点提醒我喝水", "tags": ["写操作", "提醒"]}
+{"id": "set_reminder-4", "action": "set_reminder", "text": "帮我设个每天早上 8 点的喝水提醒", "tags": ["写操作", "提醒"]}
+{"id": "query_cost-1", "action": "query_cost", "text": "这周吃饭花了多少钱", "tags": ["查询"]}
+{"id": "query_cost-2", "action": "query_cost", "text": "这个月吃饭花销多少", "tags": ["查询"]}
+{"id": "query_cost-3", "action": "query_cost", "text": "我这周外卖花了多少", "tags": ["查询"]}
+{"id": "query_cost-4", "action": "query_cost", "text": "这个月伙食费花了多少", "tags": ["查询"]}
+{"id": "generate_weekly_report-1", "action": "generate_weekly_report", "text": "给我出一份饮食周报", "tags": ["查询"]}
+{"id": "generate_weekly_report-2", "action": "generate_weekly_report", "text": "上周我吃得怎么样", "tags": ["查询"]}
+{"id": "generate_weekly_report-3", "action": "generate_weekly_report", "text": "给我出一份这周的饮食报告", "tags": ["查询"]}
+{"id": "generate_weekly_report-4", "action": "generate_weekly_report", "text": "帮我总结下这周的饮食", "tags": ["查询"]}
+{"id": "send_reminder_to_family-1", "action": "send_reminder_to_family", "text": "提醒我妈吃饭", "tags": ["老人线", "写操作"]}
+{"id": "send_reminder_to_family-2", "action": "send_reminder_to_family", "text": "给我爸发个喝水提醒", "tags": ["老人线", "写操作"]}
+{"id": "send_reminder_to_family-3", "action": "send_reminder_to_family", "text": "提醒奶奶喝水", "tags": ["老人线", "写操作"]}
+{"id": "send_reminder_to_family-4", "action": "send_reminder_to_family", "text": "帮我给妈妈发条消息，提醒她吃晚饭", "tags": ["老人线", "写操作"]}

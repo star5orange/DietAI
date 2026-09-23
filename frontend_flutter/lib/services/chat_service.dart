@@ -6,11 +6,15 @@ class ChatService {
   final ApiService _apiService = ApiService();
 
   /// 发送聊天消息并获取AI回复 (流式)
+  ///
+  /// [useDeepAgent] 为 true 时走 DietDeepAgent 统一对话入口（支持动作卡片与撤销），
+  /// 为 false 时走原 chat_agent 咨询链路。
   Stream<ChatStreamEvent> sendMessageStream({
     required String message,
     int? sessionId,
     int sessionType = 1,
-    int? petId,  // 宠物ID
+    int? petId, // 宠物ID
+    bool useDeepAgent = true,
   }) async* {
     try {
       final requestData = {
@@ -20,9 +24,12 @@ class ChatService {
         if (petId != null) 'pet_id': petId,
       };
 
+      final endpoint =
+          useDeepAgent ? '/deep/chat' : '/chat/send-message-stream';
+
       // 使用ApiService的流式方法
-      await for (final chunk in _apiService
-          .postStream('/chat/send-message-stream', data: requestData)) {
+      await for (final chunk
+          in _apiService.postStream(endpoint, data: requestData)) {
         if (chunk.trim().isEmpty) continue;
 
         // 解析SSE数据
@@ -43,6 +50,16 @@ class ChatService {
         message: '发送消息失败: $e',
       );
     }
+  }
+
+  /// 卡片「撤销」：直调后端撤销动作（仅最近一条 + 记录后 10 分钟内生效）
+  ///
+  /// [undoToken] 为卡片上的撤销凭证；后端据此校验「点哪张撤哪张」，
+  /// 避免撤销到其他会话的最近一条记录。
+  Future<ApiResponse<dynamic>> undoLastAction({String? undoToken}) {
+    return _apiService.post('/deep/actions/undo', data: {
+      if (undoToken != null && undoToken.isNotEmpty) 'undo_token': undoToken,
+    });
   }
 
   /// 发送聊天消息并获取AI回复 (兼容旧版API)
@@ -607,6 +624,7 @@ class ChatStreamEvent {
   final int? sessionId;
   final int? messageId;
   final Map<String, dynamic>? data;
+  final Map<String, dynamic>? card; // 动作结果卡片（type=card 时携带）
 
   ChatStreamEvent({
     required this.type,
@@ -615,6 +633,7 @@ class ChatStreamEvent {
     this.sessionId,
     this.messageId,
     this.data,
+    this.card,
   });
 
   factory ChatStreamEvent.fromJson(Map<String, dynamic> json) {
@@ -625,12 +644,14 @@ class ChatStreamEvent {
       sessionId: json['session_id'] ?? json['data']?['session_id'],
       messageId: json['message_id'],
       data: json['data'],
+      card: json['card'],
     );
   }
 
   bool get isSession => type == 'session';
   bool get isStatus => type == 'status';
   bool get isContent => type == 'content';
+  bool get isCard => type == 'card';
   bool get isComplete => type == 'complete';
   bool get isError => type == 'error';
 }
