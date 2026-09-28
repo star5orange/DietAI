@@ -42,6 +42,55 @@ def build_options(pair: Sequence[float], unit: str) -> list[dict[str, Any]]:
     return options
 
 
+# 「要帮你记录吗？」确认卡的两个按钮（叙述性提及未明确要求记录时弹出，PRD 4.2）
+RECORD_CONFIRM_OPTIONS: tuple[dict[str, Any], ...] = (
+    {"label": "帮我记录", "value": True},
+    {"label": "先不记了", "value": False},
+)
+
+
+def build_record_confirm_card(
+    action: str,
+    what: str,
+    params: dict[str, Any],
+    analysis: Optional[dict[str, Any]] = None,
+) -> ActionResult:
+    """叙述性提及但未明确要求记录时的确认卡（PRD 4.2 / 需求 2026-09-26）。
+
+    用户只是「说」到吃了/喝了/称了重，没让帮忙记：弹这张卡给出
+    「帮我记录 / 先不记了」两个按钮，也可以直接忽略不答。
+    点「帮我记录」后，前端把按钮文案作为下一条消息发给 LLM，
+    LLM 会带上 explicit_request=true 重新调用对应写操作真正落库。
+
+    老人线（hardware）不弹卡，走下方直接记录逻辑。
+
+    message 写给 LLM 看：指引它先用 analysis 里带的营养/上下文数据做简短分析，
+    再提示用户点按钮；analysis 会被提升到 data 顶层，方便 LLM 读取。
+    """
+    question = f"要我帮你记录一下吗？将把「{what}」记入你的数据。"
+    data: dict[str, Any] = {
+        "question": question,
+        "action": action,
+        "field": "explicit_request",
+        "params": params,
+        "options": list(RECORD_CONFIRM_OPTIONS),
+    }
+    if analysis:
+        data.update(analysis)
+    message = (
+        f"已识别到用户叙述了「{what}」。若返回值 data 中带 nutrition / today_total_ml / "
+        "previous_weight_kg 等分析数据，请基于它们做一两句简短分析"
+        "（如热量、钠、当日进度、较上次变化），再提示用户点击按钮决定是否记录；本轮不要落库。"
+    )
+    return ActionResult(
+        ok=True,
+        action=action,
+        card_type=CardType.PENDING_CONFIRM,
+        message=message,
+        data=data,
+    )
+
+
 def build_pending_card(
     action: str,
     field: str,

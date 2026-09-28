@@ -146,6 +146,12 @@ def _load_action_names() -> set[str]:
     return set(action_registry.names)
 
 
+# 需要伴随文字下发的卡片类型：待确认卡的文字本身就是追问与分析
+# （PRD 4.3 量词追问、叙述性提及的饮食分析），吞掉文字用户就只剩一张卡。
+# 其余卡片（今日汇总/趋势等）「卡片即结果」，文字仅落库不复述（PRD 4.8）。
+TEXT_WITH_CARD_TYPES = {"pending_confirm"}
+
+
 def _parse_action_card(msg: Any, action_names: set[str]) -> Optional[dict[str, Any]]:
     """把动作工具返回的 ToolMessage 解析为卡片负载。
 
@@ -427,7 +433,12 @@ async def deep_chat(
                             text = _message_text(msg)
                             if text.strip():
                                 full_text = f"{full_text}\n\n{text}" if full_text else text
-                                if cards and not has_action_failure:
+                                # 待确认卡的文字是追问/分析本身，必须下发；
+                                # 其余卡片文字仅落库不回显（PRD 4.8 卡片即结果）
+                                needs_text = any(
+                                    c.get("card_type") in TEXT_WITH_CARD_TYPES for c in cards
+                                )
+                                if cards and not has_action_failure and not needs_text:
                                     continue
                                 yield f"data: {json.dumps({'type': 'content', 'content': text}, ensure_ascii=False)}\n\n"
 

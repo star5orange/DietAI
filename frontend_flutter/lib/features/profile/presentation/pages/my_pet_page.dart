@@ -500,7 +500,9 @@ class _MyPetPageState extends ConsumerState<MyPetPage>
                           size: 14, color: AppColors.textTertiary),
                       const SizedBox(width: 4),
                       Text(
-                        '$species · $ageText',
+                        species.isEmpty
+                            ? ageText
+                            : '$species · ${getSpeciesLabel(species)} · $ageText',
                         style: const TextStyle(
                           fontSize: 13,
                           color: Color(0xFF999999),

@@ -19,6 +19,7 @@ from agent.diet_deep_agent.actions.definitions.record_food import _parse_record_
 from agent.diet_deep_agent.actions.pending import (
     Quantifier,
     build_pending_card,
+    build_record_confirm_card,
     detect_quantifier,
 )
 from agent.diet_deep_agent.actions.registry import ActionRegistry
@@ -75,6 +76,11 @@ class RecordWaterArgs(BaseModel):
         default=None,
         description="饮水时间：ISO 时间或 HH:MM。用户说「今天下午」填当天 15:00；未提及留空取当前时间（PRD 4.7）",
     )
+    explicit_request: bool = Field(
+        default=False,
+        description="用户是否明确要你帮记录（如「帮我记录」「记一下」）。"
+        "叙述性提及（只是说喝了多少，没让记）填 false —— 动作会弹「要帮你记录吗？」确认卡",
+    )
 
 
 SPEC = ActionSpec(
@@ -127,6 +133,42 @@ async def record_water(params: RecordWaterArgs, ctx: ActionContext) -> ActionRes
 
     when = _parse_record_time(params.record_time)
     drink_type = (params.drink_type or "水").strip() or "水"
+
+    # 叙述性提及但未明确要求记录 → 弹「要帮你记录吗？」确认卡（PRD 4.2），
+    # 附带当日已饮量供 LLM 结合上下文分析；老人线不弹卡，交给下方记录逻辑。
+    if not params.explicit_request and not ctx.is_elder_channel:
+        today_total: Optional[float] = None
+        today_goal: Optional[float] = None
+        try:
+            from shared.models.database import SessionLocal
+            from shared.services.water_service import get_daily_water_summary
+
+            db = SessionLocal()
+            try:
+                daily = get_daily_water_summary(db, ctx.user_id, when.date())
+                today_total = daily["total_intake_ml"]
+                today_goal = daily["daily_goal_ml"]
+            finally:
+                db.close()
+        except Exception as _e:  # 上下文数据缺失不阻塞确认卡
+            logger.debug("record_water 确认卡附带当日饮水失败（非致命）", exc_info=True)
+
+        what = f"{params.amount_text or ''}{drink_type}".strip() or "水"
+        return build_record_confirm_card(
+            action=SPEC.name,
+            what=what,
+            params={
+                "amount_ml": params.amount_ml,
+                "amount_text": params.amount_text,
+                "drink_type": params.drink_type,
+                "record_time": when.isoformat(),
+            },
+            analysis={
+                "today_total_ml": today_total,
+                "today_goal_ml": today_goal,
+            },
+        )
+
     amount = float(params.amount_ml) if params.amount_ml and params.amount_ml > 0 else None
     quantifier = detect_quantifier(WATER_QUANTIFIERS, params.amount_text)
     used_default = False

@@ -4,8 +4,9 @@
 nutrition_details）→ 重算当日汇总 → 写撤销日志（PRD 4.5）。
 
 口径与 routers/food_router.py 保持一致：营养只把 analysis_status=3 的记录计入日汇总，
-用餐次数（meal_count）则按当天全部记录去重 meal_type；食物库未命中时不写占位营养，
-仅存记录（analysis_status=1，待补充分析）。
+用餐次数（meal_count）则按当天全部记录去重 meal_type；食物库未命中时优先用模型
+estimated_calories 兜底（analysis_method=ai_estimate，仍计入汇总），无估算才仅存记录
+（analysis_status=1，待补充分析）。
 """
 
 import logging
@@ -18,6 +19,7 @@ from agent.diet_deep_agent.actions.context import ActionContext
 from agent.diet_deep_agent.actions.pending import (
     Quantifier,
     build_pending_card,
+    build_record_confirm_card,
     detect_quantifier,
 )
 from agent.diet_deep_agent.actions.registry import ActionRegistry
@@ -107,6 +109,17 @@ class RecordFoodArgs(BaseModel):
         default=None,
         description="就餐来源：canteen 食堂 / delivery 外卖 / home 家里 / restaurant 餐馆 / snack 零食 / other",
     )
+    explicit_request: bool = Field(
+        default=False,
+        description="用户是否明确要你帮记录（如「帮我记录」「记一下」「把这条记上」）。"
+        "叙述性提及（只是说吃了什么，没让记）填 false —— 动作会弹「要帮你记录吗？」确认卡",
+    )
+    estimated_calories: Optional[float] = Field(
+        default=None,
+        description="你对这一份食物的热量估算（kcal），按用户说的份量估计。"
+        "食物库有该食物时以库为准、此值会被忽略；库未命中时用它兜底，避免记录显示 0 千卡。"
+        "不确定就留空，不要编造",
+    )
 
 
 SPEC = ActionSpec(
@@ -120,6 +133,11 @@ SPEC = ActionSpec(
     examples=["帮我记录：午饭吃了宫保鸡丁", "我刚吃了一个苹果"],
     notes=(
         "命中食物库的营养数据会同步写入今日汇总；未命中则仅存记录，不写占位营养。"
+        "**只记录已发生的事**：用户已吃/正在吃才调用；「我想吃 X」「晚上打算吃 X」「X 可以吗」"
+        "是未来时的征询，不要调用本动作，直接用文字给饮食建议。"
+        "**食物库没收录的食物（如「泡面」「外卖炒饭」）也要照常调用本动作**，"
+        "并把你按份量估算的热量填进 estimated_calories 兜底——否则记录页会显示 0 千卡；"
+        "食物库命中时该估算值会被忽略，不必追求精确。"
         "用户用了模糊量词（一碗/一杯/一个/一份…）时**不要自行估算克数**：把原话量词填进 quantity_text、"
         "quantity_g 留空，系统会出快捷选项让用户点选（PRD 4.3）。"
         "复合描述（如「米饭和青菜各 100g」）按每项各 100g 估算，不要合并成一条记录。"
@@ -139,6 +157,12 @@ async def record_food(params: RecordFoodArgs, ctx: ActionContext) -> ActionResul
     when = _parse_record_time(params.record_time)
     meal_type = _parse_meal_type(params.meal_type) or _infer_meal_type(when)
     source_tag = params.source_tag if params.source_tag in SOURCE_TAGS else None
+
+    # 叙述性提及但未明确要求记录 → 弹「要帮你记录吗？」确认卡（PRD 4.2），
+    # 同时查出本条饮食的营养数据随卡返回，供 LLM 先做一段饮食分析再让用户点按钮。
+    # 老人线（hardware 语音）不弹卡，交给下方记录逻辑（默认值/明确值直接落库）。
+    if not params.explicit_request and not ctx.is_elder_channel:
+        return _confirm_card_with_nutrition(params, when, meal_type, source_tag)
 
     # 模糊量词（PRD 4.3）：明确数值优先；没有数值但话里有量词时，
     # App 端出待确认卡（追问 + 快捷选项），老人线取默认值直接记录、事后可改
@@ -177,6 +201,16 @@ async def record_food(params: RecordFoodArgs, ctx: ActionContext) -> ActionResul
         grams = explicit_g if explicit_g else (
             (matched or {}).get("portion_grams") or DEFAULT_PORTION_G
         )
+
+        # 库未命中时的兜底：用模型估的热量（对齐 food_router 的 estimated_calories 口径），
+        # 否则这条记录没有 NutritionDetail，记录页会显示 0 千卡
+        ai_calories = (
+            float(params.estimated_calories)
+            if not matched and params.estimated_calories and params.estimated_calories > 0
+            else None
+        )
+        counted = bool(matched) or ai_calories is not None
+
         record = FoodRecord(
             user_id=ctx.user_id,
             record_date=when.date(),
@@ -185,7 +219,7 @@ async def record_food(params: RecordFoodArgs, ctx: ActionContext) -> ActionResul
             food_name=params.food_name,
             recording_method=1,  # 1=手动输入（对话记录）
             from_source="manual",
-            analysis_status=3 if matched else 1,  # 命中食物库才计入日汇总
+            analysis_status=3 if counted else 1,  # 计入日汇总才置为已分析
             cost=params.cost,
             source_tag=source_tag,
         )
@@ -203,6 +237,16 @@ async def record_food(params: RecordFoodArgs, ctx: ActionContext) -> ActionResul
                     **nutrition,
                 )
             )
+        elif ai_calories is not None:
+            nutrition = {"calories": ai_calories}
+            db.add(
+                NutritionDetail(
+                    food_record_id=record.id,
+                    calories=ai_calories,
+                    analysis_method="ai_estimate",  # 与食物库/硬件来源区分，仅热量
+                    confidence_score=0.6,
+                )
+            )
         db.commit()
         db.refresh(record)
         record_id = record.id
@@ -215,7 +259,12 @@ async def record_food(params: RecordFoodArgs, ctx: ActionContext) -> ActionResul
         db.close()
 
     label = MEAL_LABELS[meal_type]
-    if not matched:
+    if not matched and ai_calories is not None:
+        message = (
+            f"已记录{label}：{params.food_name}（约 {grams:g}g，约 {ai_calories:g} kcal，"
+            f"食物库未收录，热量为 AI 估算值）。10 分钟内可撤销。"
+        )
+    elif not matched:
         message = (
             f"已记录{label}：{params.food_name}（约 {grams:g}g）。"
             f"食物库暂无该食物营养数据，本条暂不计入今日热量。想补上营养："
@@ -361,6 +410,55 @@ def _lookup_food(db: Any, food_name: str) -> Optional[dict[str, Any]]:
     from shared.services.food_matching import match_food
 
     return match_food(db, food_name)
+
+
+def _confirm_card_with_nutrition(
+    params: RecordFoodArgs,
+    when: datetime,
+    meal_type: int,
+    source_tag: Optional[str],
+) -> ActionResult:
+    """叙述性提及的确认卡：查营养库并换算份量，把营养数据随卡返回给 LLM。
+
+    让 LLM 读到 calories/protein/fat 等数据后，能先针对这条饮食写一两句
+    分析（如「泡面约 470 大卡，钠偏高…」），再提示用户点「帮我记录」按钮
+    （需求 2026-09-26）。不落库，仅做分析与辅助展示。
+    """
+    from shared.models.database import SessionLocal
+
+    matched: Optional[dict[str, Any]] = None
+    db = SessionLocal()
+    try:
+        matched = _lookup_food(db, params.food_name)
+    finally:
+        db.close()
+
+    # 份量仅用于「这条大概多少/营养估算」的分析文案；不覆盖原始 quantity_g，避免后续误当明确值
+    explicit_g = params.quantity_g if params.quantity_g and params.quantity_g > 0 else None
+    estimate_grams = explicit_g or (matched or {}).get("portion_grams") or DEFAULT_PORTION_G
+    nutrition = _scale_nutrition(matched["per_100g"], estimate_grams) if matched else None
+
+    return build_record_confirm_card(
+        action=SPEC.name,
+        what=params.food_name,
+        params={
+            "food_name": params.food_name,
+            "meal_type": MEAL_LABELS[meal_type],
+            "record_time": when.isoformat(),
+            "quantity_text": params.quantity_text,
+            "quantity_g": params.quantity_g,
+            "cost": params.cost,
+            "source_tag": source_tag,
+            # 用户点「帮我记录」后下一轮重新调用时，从此处带回估算热量，
+            # 避免食物库未收录时记录页显示 0 千卡
+            "estimated_calories": params.estimated_calories,
+        },
+        analysis={
+            "nutrition_matched": bool(matched),
+            "nutrition": nutrition,
+            "estimate_grams": estimate_grams,
+        },
+    )
 
 
 def _scale_nutrition(per_100g: dict[str, float], grams: float) -> dict[str, float]:

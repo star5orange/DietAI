@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from agent.diet_deep_agent.actions.context import ActionContext
 from agent.diet_deep_agent.actions.definitions.record_food import _parse_record_time
+from agent.diet_deep_agent.actions.pending import build_record_confirm_card
 from agent.diet_deep_agent.actions.registry import ActionRegistry
 from agent.diet_deep_agent.actions.spec import (
     ActionKind,
@@ -50,6 +51,11 @@ class RecordWeightArgs(BaseModel):
     )
     record_time: Optional[str] = Field(
         default=None, description="测量时间：ISO 时间或 HH:MM；未提及留空取当前时间（PRD 4.7）"
+    )
+    explicit_request: bool = Field(
+        default=False,
+        description="用户是否明确要你帮记录（如「帮我记录」「记一下」）。"
+        "叙述性提及（只是说称了多重，没让记）填 false —— 动作会弹「要帮你记录吗？」确认卡",
     )
 
 
@@ -121,6 +127,41 @@ async def record_weight(params: RecordWeightArgs, ctx: ActionContext) -> ActionR
         )
 
     when = _parse_record_time(params.record_time)
+
+    # 叙述性提及但未明确要求记录 → 弹「要帮你记录吗？」确认卡（PRD 4.2），
+    # 附带上次体重供 LLM 结合上下文对比；老人线不弹卡，直接记录。
+    if not params.explicit_request and not ctx.is_elder_channel:
+        previous_kg: Optional[float] = None
+        try:
+            from shared.models.database import SessionLocal
+            from shared.models.user_models import WeightRecord
+
+            db = SessionLocal()
+            try:
+                previous = (
+                    db.query(WeightRecord)
+                    .filter(WeightRecord.user_id == ctx.user_id)
+                    .order_by(WeightRecord.measured_at.desc(), WeightRecord.id.desc())
+                    .first()
+                )
+                previous_kg = float(previous.weight) if previous else None
+            finally:
+                db.close()
+        except Exception as _e:  # 上下文数据缺失不阻塞确认卡
+            logger.debug("record_weight 确认卡附带上次体重失败（非致命）", exc_info=True)
+
+        return build_record_confirm_card(
+            action=SPEC.name,
+            what=f"{params.weight:g}{params.unit or '公斤'}",
+            params={
+                "weight": params.weight,
+                "unit": params.unit,
+                "record_time": params.record_time,
+            },
+            analysis={
+                "previous_weight_kg": previous_kg,
+            },
+        )
 
     from shared.models.database import SessionLocal
 
