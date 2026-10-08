@@ -16,12 +16,18 @@ class CameraSheetSource {
   static const String labelCamera = 'label_camera';
   static const String labelGallery = 'label_gallery';
 
+  /// 体检报告：不属于「饮食识别」，调用方据此分支到体检上传页而非相机页
+  static const String examReport = 'exam_report';
+
   /// 是否包装食品（营养成分表 OCR）模式；null/未知值按餐食识别处理
   static bool isLabel(String? source) => source?.startsWith('label') ?? false;
 
   /// 是否走系统相册（autoPickGallery）；null/未知值按取景器拍照处理
   static bool useGallery(String? source) =>
       source?.endsWith('gallery') ?? false;
+
+  /// 是否体检报告入口
+  static bool isExamReport(String? source) => source == examReport;
 }
 
 /// 「拍照记录」来源选择弹窗内容（showModalBottomSheet 的 builder 部分）。
@@ -90,6 +96,20 @@ class CameraSourceSheet extends StatelessWidget {
               title: const Text('包装图片'),
               subtitle: const Text('从相册选择包装照片'),
               onTap: () => onSelect(CameraSheetSource.labelGallery),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
+              child: Text(
+                '体检报告',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ),
+            ListTile(
+              key: const Key('sheet_exam_report'),
+              leading: const Icon(Icons.local_hospital),
+              title: const Text('拍体检报告'),
+              subtitle: const Text('拍摄体检报告，AI 提取指标'),
+              onTap: () => onSelect(CameraSheetSource.examReport),
             ),
             const SizedBox(height: 8),
           ],

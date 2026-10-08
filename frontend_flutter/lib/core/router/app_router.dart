@@ -10,7 +10,6 @@ import '../../features/auth/presentation/pages/register_page.dart';
 import '../../features/auth/presentation/pages/change_password_page.dart';
 import '../../features/auth/presentation/pages/forgot_password_page.dart';
 import '../../features/auth/presentation/pages/reset_password_page.dart';
-import '../../features/home/presentation/pages/home_page.dart';
 import '../../features/camera/presentation/pages/camera_page.dart';
 import '../../features/history/presentation/pages/history_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
@@ -249,16 +248,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                 sessionType: 1,
                 isHomeEntry: true,
               );
-            },
-          ),
-
-          // 数据看板：原首页卡片/图表入口保留在页面层，可切换访问（PRD D15）
-          GoRoute(
-            path: '/dashboard',
-            name: 'dashboard',
-            builder: (context, state) {
-              final userId = ref.watch(currentUserProvider)?.id ?? 0;
-              return HomePage(key: ValueKey('home_$userId'));
             },
           ),
 

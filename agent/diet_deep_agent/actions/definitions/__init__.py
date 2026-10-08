@@ -6,6 +6,7 @@ V6 新增动作 = 新增一个定义模块（spec + handler + register）+ 在 _
 
 from agent.diet_deep_agent.actions.definitions import (
     generate_weekly_report,
+    mark_disease_recovered,
     open_page,
     query_cost,
     query_exam,
@@ -14,11 +15,15 @@ from agent.diet_deep_agent.actions.definitions import (
     query_pet,
     query_today,
     query_weight_trend,
+    record_allergy,
+    record_disease,
+    record_exercise,
     record_food,
     record_pet_feeding,
     record_water,
     record_weight,
     send_reminder_to_family,
+    set_health_target,
     set_reminder,
     undo,
 )
@@ -46,7 +51,16 @@ _V52_MODULES = (
 # V5.2 引导卡：Agent 判断需要页面级操作时一键直达（只跳转，零数据写入）
 _GUIDE_MODULES = (open_page,)
 
-_MODULES = _V51_MODULES + _V52_MODULES + _GUIDE_MODULES
+# V6 健康档案扩权：运动 / 疾病 / 标记痊愈 / 过敏原 / 健康目标（全部人域，可撤销）
+_HEALTH_PROFILE_MODULES = (
+    record_exercise,
+    record_disease,
+    mark_disease_recovered,
+    record_allergy,
+    set_health_target,
+)
+
+_MODULES = _V51_MODULES + _V52_MODULES + _GUIDE_MODULES + _HEALTH_PROFILE_MODULES
 
 
 def register_all(registry: ActionRegistry) -> None:

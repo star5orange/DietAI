@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/themes/app_colors.dart';
@@ -43,6 +44,10 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
   double _targetProtein = 0.0;
   Map<String, dynamic>? _weeklySummary;
   bool _summaryExpanded = false;
+  // 康复建议（当前患病逐条；疾病标为已痊愈后后端不再返回，卡片随之消失）
+  List<RehabAdvice> _rehabAdvices = [];
+  bool _rehabLoading = false;
+  bool _rehabExpanded = false;
 
   @override
   void initState() {
@@ -51,8 +56,34 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
       // 确保Provider已加载数据
       ref.read(userProfileProvider.notifier).loadUserProfile();
       _loadTargetCalories();
+      // 疾病变更后需要重新拉取康复建议，先确保疾病列表已加载
+      ref.read(diseasesProvider.notifier).loadDiseases();
+      _loadRehabAdvice();
     });
     _loadTodayData();
+  }
+
+  /// 加载康复建议（后端首次访问时按疾病生成并缓存）
+  Future<void> _loadRehabAdvice() async {
+    // 初始化与疾病变更监听可能同时触发，避免重复请求
+    if (_rehabLoading) return;
+    if (mounted) {
+      setState(() => _rehabLoading = true);
+    }
+    try {
+      final result = await ref.read(userServiceProvider).getRehabAdvices();
+      if (mounted) {
+        setState(() {
+          _rehabAdvices = result.data ?? [];
+          _rehabLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[HealthPage] 加载康复建议失败: $e');
+      if (mounted) {
+        setState(() => _rehabLoading = false);
+      }
+    }
   }
 
   Future<void> _loadTodayData() async {
@@ -81,9 +112,13 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
     }
   }
 
-  /// 下拉刷新：数据 + 目标（热量/饮水/蛋白质）一起刷新
+  /// 下拉刷新：数据 + 目标（热量/饮水/蛋白质）+ 康复建议一起刷新
   Future<void> _refreshData() async {
-    await Future.wait([_loadTodayData(), _loadTargetCalories()]);
+    await Future.wait([
+      _loadTodayData(),
+      _loadTargetCalories(),
+      _loadRehabAdvice(),
+    ]);
   }
 
   @override
@@ -351,12 +386,18 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
 
   @override
   Widget build(BuildContext context) {
-    // 直接从Provider读取最新的卡路里目标和饮水目标
-    final userProfile = ref.watch(userProfileProvider).value;
-    final displayTargetCalories =
-        userProfile?.targetCalories?.toDouble() ?? _targetCalories;
-    final displayWaterGoal =
-        userProfile?.dailyWaterGoal?.toDouble() ?? _waterGoal;
+    // 疾病列表变更（新增 / 标记痊愈 / 删除）后重新拉取康复建议：
+    // 新增疾病 → 生成新建议；标记痊愈 → 后端不再返回该条，卡片条目随之消失
+    ref.listen<AsyncValue<List<Disease>>>(diseasesProvider, (previous, next) {
+      if (next.hasValue) {
+        _loadRehabAdvice();
+      }
+    });
+
+    // 是否有「当前患病」——无病时直接不渲染卡片，避免加载占位一闪而过
+    final hasCurrentDisease =
+        ref.watch(diseasesProvider).value?.any((disease) => disease.isCurrent) ??
+            false;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -374,8 +415,13 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHealthSummaryCard(displayTargetCalories, displayWaterGoal),
+              _buildHealthSummaryCard(),
               const SizedBox(height: 24),
+              if (_rehabAdvices.isNotEmpty ||
+                  (_rehabLoading && hasCurrentDisease)) ...[
+                _buildRehabAdviceCard(),
+                const SizedBox(height: 24),
+              ],
               if (_weeklySummary != null) ...[
                 _buildWeeklySummaryCard(),
                 const SizedBox(height: 24),
@@ -390,34 +436,15 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
     );
   }
 
-  Widget _buildHealthSummaryCard(
-      double displayTargetCalories, double displayWaterGoal) {
-    final calories = _dailySummary?.totalCalories ?? 0.0;
-
-    // 统一单位显示水量：≥1000ml 用 L，否则用 ml，最多两位小数去尾部零
-    String fmtLiter(double ml) {
-      final liters = ml / 1000;
-      return liters.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
-    }
-
-    final useLiter = displayWaterGoal >= 1000;
-    final waterIntakeDisplay =
-        useLiter ? fmtLiter(_waterIntake) : _waterIntake.toInt().toString();
-    final waterGoalDisplay = useLiter
-        ? fmtLiter(displayWaterGoal)
-        : displayWaterGoal.toInt().toString();
-    final waterValue = '$waterIntakeDisplay / $waterGoalDisplay';
-    final waterUnit = useLiter ? 'L' : 'ml';
-
-    final caloriesProgress = displayTargetCalories > 0
-        ? (calories / displayTargetCalories).clamp(0.0, 1.0)
-        : 0.0;
-    final waterProgress = displayWaterGoal > 0
-        ? (_waterIntake / displayWaterGoal).clamp(0.0, 1.0)
-        : 0.0;
+  Widget _buildHealthSummaryCard() {
+    final protein = _dailySummary?.totalProtein ?? 0.0;
+    final mealCount = _dailySummary?.mealCount ?? 0;
     final proteinProgress = _targetProtein > 0
-        ? ((_dailySummary?.totalProtein ?? 0) / _targetProtein).clamp(0.0, 1.0)
+        ? (protein / _targetProtein).clamp(0.0, 1.0)
         : 0.0;
+    final proteinDetail = _targetProtein > 0
+        ? '${_formatNumber(protein)} / ${_formatNumber(_targetProtein)} g'
+        : '${_formatNumber(protein)} g';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
@@ -464,7 +491,7 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        '今日健康概览',
+                        '今日营养构成',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -473,7 +500,7 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '摄入 ${_formatNumber(calories)} / ${_formatNumber(displayTargetCalories)} kcal · 饮水 $waterValue $waterUnit',
+                        '蛋白质 $proteinDetail · 用餐 $mealCount 次',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -512,32 +539,8 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
                         children: [
                           Expanded(
                             child: _buildSummaryItem(
-                              '卡路里',
-                              '${_formatNumber(calories)} / ${_formatNumber(displayTargetCalories)}',
-                              'kcal',
-                              caloriesProgress,
-                              onTap: _showCalorieGoalDialog,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildSummaryItem(
-                              '水分',
-                              waterValue,
-                              waterUnit,
-                              waterProgress,
-                              onTap: _showWaterGoalDialog,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildSummaryItem(
                               '蛋白质',
-                              _formatNumber(_dailySummary?.totalProtein ?? 0),
+                              _formatNumber(protein),
                               'g',
                               proteinProgress,
                               showProgress: _targetProtein > 0,
@@ -547,7 +550,7 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
                           Expanded(
                             child: _buildSummaryItem(
                               '用餐次数',
-                              '${_dailySummary?.mealCount ?? 0}',
+                              '$mealCount',
                               '次',
                               0,
                               showProgress: false,
@@ -555,11 +558,47 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          _buildGoalEditButton('卡路里目标', _showCalorieGoalDialog),
+                          const SizedBox(width: 8),
+                          _buildGoalEditButton('饮水目标', _showWaterGoalDialog),
+                        ],
+                      ),
                     ],
                   )
                 : const SizedBox(width: double.infinity),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 卡片内的小号目标修改入口（热量/饮水目标设置对话框的入口）
+  Widget _buildGoalEditButton(String label, VoidCallback onTap) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.edit, size: 12, color: Colors.white70),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: const TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -936,59 +975,318 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
 
   Widget _buildSummaryItem(
       String title, String value, String unit, double progress,
-      {VoidCallback? onTap, bool showProgress = true}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      {bool showProgress = true}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.white70,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          if (showProgress) ...[
+            const SizedBox(height: 6),
+            LinearProgressIndicator(
+              value: progress,
+              backgroundColor: Colors.white.withValues(alpha: 0.3),
+              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+              minHeight: 2,
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 康复建议卡（按当前患病逐条展示 AI 生成的康复饮食指导）
+  ///
+  /// 展示时机：有当前患病（_rehabLoading 或 _rehabAdvices 非空）。
+  /// 疾病被标记为「已痊愈」后后端不再返回该条，卡片随之消失。
+  Widget _buildRehabAdviceCard() {
+    final isGenerating = _rehabLoading && _rehabAdvices.isEmpty;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.shadow.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: () => setState(() => _rehabExpanded = !_rehabExpanded),
+            behavior: HitTestBehavior.opaque,
+            child: Row(
               children: [
+                const Icon(LucideIcons.heartPulse,
+                    size: 18, color: AppColors.primary),
+                const SizedBox(width: 8),
                 Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.white70,
-                  ),
+                  '康复建议',
+                  style: AppTextStyles.h6.copyWith(fontWeight: FontWeight.w600),
                 ),
-                if (onTap != null) ...[
-                  const SizedBox(width: 4),
-                  const Icon(
-                    Icons.edit,
-                    size: 10,
-                    color: Colors.white70,
+                const Spacer(),
+                if (_rehabLoading && !isGenerating)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 6),
+                    child: SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
                   ),
-                ],
+                Icon(
+                  _rehabExpanded
+                      ? LucideIcons.chevronUp
+                      : LucideIcons.chevronDown,
+                  size: 18,
+                  color: AppColors.textTertiary,
+                ),
               ],
             ),
-            const SizedBox(height: 2),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            if (showProgress) ...[
-              const SizedBox(height: 6),
-              LinearProgressIndicator(
-                value: progress,
-                backgroundColor: Colors.white.withValues(alpha: 0.3),
-                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                minHeight: 2,
-                borderRadius: BorderRadius.circular(1),
-              ),
-            ],
+          ),
+          const SizedBox(height: 10),
+          if (isGenerating)
+            Row(
+              children: [
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  '正在生成康复建议…',
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.textSecondary),
+                ),
+              ],
+            )
+          else ...[
+            // 折叠时只显示各疾病的名称与病程
+            if (!_rehabExpanded)
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: _rehabAdvices
+                    .map((advice) => _buildRehabChip(
+                          '${advice.diseaseName} · ${advice.courseText}',
+                        ))
+                    .toList(),
+              )
+            else
+              for (var i = 0; i < _rehabAdvices.length; i++) ...[
+                if (i > 0) const SizedBox(height: 16),
+                _buildRehabSection(_rehabAdvices[i]),
+              ],
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRehabChip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        text,
+        style: AppTextStyles.bodySmall.copyWith(
+          color: AppColors.primary,
+          fontWeight: FontWeight.w500,
         ),
       ),
+    );
+  }
+
+  Widget _buildRehabSection(RehabAdvice advice) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                advice.diseaseName,
+                style:
+                    AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+            Text(
+              '${advice.severityText} · ${advice.courseText}',
+              style: AppTextStyles.bodySmall
+                  .copyWith(color: AppColors.textTertiary),
+            ),
+          ],
+        ),
+        // 生成失败（无缓存可用）时给出可重试的提示，不展示空内容
+        if (advice.failed) ...[
+          const SizedBox(height: 8),
+          Text(
+            '建议生成失败，下拉刷新可重试',
+            style: AppTextStyles.bodySmall.copyWith(color: AppColors.error),
+          ),
+        ] else ...[
+          if (advice.summary != null && advice.summary!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              advice.summary!,
+              style: AppTextStyles.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+          ],
+          if (advice.dietRecommendations.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _buildRehabList(
+              icon: LucideIcons.checkCircle,
+              color: AppColors.success,
+              title: '宜',
+              items: advice.dietRecommendations,
+            ),
+          ],
+          if (advice.avoidRecommendations.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _buildRehabList(
+              icon: LucideIcons.xCircle,
+              color: AppColors.error,
+              title: '忌',
+              items: advice.avoidRecommendations,
+            ),
+          ],
+          if (advice.nutrientFocus.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              '营养素重点',
+              style: AppTextStyles.bodySmall
+                  .copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: advice.nutrientFocus
+                  .map((item) => _buildRehabChip(item))
+                  .toList(),
+            ),
+          ],
+          if (advice.recoveryNotes.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _buildRehabList(
+              icon: LucideIcons.info,
+              color: AppColors.info,
+              title: '注意事项',
+              items: advice.recoveryNotes,
+            ),
+          ],
+          if (advice.followupReminder != null &&
+              advice.followupReminder!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(LucideIcons.calendarClock,
+                    size: 14, color: AppColors.accent),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    advice.followupReminder!,
+                    style: AppTextStyles.bodySmall.copyWith(
+                      color: AppColors.accent,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+        if (advice.disclaimer != null && advice.disclaimer!.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(
+            advice.disclaimer!,
+            style: const TextStyle(
+              fontSize: 10,
+              color: AppColors.textTertiary,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildRehabList({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required List<String> items,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: AppTextStyles.bodySmall.copyWith(
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
+        const SizedBox(height: 4),
+        for (final item in items)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 3),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(icon, size: 13, color: color),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    item,
+                    style: AppTextStyles.bodySmall.copyWith(
+                      color: AppColors.textSecondary,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
@@ -1024,6 +1322,13 @@ class _HealthPageState extends ConsumerState<HealthPage> with RouteAware {
           MaterialPageRoute(
               builder: (context) => const DataVisualizationPage()),
         ),
+      ),
+      _FeatureItem(
+        icon: LucideIcons.stethoscope,
+        title: '体检报告',
+        subtitle: '拍照录入与历史报告',
+        color: const Color(0xFF1E88E5),
+        onTap: () => context.push('/exam/reports'),
       ),
       _FeatureItem(
         icon: LucideIcons.brain,

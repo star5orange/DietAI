@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from agent.diet_deep_agent.actions.context import ActionContext
 from agent.diet_deep_agent.actions.definitions.record_food import _parse_record_time
 from agent.diet_deep_agent.actions.pending import build_record_confirm_card
+from agent.diet_deep_agent.actions.pending_store import register_record_confirm
 from agent.diet_deep_agent.actions.registry import ActionRegistry
 from agent.diet_deep_agent.actions.spec import (
     ActionKind,
@@ -150,17 +151,23 @@ async def record_weight(params: RecordWeightArgs, ctx: ActionContext) -> ActionR
         except Exception as _e:  # 上下文数据缺失不阻塞确认卡
             logger.debug("record_weight 确认卡附带上次体重失败（非致命）", exc_info=True)
 
+        what = f"{params.weight:g}{params.unit or '公斤'}"
+        confirm_params = {
+            "weight": params.weight,
+            "unit": params.unit,
+            "record_time": params.record_time,
+        }
+        confirm_token = await register_record_confirm(
+            ctx.user_id, action=SPEC.name, label=what, params=confirm_params
+        )
         return build_record_confirm_card(
             action=SPEC.name,
-            what=f"{params.weight:g}{params.unit or '公斤'}",
-            params={
-                "weight": params.weight,
-                "unit": params.unit,
-                "record_time": params.record_time,
-            },
+            what=what,
+            params=confirm_params,
             analysis={
                 "previous_weight_kg": previous_kg,
             },
+            confirm_token=confirm_token,
         )
 
     from shared.models.database import SessionLocal

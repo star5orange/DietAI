@@ -54,13 +54,16 @@ def build_record_confirm_card(
     what: str,
     params: dict[str, Any],
     analysis: Optional[dict[str, Any]] = None,
+    confirm_token: Optional[str] = None,
 ) -> ActionResult:
     """叙述性提及但未明确要求记录时的确认卡（PRD 4.2 / 需求 2026-09-26）。
 
     用户只是「说」到吃了/喝了/称了重，没让帮忙记：弹这张卡给出
     「帮我记录 / 先不记了」两个按钮，也可以直接忽略不答。
-    点「帮我记录」后，前端把按钮文案作为下一条消息发给 LLM，
-    LLM 会带上 explicit_request=true 重新调用对应写操作真正落库。
+
+    confirm_token 指向后端预先备好的动作调用（pending_store）：点「帮我记录」由
+    前端直调 /deep/actions/confirm 按原参数执行，不再经模型重新理解，凭证券后作废。
+    传 None（如动作上下文缺 user_id）时卡片不带凭证，前端退回旧的文字路径。
 
     老人线（hardware）不弹卡，走下方直接记录逻辑。
 
@@ -71,10 +74,17 @@ def build_record_confirm_card(
     data: dict[str, Any] = {
         "question": question,
         "action": action,
+        # label 是卡片文案的单一事实来源：前端历史回显时优先读它，
+        # 不再靠 params 里的 food_name / weight_kg 猜（新动作的入参各不相同）
+        "label": what,
+        # field 保持 explicit_request：前端据此识别「待记录项按钮」这类卡，
+        # 与凭证实际回填的入参名（register_record_confirm 的 confirm_field）解耦
         "field": "explicit_request",
         "params": params,
         "options": list(RECORD_CONFIRM_OPTIONS),
     }
+    if confirm_token:
+        data["confirm_token"] = confirm_token
     if analysis:
         data.update(analysis)
     message = (

@@ -22,6 +22,7 @@ from agent.diet_deep_agent.actions.pending import (
     build_record_confirm_card,
     detect_quantifier,
 )
+from agent.diet_deep_agent.actions.pending_store import register_record_confirm
 from agent.diet_deep_agent.actions.registry import ActionRegistry
 from agent.diet_deep_agent.actions.spec import (
     ActionKind,
@@ -154,19 +155,24 @@ async def record_water(params: RecordWaterArgs, ctx: ActionContext) -> ActionRes
             logger.debug("record_water 确认卡附带当日饮水失败（非致命）", exc_info=True)
 
         what = f"{params.amount_text or ''}{drink_type}".strip() or "水"
+        confirm_params = {
+            "amount_ml": params.amount_ml,
+            "amount_text": params.amount_text,
+            "drink_type": params.drink_type,
+            "record_time": when.isoformat(),
+        }
+        confirm_token = await register_record_confirm(
+            ctx.user_id, action=SPEC.name, label=what, params=confirm_params
+        )
         return build_record_confirm_card(
             action=SPEC.name,
             what=what,
-            params={
-                "amount_ml": params.amount_ml,
-                "amount_text": params.amount_text,
-                "drink_type": params.drink_type,
-                "record_time": when.isoformat(),
-            },
+            params=confirm_params,
             analysis={
                 "today_total_ml": today_total,
                 "today_goal_ml": today_goal,
             },
+            confirm_token=confirm_token,
         )
 
     amount = float(params.amount_ml) if params.amount_ml and params.amount_ml > 0 else None

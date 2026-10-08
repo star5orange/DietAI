@@ -114,14 +114,6 @@ try:
 except ImportError:
     pass
 
-# 首页模块布局
-_home_layout_router = None
-try:
-    from routers.home_layout_router import router as home_layout_router
-    _home_layout_router = home_layout_router
-except ImportError:
-    pass
-
 # 语音识别路由器
 _voice_router = None
 try:
@@ -166,6 +158,14 @@ except ImportError:
 try:
     from routers.exam_router import router as exam_router
     _exam_router = exam_router
+except ImportError:
+    pass
+
+# 康复建议（健康页按当前患病展示 AI 康复饮食指导）
+_rehab_router = None
+try:
+    from routers.rehab_router import router as rehab_router
+    _rehab_router = rehab_router
 except ImportError:
     pass
 
@@ -434,8 +434,6 @@ if _fasting_router is not None:
     app.include_router(_fasting_router, prefix="/api", tags=["轻断食"])
 if _advisor_router is not None:
     app.include_router(_advisor_router, prefix="/api", tags=["AI顾问设置"])
-if _home_layout_router is not None:
-    app.include_router(_home_layout_router, prefix="/api", tags=["首页布局"])
 
 # 语音识别路由
 if _voice_router is not None:
@@ -450,6 +448,8 @@ if _family_router is not None:
     app.include_router(_family_router, prefix="/api", tags=["家庭健康"])
 if _exam_router is not None:
     app.include_router(_exam_router, prefix="/api", tags=["体检报告"])
+if _rehab_router is not None:
+    app.include_router(_rehab_router, prefix="/api", tags=["康复建议"])
 if _device_router is not None:
     app.include_router(_device_router, tags=["设备绑定"])
 

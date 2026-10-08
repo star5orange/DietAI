@@ -206,10 +206,34 @@ class UserService {
     }
   }
 
+  /// 获取康复建议（当前患病逐条返回；后端首次访问时生成并缓存）
+  ///
+  /// 疾病被标记为「已痊愈」后后端不再返回该条，健康页卡片随之消失。
+  Future<ApiResponse<List<RehabAdvice>>> getRehabAdvices() async {
+    try {
+      final response = await _apiService.get('/health/rehab-advice');
+
+      if (response.isSuccess && response.data != null) {
+        final dataMap = response.data as Map<String, dynamic>;
+        final items = (dataMap['items'] as List<dynamic>? ?? [])
+            .map((item) => RehabAdvice.fromJson(item as Map<String, dynamic>))
+            .toList();
+        return ApiResponse.success(
+          message: response.message,
+          data: items,
+        );
+      }
+
+      return ApiResponse.failure(message: response.message);
+    } catch (e) {
+      return ApiResponse.failure(message: '获取康复建议失败: $e');
+    }
+  }
+
   /// 更新疾病信息
   Future<ApiResponse<Disease>> updateDisease(
     int diseaseId,
-    DiseaseCreateRequest request,
+    DiseaseUpdateRequest request,
   ) async {
     try {
       final response = await _apiService.put(

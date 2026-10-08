@@ -62,6 +62,21 @@ class ChatService {
     });
   }
 
+  /// 确认卡「帮我记录」：直调后端确认接口（PRD 4.2）
+  ///
+  /// [confirmTokens] 为卡片上的确认凭证，后端据此取出预先备好的动作调用按原参数执行，
+  /// 不再经模型重新理解（份量、餐次、AI 估算热量不会被改写，重复提交也不会写第二条）。
+  /// 一次说了多样食物时会有多张卡，用 confirmTokens 一次性提交。
+  Future<ApiResponse<dynamic>> confirmPendingActions({
+    required List<String> confirmTokens,
+    int? sessionId,
+  }) {
+    return _apiService.post('/deep/actions/confirm', data: {
+      'confirm_tokens': confirmTokens,
+      if (sessionId != null) 'session_id': sessionId,
+    });
+  }
+
   /// 发送聊天消息并获取AI回复 (兼容旧版API)
   Future<ApiResponse<ChatResponse>> sendMessage({
     required String message,

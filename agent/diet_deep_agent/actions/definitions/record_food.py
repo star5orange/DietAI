@@ -22,6 +22,7 @@ from agent.diet_deep_agent.actions.pending import (
     build_record_confirm_card,
     detect_quantifier,
 )
+from agent.diet_deep_agent.actions.pending_store import register_record_confirm
 from agent.diet_deep_agent.actions.registry import ActionRegistry
 from agent.diet_deep_agent.actions.spec import (
     ActionKind,
@@ -117,8 +118,8 @@ class RecordFoodArgs(BaseModel):
     estimated_calories: Optional[float] = Field(
         default=None,
         description="你对这一份食物的热量估算（kcal），按用户说的份量估计。"
-        "食物库有该食物时以库为准、此值会被忽略；库未命中时用它兜底，避免记录显示 0 千卡。"
-        "不确定就留空，不要编造",
+        "食物库有该食物时以库为准、此值会被忽略；食物库没有该食物时**请按常识估算并填这里**"
+        "（宁可粗估也别让记录显示 0 千卡），回复文案中说明这是估算值。完全没把握才留空。",
     )
 
 
@@ -132,7 +133,8 @@ SPEC = ActionSpec(
     undoable=True,
     examples=["帮我记录：午饭吃了宫保鸡丁", "我刚吃了一个苹果"],
     notes=(
-        "命中食物库的营养数据会同步写入今日汇总；未命中则仅存记录，不写占位营养。"
+        "命中食物库的营养数据会同步写入今日汇总；食物库没有该食物时用 estimated_calories 兜底"
+        "（落库标记为 AI 估算）并同样计入汇总——**不要向用户提「食物库未收录」「未命中」这类内部细节**。"
         "**只记录已发生的事**：用户已吃/正在吃才调用；「我想吃 X」「晚上打算吃 X」「X 可以吗」"
         "是未来时的征询，不要调用本动作，直接用文字给饮食建议。"
         "**食物库没收录的食物（如「泡面」「外卖炒饭」）也要照常调用本动作**，"
@@ -162,7 +164,9 @@ async def record_food(params: RecordFoodArgs, ctx: ActionContext) -> ActionResul
     # 同时查出本条饮食的营养数据随卡返回，供 LLM 先做一段饮食分析再让用户点按钮。
     # 老人线（hardware 语音）不弹卡，交给下方记录逻辑（默认值/明确值直接落库）。
     if not params.explicit_request and not ctx.is_elder_channel:
-        return _confirm_card_with_nutrition(params, when, meal_type, source_tag)
+        return await _confirm_card_with_nutrition(
+            params, when, meal_type, source_tag, ctx.user_id
+        )
 
     # 模糊量词（PRD 4.3）：明确数值优先；没有数值但话里有量词时，
     # App 端出待确认卡（追问 + 快捷选项），老人线取默认值直接记录、事后可改
@@ -262,14 +266,14 @@ async def record_food(params: RecordFoodArgs, ctx: ActionContext) -> ActionResul
     if not matched and ai_calories is not None:
         message = (
             f"已记录{label}：{params.food_name}（约 {grams:g}g，约 {ai_calories:g} kcal，"
-            f"食物库未收录，热量为 AI 估算值）。10 分钟内可撤销。"
+            f"热量为 AI 估算值）。10 分钟内可撤销。"
         )
     elif not matched:
         message = (
             f"已记录{label}：{params.food_name}（约 {grams:g}g）。"
-            f"食物库暂无该食物营养数据，本条暂不计入今日热量。想补上营养："
-            f"请用 App 首页的「拍照记录」拍一张这盘菜（AI 图像分析会自动补营养并落库），"
-            f"或在记录页手动补充。10 分钟内可撤销。"
+            f"这一份的热量我暂时没把握，先不计入今日热量；"
+            f"可用 App 首页的「拍照记录」拍一下这盘菜自动补上，或在记录页手动填写。"
+            f"10 分钟内可撤销。"
         )
     elif matched.get("multi_part"):
         # 复合描述按「每项各 100g」估算，份量口径与单条不同，需在文案里说明
@@ -412,17 +416,21 @@ def _lookup_food(db: Any, food_name: str) -> Optional[dict[str, Any]]:
     return match_food(db, food_name)
 
 
-def _confirm_card_with_nutrition(
+async def _confirm_card_with_nutrition(
     params: RecordFoodArgs,
     when: datetime,
     meal_type: int,
     source_tag: Optional[str],
+    user_id: Optional[int],
 ) -> ActionResult:
     """叙述性提及的确认卡：查营养库并换算份量，把营养数据随卡返回给 LLM。
 
     让 LLM 读到 calories/protein/fat 等数据后，能先针对这条饮食写一两句
     分析（如「泡面约 470 大卡，钠偏高…」），再提示用户点「帮我记录」按钮
     （需求 2026-09-26）。不落库，仅做分析与辅助展示。
+
+    同时把这条调用登记成确认凭证：用户点按钮时后端按这里的参数原样落库，
+    份量、餐次、估算热量都不会被重新理解。
     """
     from shared.models.database import SessionLocal
 
@@ -438,26 +446,32 @@ def _confirm_card_with_nutrition(
     estimate_grams = explicit_g or (matched or {}).get("portion_grams") or DEFAULT_PORTION_G
     nutrition = _scale_nutrition(matched["per_100g"], estimate_grams) if matched else None
 
+    confirm_params = {
+        "food_name": params.food_name,
+        "meal_type": MEAL_LABELS[meal_type],
+        "record_time": when.isoformat(),
+        "quantity_text": params.quantity_text,
+        "quantity_g": params.quantity_g,
+        "cost": params.cost,
+        "source_tag": source_tag,
+        # 用户点「帮我记录」后落库时从此处带回估算热量，
+        # 避免食物库未收录时记录页显示 0 千卡
+        "estimated_calories": params.estimated_calories,
+    }
+    confirm_token = await register_record_confirm(
+        user_id, action=SPEC.name, label=params.food_name, params=confirm_params
+    )
+
     return build_record_confirm_card(
         action=SPEC.name,
         what=params.food_name,
-        params={
-            "food_name": params.food_name,
-            "meal_type": MEAL_LABELS[meal_type],
-            "record_time": when.isoformat(),
-            "quantity_text": params.quantity_text,
-            "quantity_g": params.quantity_g,
-            "cost": params.cost,
-            "source_tag": source_tag,
-            # 用户点「帮我记录」后下一轮重新调用时，从此处带回估算热量，
-            # 避免食物库未收录时记录页显示 0 千卡
-            "estimated_calories": params.estimated_calories,
-        },
+        params=confirm_params,
         analysis={
             "nutrition_matched": bool(matched),
             "nutrition": nutrition,
             "estimate_grams": estimate_grams,
         },
+        confirm_token=confirm_token,
     )
 
 

@@ -16,6 +16,7 @@ import '../../../advisor/presentation/pages/advisor_style_page.dart';
 import '../../../advisor/data/services/advisor_service.dart';
 import '../../../camera/presentation/widgets/camera_source_sheet.dart';
 import '../../../pet/data/real_pet_api_service.dart';
+import '../../../profile/presentation/providers/profile_provider.dart';
 import '../../../camera/presentation/pages/camera_page.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../shared/utils/species_utils.dart';
@@ -476,8 +477,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   // ---------- 拍照记录（PRD 4.9）：对话内快捷入口，复用相机页 AI 图像分析链路 ----------
   //
-  // 体检报告上传为低频操作，不常驻对话栏：入口在「体检」页（自带 5.4 隐私提醒
-  // 与 AI 分析开关），对话内由 Agent 按话题引导前往（见 registry 提示词）。
+  // 体检报告在弹窗内单列一项（不常驻对话栏）：体检上传页自带 5.4 隐私提醒与 AI
+  // 分析开关，选中后直接跳转，对话内亦可由 Agent 按话题引导前往（见 registry 提示词）。
   Future<void> _openCameraRecord() async {
     final now = DateTime.now();
     final today =
@@ -494,6 +495,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       ),
     );
     if (!mounted || source == null) return;
+    // 体检报告不是饮食识别：跳体检上传页（自带隐私提醒与分析开关），不进相机页
+    if (CameraSheetSource.isExamReport(source)) {
+      context.push('/exam/upload');
+      return;
+    }
     // 弹窗已选定目的（餐食/包装），取景器内锁定模式不再显示切换选项
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -719,18 +725,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               ),
         automaticallyImplyLeading: false,
         actions: [
-          // 数据看板：页面层入口保留在页面层，可切换访问（PRD D15）
-          // go 平级切换，与看板页右上角「回对话」(go('/')) 完全对称
-          if (widget.isHomeEntry)
-            IconButton(
-              icon: const Icon(
-                Icons.grid_view_rounded,
-                size: 22,
-                color: Color(0xFF2BAF74),
-              ),
-              tooltip: '数据看板',
-              onPressed: () => context.go('/dashboard'),
-            ),
           // 人 ↔ 宠物 模式切换（PRD 4.8 / D18）
           IconButton(
             icon: Icon(
@@ -1487,15 +1481,37 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
     final cards = _cardsByMessageId[messageId];
     if (cards == null || cards.isEmpty) return const SizedBox.shrink();
+
+    // 一次叙述里提到多样食物时，模型会各调一次写操作、各返回一张确认卡；
+    // 逐卡渲染就会出现多个同名「帮我记录」。这里把本轮所有「要帮你记录吗」
+    // 确认卡聚合成一排按钮（要记/不记的都是这一批），其余卡片原样渲染。
+    final confirmCards = cards.where(_isRecordConfirmCard).toList();
+
+    final children = <Widget>[];
+    var confirmRowAdded = false;
+    for (final card in cards) {
+      if (_isRecordConfirmCard(card)) {
+        if (!confirmRowAdded) {
+          confirmRowAdded = true;
+          children.add(
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: _buildRecordConfirmButtons(confirmCards),
+            ),
+          );
+        }
+        continue;
+      }
+      children.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: _buildActionCard(card),
+        ),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final card in cards)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: _buildActionCard(card),
-          ),
-      ],
+      children: children,
     );
   }
 
@@ -2593,13 +2609,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     );
   }
 
-  /// 操作确认卡（PRD 4.8：提醒已设置 / 已发送）
-  /// 生产者是二期的 set_reminder（可撤销）与 send_reminder_to_family（仅发提醒，不可撤销）
+  /// 操作确认卡（PRD 4.8：提醒已设置 / 已发送 / 档案已更新）
+  /// 生产者：二期的 set_reminder（可撤销）与 send_reminder_to_family（仅发提醒，不可撤销），
+  /// 以及 V6 健康档案类写操作（运动 / 疾病 / 过敏原 / 健康目标）。
   Widget _buildActionConfirmCard(_ActionCardState card) {
     final data = card.data;
     final jump = _asMap(data['jump']);
     final message = (card.payload['message'] ?? '').toString();
-    final isReminder = card.action == 'set_reminder';
+    final meta = _actionConfirmMeta(card.action);
     final undone = card.undone;
     final accent = undone ? const Color(0xFF9E9E9E) : const Color(0xFF2BAF74);
 
@@ -2616,12 +2633,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         ),
       );
     }
-    final detail = isReminder
-        ? _reminderDetailLine(data)
-        : [
-            (data['member_name'] ?? data['target_name'] ?? '').toString(),
-            (data['content'] ?? '').toString(),
-          ].where((text) => text.isNotEmpty).join(' · ');
+    final detail = _actionConfirmDetailLine(card.action, data);
     if (detail.isNotEmpty) {
       body.add(
         Padding(
@@ -2636,10 +2648,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     return _cardShell(
       accent: accent,
-      icon: undone
-          ? Icons.undo
-          : (isReminder ? Icons.alarm_on_outlined : Icons.favorite_border),
-      title: undone ? '已撤销' : (isReminder ? '提醒已设置' : '提醒已发送'),
+      icon: undone ? Icons.undo : meta.icon,
+      title: undone ? '已撤销' : meta.title,
       body: body.isEmpty
           ? [
               const Text(
@@ -2666,15 +2676,86 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 : const Text('撤销', style: TextStyle(fontSize: 13)),
           ),
         _jumpButton(
-          isReminder ? '管理提醒' : '查看家人健康',
-          () => _openCardJump(
-            jump.isEmpty
-                ? {'page': isReminder ? 'reminder' : 'family_health'}
-                : jump,
-          ),
+          meta.jumpLabel,
+          () => _openCardJump(jump.isEmpty ? meta.defaultJump : jump),
           color: accent,
         ),
       ],
+    );
+  }
+
+  /// 操作确认卡的明细行：提醒类走「重复方式 + 时间 + 标题」，
+  /// 家人提醒走「谁 · 内容」，其余动作优先用后端给的 data['detail']
+  String _actionConfirmDetailLine(String action, Map<String, dynamic> data) {
+    if (action == 'set_reminder') return _reminderDetailLine(data);
+    if (action == 'send_reminder_to_family') {
+      return [
+        (data['member_name'] ?? data['target_name'] ?? '').toString(),
+        (data['content'] ?? '').toString(),
+      ].where((text) => text.isNotEmpty).join(' · ');
+    }
+    return (data['detail'] ?? '').toString();
+  }
+
+  /// 操作确认卡的动作 → (标题 / 图标 / 跳转按钮文案 / 跳转目标) 映射。
+  /// 后端新增写动作时在这里补一条即可，未登记的走通用兜底。
+  _ActionConfirmMeta _actionConfirmMeta(String action) {
+    switch (action) {
+      case 'set_reminder':
+        return const _ActionConfirmMeta(
+          '提醒已设置',
+          Icons.alarm_on_outlined,
+          '管理提醒',
+          {'page': 'reminder'},
+        );
+      case 'send_reminder_to_family':
+        return const _ActionConfirmMeta(
+          '提醒已发送',
+          Icons.favorite_border,
+          '查看家人健康',
+          {'page': 'family_health'},
+        );
+      case 'record_exercise':
+        return const _ActionConfirmMeta(
+          '运动已记录',
+          Icons.directions_run,
+          '查看健康页',
+          {'page': 'health'},
+        );
+      case 'record_disease':
+        return const _ActionConfirmMeta(
+          '档案已更新',
+          Icons.medical_information_outlined,
+          '查看健康页',
+          {'page': 'health'},
+        );
+      case 'mark_disease_recovered':
+        return const _ActionConfirmMeta(
+          '已标记痊愈',
+          Icons.verified_outlined,
+          '查看健康页',
+          {'page': 'health'},
+        );
+      case 'record_allergy':
+        return const _ActionConfirmMeta(
+          '过敏原已记录',
+          Icons.warning_amber_outlined,
+          '查看健康页',
+          {'page': 'health'},
+        );
+      case 'set_health_target':
+        return const _ActionConfirmMeta(
+          '目标已更新',
+          Icons.flag_outlined,
+          '查看目标',
+          {'page': 'health'},
+        );
+    }
+    return const _ActionConfirmMeta(
+      '已完成',
+      Icons.check_circle_outline,
+      '查看',
+      {'page': 'health'},
     );
   }
 
@@ -2695,9 +2776,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   Widget _buildPendingConfirmCard(_ActionCardState card) {
     final data = card.data;
     // 叙述性提及的「要帮你记录吗？」确认卡（backend field=explicit_request）：只渲染
-    // 气泡下方一排按钮，不做成大卡片（需求 2026-09-26）。
+    // 气泡下方一排按钮，不做成大卡片（需求 2026-09-26）。正常情况下这类卡已在
+    // _buildMessageCards 里被聚合处理，这里兜底单卡。
     if (data['field'] == 'explicit_request') {
-      return _buildRecordConfirmButtons(card);
+      return _buildRecordConfirmButtons([card]);
     }
     final question = (data['question'] ?? '这个份量大概是多少？').toString();
     final rawOptions = data['options'];
@@ -2791,11 +2873,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     Map<String, dynamic> option,
     bool answered,
   ) {
-    const accent = Color(0xFFF39C12);
     final label = (option['label'] ?? '').toString();
-    final enabled = !answered && !_isSending;
+    return _pendingPill(
+      label,
+      !answered && !_isSending,
+      () => _answerPendingCard(card, option),
+    );
+  }
+
+  /// 待确认卡的按钮样式（量词快捷选项与记录确认按钮共用）
+  Widget _pendingPill(String label, bool enabled, VoidCallback onTap) {
+    const accent = Color(0xFFF39C12);
     return InkWell(
-      onTap: enabled ? () => _answerPendingCard(card, option) : null,
+      onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -2837,22 +2927,208 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   /// 叙述性提及的「要帮你记录吗？」确认卡：渲染成 AI 意见气泡下方一排按钮，
   /// 不做成「需要确认一下」大卡片（需求 2026-09-26）。
-  Widget _buildRecordConfirmButtons(_ActionCardState card) {
-    final rawOptions = card.data['options'];
-    final options = rawOptions is List ? rawOptions : const [];
-    final answered = card.answeredLabel;
+  ///
+  /// [cards] 是本轮全部确认卡：通常只有一条；用户一次说到多味食物时，
+  /// 模型会对每样各出一张卡，这里合并成一排按钮，避免出现多个同名「帮我记录」。
+  Widget _buildRecordConfirmButtons(List<_ActionCardState> cards) {
+    if (cards.isEmpty) return const SizedBox.shrink();
+    final answered =
+        cards.any((card) => card.answeredLabel != null) || _isSending;
+    final names = cards.map(_confirmCardItemName).toList();
+    final recordLabel =
+        cards.length == 1 ? '帮我记录' : '帮我记录这 ${cards.length} 样';
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final option in options)
-            if (option is Map)
-              _buildPendingOption(card, Map<String, dynamic>.from(option), answered != null),
+          if (cards.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                '将记录：${names.join('、')}',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF999999)),
+              ),
+            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _pendingPill(
+                recordLabel,
+                !answered,
+                () => _answerRecordConfirmCards(cards, record: true),
+              ),
+              _pendingPill(
+                '先不记了',
+                !answered,
+                () => _answerRecordConfirmCards(cards, record: false),
+              ),
+            ],
+          ),
         ],
       ),
     );
+  }
+
+  /// 是否是「要帮你记录吗」确认卡（叙述性提及但未明确要求记录）
+  bool _isRecordConfirmCard(_ActionCardState card) =>
+      card.cardType == 'pending_confirm' &&
+      card.data['field'] == 'explicit_request';
+
+  /// 确认卡待记录项的名字：饮食取菜名、饮水取饮品与量、体重固定「体重」
+  String _confirmCardItemName(_ActionCardState card) {
+    // 后端在建卡时写好了 label（新动作入参各不相同，靠 params 猜不出来）
+    final label = card.data['label'];
+    if (label != null && label.toString().trim().isNotEmpty) {
+      return label.toString().trim();
+    }
+    final raw = card.data['params'];
+    final params =
+        raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    final food = params['food_name'];
+    if (food != null && food.toString().trim().isNotEmpty) {
+      return food.toString().trim();
+    }
+    final amountText = params['amount_text'];
+    if (amountText != null && amountText.toString().trim().isNotEmpty) {
+      final drink = params['drink_type'];
+      return drink == null
+          ? amountText.toString().trim()
+          : '${drink.toString().trim()} ${amountText.toString().trim()}';
+    }
+    final weight = params['weight_kg'];
+    if (weight != null) return '体重 ${weight}kg';
+    final drink = params['drink_type'];
+    if (drink != null && drink.toString().trim().isNotEmpty) {
+      return drink.toString().trim();
+    }
+    // 参数缺失时退回动作语义，避免按钮文案出现「记录」这种空话
+    switch (card.data['action']) {
+      case 'record_food':
+        return '饮食';
+      case 'record_water':
+        return '饮水';
+      case 'record_weight':
+        return '体重';
+    }
+    return _cardTitle(card.data);
+  }
+
+  /// 确认卡作答：记录这一批 / 都不记。
+  ///
+  /// 点「帮我记录」直调后端确认接口：卡片上的 confirm_token 指向服务端预先备好的
+  /// 动作调用（份量、餐次、AI 估算热量都在里面），后端按原参数落库、不再经模型
+  /// 重新理解，凭证取出即作废，重复点击不会写第二条。
+  /// 早于本版本的历史卡片没有凭证，退回「把按钮文案当消息发出去」的旧路径。
+  /// 「先不记了」只做本地标记，不落库。
+  Future<void> _answerRecordConfirmCards(
+    List<_ActionCardState> cards, {
+    required bool record,
+  }) async {
+    if (_isSending || cards.any((card) => card.answeredLabel != null)) return;
+    final names = cards.map(_confirmCardItemName).toList();
+    final label = record
+        ? (cards.length == 1 ? '帮我记录' : '帮我记录这 ${cards.length} 样')
+        : '先不记了';
+    setState(() {
+      for (final card in cards) {
+        card.answeredLabel = label;
+      }
+    });
+    if (!record) return;
+
+    final tokens = cards
+        .map((card) => card.confirmToken)
+        .where((token) => token.isNotEmpty)
+        .toList();
+    if (tokens.length < cards.length) {
+      await _sendText('帮我记录：${names.join('、')}');
+      return;
+    }
+    await _submitRecordConfirms(cards, tokens);
+  }
+
+  /// 提交确认凭证，并把后端返回的结果卡挂到一条新的 AI 消息下
+  Future<void> _submitRecordConfirms(
+    List<_ActionCardState> cards,
+    List<String> tokens,
+  ) async {
+    setState(() => _isSending = true);
+    try {
+      final response = await _chatService.confirmPendingActions(
+        confirmTokens: tokens,
+        sessionId: _currentSessionId,
+      );
+      if (!mounted) return;
+
+      // ApiService 把响应体解包：message 在顶层，cards/session_id 在 data 里
+      final data = response.data;
+      final resultCards = <_ActionCardState>[];
+      final message = response.message;
+      if (data is Map) {
+        final rawCards = data['cards'];
+        if (rawCards is List) {
+          for (final item in rawCards) {
+            if (item is Map) {
+              resultCards.add(_ActionCardState(Map<String, dynamic>.from(item)));
+            }
+          }
+        }
+      }
+
+      setState(() {
+        _isSending = false;
+        final newSessionId = data is Map ? data['session_id'] : null;
+        if (newSessionId is int) _currentSessionId = newSessionId;
+        final aiMessageId = DateTime.now().millisecondsSinceEpoch;
+        _messages.add(ChatMessageDetail(
+          id: aiMessageId,
+          role: 'assistant',
+          content: message.isNotEmpty ? message : '已完成。',
+          timestamp: DateTime.now().toIso8601String(),
+        ));
+        if (resultCards.isNotEmpty) {
+          _cardsByMessageId[aiMessageId] = resultCards;
+        }
+      });
+      _scrollToBottom();
+
+      if (!response.success) {
+        _showSnackBar(message.isNotEmpty ? message : '记录失败，请稍后再试');
+      } else {
+        _refreshProfileProvidersFor(cards);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      // 网络异常下凭证还没被消费，放开按钮让用户能再点一次
+      setState(() {
+        _isSending = false;
+        for (final card in cards) {
+          card.answeredLabel = null;
+        }
+      });
+      _showSnackBar('记录失败: $e');
+    }
+  }
+
+  /// 确认凭证落库成功后，点名刷新被写入数据所属的 provider。
+  ///
+  /// provider 的 notifier 构造只把状态置为 loading、不会自动拉取，
+  /// 所以这里必须显式调 load*（invalidate 只会置回 loading，页面拿不到数据）。
+  void _refreshProfileProvidersFor(List<_ActionCardState> cards) {
+    final actions = cards.map((card) => card.action).toSet();
+    if (actions.contains('record_disease') ||
+        actions.contains('mark_disease_recovered')) {
+      ref.read(diseasesProvider.notifier).loadDiseases();
+    }
+    if (actions.contains('record_allergy')) {
+      ref.read(allergiesProvider.notifier).loadAllergies();
+    }
+    if (actions.contains('set_health_target')) {
+      ref.read(userProfileProvider.notifier).loadUserProfile();
+    }
   }
 
   /// 记录结果卡标题：饮食取菜名，饮水取饮品，体重固定「体重」
@@ -2895,10 +3171,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       final matched = source['nutrition_matched'] == true;
       final nutrition = source['nutrition'];
       final calories = nutrition is Map ? nutrition['calories'] : null;
-      if (matched && calories is num) {
-        parts.add('${calories.toStringAsFixed(0)} kcal');
+      if (calories is num) {
+        // 食物库命中直接给值；库外食物用对话模型的估算值，需标注来源
+        parts.add(
+          matched
+              ? '${calories.toStringAsFixed(0)} kcal'
+              : '约 ${calories.toStringAsFixed(0)} kcal（AI 估算）',
+        );
       } else {
-        parts.add('营养库未命中，暂不计入今日汇总');
+        parts.add('热量待补充');
       }
     }
     return parts.isEmpty ? '—' : parts.join(' · ');
@@ -3269,6 +3550,9 @@ class _ActionCardState {
   /// 撤销凭证（后端据此校验「点哪张撤哪张」）
   String get undoToken => (payload['undo_token'] ?? '').toString();
 
+  /// 确认凭证（后端据此取出这张卡预先备好的动作调用，按原参数落库）
+  String get confirmToken => (data['confirm_token'] ?? '').toString();
+
   Map<String, dynamic> get data {
     final raw = payload['data'];
     return raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
@@ -3291,4 +3575,19 @@ class _ActionCardState {
     if (canUndo) return '记录后 10 分钟内可撤销';
     return '已超过可撤销时间，可在记录页修改';
   }
+}
+
+/// 操作确认卡的展示配置（标题 / 图标 / 跳转按钮文案 / 跳转目标）
+class _ActionConfirmMeta {
+  final String title;
+  final IconData icon;
+  final String jumpLabel;
+  final Map<String, dynamic> defaultJump;
+
+  const _ActionConfirmMeta(
+    this.title,
+    this.icon,
+    this.jumpLabel,
+    this.defaultJump,
+  );
 }

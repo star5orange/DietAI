@@ -54,6 +54,17 @@ void main() {
       expect(
           CameraSheetSource.useGallery(CameraSheetSource.labelCamera), isFalse);
     });
+
+    test('体检报告编码独立于饮食识别（不会被误判为餐食/包装）', () {
+      const exam = CameraSheetSource.examReport;
+      expect(CameraSheetSource.isExamReport(exam), isTrue);
+      expect(CameraSheetSource.isExamReport(CameraSheetSource.foodCamera),
+          isFalse);
+      expect(CameraSheetSource.isExamReport(null), isFalse);
+      // 体检不走相机页的识别模式与相册参数，避免误入饮食链路
+      expect(CameraSheetSource.isLabel(exam), isFalse);
+      expect(CameraSheetSource.useGallery(exam), isFalse);
+    });
   });
 
   group('CameraSourceSheet 弹窗内容', () {
@@ -74,15 +85,25 @@ void main() {
       );
     }
 
-    testWidgets('标题 + 两组分组 + 四个选项齐全', (tester) async {
+    testWidgets('标题 + 三组分组 + 五个选项齐全', (tester) async {
       await pumpSheet(tester, (_) {});
       expect(find.text('拍照记录'), findsOneWidget);
       expect(find.text('记录饮食'), findsOneWidget);
       expect(find.text('包装食品'), findsOneWidget);
+      expect(find.text('体检报告'), findsOneWidget);
       expect(find.text('拍食物'), findsOneWidget);
       expect(find.text('食物图片'), findsOneWidget);
       expect(find.text('拍营养成分表'), findsOneWidget);
       expect(find.text('包装图片'), findsOneWidget);
+      expect(find.text('拍体检报告'), findsOneWidget);
+    });
+
+    testWidgets('点按回传对应编码：拍体检报告 → exam_report', (tester) async {
+      String? selected;
+      await pumpSheet(tester, (s) => selected = s);
+      await tester.tap(find.byKey(const Key('sheet_exam_report')));
+      await tester.pump();
+      expect(selected, 'exam_report');
     });
 
     testWidgets('点按回传对应编码：拍食物 → food_camera', (tester) async {

@@ -71,16 +71,14 @@ class _ExamUploadPageState extends ConsumerState<ExamUploadPage> {
     }
   }
 
-  /// 从相册选择（追加到多页列表）
+  /// 从相册选择（支持一次多选，追加到多页列表）
   Future<void> _pickFromGallery() async {
     try {
-      final image = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
-      );
-      if (image != null) {
-        setState(() => _selectedImages.add(File(image.path)));
-      }
+      final images = await _imagePicker.pickMultiImage(imageQuality: 85);
+      if (images.isEmpty) return;
+      setState(() {
+        _selectedImages.addAll(images.map((image) => File(image.path)));
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

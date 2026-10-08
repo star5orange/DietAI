@@ -41,8 +41,10 @@ from agent.diet_deep_agent.actions.definitions.record_food import (
 from agent.diet_deep_agent.actions.pending import (
     build_options,
     build_pending_card,
+    build_record_confirm_card,
     detect_quantifier,
 )
+import agent.diet_deep_agent.actions.pending_store  # noqa: F401  确保子模块已加载
 from agent.diet_deep_agent.actions.spec import ActionResult, CardType
 import agent.diet_deep_agent.actions.undo_journal  # noqa: F401  确保子模块已加载
 from agent.diet_deep_agent.actions.undo_journal import (
@@ -55,6 +57,7 @@ from agent.diet_deep_agent.actions.undo_journal import (
 # 注意：actions/__init__.py 导出了同名「单例实例」，包属性会遮蔽子模块，
 # 因此必须从 sys.modules 取真正的模块对象（monkeypatch 才能改到模块级开关）
 undo_journal_module = sys.modules["agent.diet_deep_agent.actions.undo_journal"]
+pending_store_module = sys.modules["agent.diet_deep_agent.actions.pending_store"]
 
 
 class TestInferMealType:
@@ -244,6 +247,81 @@ class TestUndoJournal:
         )
         clone = UndoEntry.from_dict(entry.to_dict())
         assert clone == entry
+
+
+class TestPendingConfirmStore:
+    """确认卡凭证（PRD 4.2）：卡片带凭证、点击按原参数执行、凭证券后作废。
+
+    monkeypatch 走内存降级路径（与撤销日志共用同一套 Redis 可用性开关），不碰真实 Redis。
+    """
+
+    @pytest.fixture(autouse=True)
+    def store(self, monkeypatch):
+        monkeypatch.setattr(undo_journal_module, "_redis_disabled", True)  # 强制内存降级
+        pending_store_module._memory_store.clear()
+        yield pending_store_module
+        pending_store_module._memory_store.clear()
+
+    @pytest.mark.asyncio
+    async def test_register_and_consume(self, store):
+        token = await store.register_record_confirm(
+            999101,
+            action="record_food",
+            label="螺蛳粉",
+            params={"food_name": "螺蛳粉", "estimated_calories": 500},
+        )
+        assert token
+
+        entry = await store.consume_confirm(token, 999101)
+        assert entry is not None
+        assert entry.label == "螺蛳粉"
+        # 确认时执行的就是这份调用：动作 + 原参数 + explicit_request=True
+        assert entry.calls == [
+            {
+                "action": "record_food",
+                "field": "explicit_request",
+                "value": True,
+                "params": {"food_name": "螺蛳粉", "estimated_calories": 500},
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_consumed_once(self, store):
+        """一次性：连点/网络重试再提交拿到 None，不会写第二条"""
+        token = await store.register_record_confirm(999102, "record_food", "泡面", {})
+        assert await store.consume_confirm(token, 999102) is not None
+        assert await store.consume_confirm(token, 999102) is None
+
+    @pytest.mark.asyncio
+    async def test_other_user_cannot_consume(self, store):
+        """不是自己的凭证取不到，也不会被误作废"""
+        token = await store.register_record_confirm(999103, "record_food", "泡面", {})
+        assert await store.consume_confirm(token, 999104) is None
+        assert await store.consume_confirm(token, 999103) is not None
+
+    @pytest.mark.asyncio
+    async def test_missing_user_id_skips_registration(self, store):
+        assert await store.register_record_confirm(None, "record_food", "泡面", {}) is None
+
+    def test_expiry_boundary(self, store):
+        fresh = store.PendingConfirm(
+            user_id=1, token="t", label="泡面", calls=[],
+            created_at=datetime.now().timestamp() - (store.CONFIRM_TTL_SECONDS - 5),
+        )
+        stale = store.PendingConfirm(
+            user_id=1, token="t", label="泡面", calls=[],
+            created_at=datetime.now().timestamp() - (store.CONFIRM_TTL_SECONDS + 5),
+        )
+        assert fresh.is_expired() is False
+        assert stale.is_expired() is True
+
+    def test_card_carries_token(self):
+        card = build_record_confirm_card("record_food", "泡面", {}, confirm_token="tk-1")
+        assert card.data["confirm_token"] == "tk-1"
+        # 没有凭证时卡片不出现该字段（前端据此退回旧的文字路径）
+        assert "confirm_token" not in build_record_confirm_card(
+            "record_food", "泡面", {}
+        ).data
 
 
 class TestFamilyRelationMatch:

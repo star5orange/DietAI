@@ -5,6 +5,7 @@ DietDeepAgent 统一 API 路由
 - POST /api/deep/chat          统一对话入口（文字+图片）
 - POST /api/deep/analyze        食物图像分析
 - POST /api/deep/actions/undo   卡片「撤销」直调（最近一条 + 10 分钟窗口）
+- POST /api/deep/actions/confirm 确认卡「帮我记录」直调（按卡片原参数落库，凭证券后作废）
 - GET  /api/deep/daily-status   今日营养状态
 - GET  /api/deep/memory/{uid}   查看用户记忆（调试用）
 """
@@ -94,49 +95,12 @@ def _get_cached_agent():
     return _cached_agent
 
 
-def _build_user_constitution_context(user_id: int) -> str:
-    """构建用户体质/人群标签上下文，追加到人类营养师 System Prompt。
+def _build_user_health_context(user_id: int) -> str:
+    """构建用户健康档案上下文（实现已迁至 shared/services/user_health_context.py，
+    与康复建议共用同一份口径）。保留此薄封装以维持既有调用点不变。"""
+    from shared.services.user_health_context import build_user_health_context
 
-    Deep Agent 与 Chat Agent 不同，Router 层不会自动携带用户档案；
-    体质类型（体质自测落库到 UserProfile.constitution_type）需在此显式注入，
-    否则模型不知道用户的体质标签。宠物会话不调用本函数。
-    """
-    try:
-        from shared.models.database import SessionLocal
-        from shared.models.user_models import UserProfile
-
-        db = SessionLocal()
-        try:
-            profile = db.query(UserProfile).filter(
-                UserProfile.user_id == user_id
-            ).first()
-            from shared.models.schemas.constitution import normalize_constitution
-            constitution = (
-                normalize_constitution(profile.constitution_type)
-                if profile and profile.constitution_type else None
-            )
-            crowd_tag = profile.crowd_tag if profile else None
-        finally:
-            db.close()
-
-        lines = []
-        if constitution:
-            lines.append(f"- 体质类型: {constitution}（来自用户体质自测，中医九种体质）")
-        if crowd_tag:
-            lines.append(f"- 人群标签: {crowd_tag}")
-        if not lines:
-            return ""
-
-        return (
-            "\n\n## 用户体质档案（必须参考）\n"
-            + "\n".join(lines)
-            + "\n给出饮食/养生建议时必须结合该体质的宜忌；"
-            "涉及体质养生、药膳茶饮等检索时，调用 query_wellness_knowledge "
-            "应将该体质作为 constitution 过滤条件传入。"
-        )
-    except Exception as e:
-        logger.warning(f"构建用户体质上下文失败 (非致命): {e}")
-        return ""
+    return build_user_health_context(user_id)
 
 
 def _load_action_names() -> set[str]:
@@ -336,7 +300,7 @@ async def deep_chat(
             pass
 
         # 叠加用户体质档案（体质自测结果，建议与养生检索需参考）
-        advisor_prompt += _build_user_constitution_context(current_user.id)
+        advisor_prompt += _build_user_health_context(current_user.id)
 
         # 老人线硬件语音：App 端的"先确认再记录 / 量词追问"规则不适用（PRD 4.3 / D13）
         from agent.diet_deep_agent.actions.context import ELDER_CHANNELS
@@ -589,7 +553,7 @@ async def deep_analyze(
             pass
 
         # 叠加用户体质档案（体质自测结果，建议与养生检索需参考）
-        advisor_prompt += _build_user_constitution_context(current_user.id)
+        advisor_prompt += _build_user_health_context(current_user.id)
 
     async def generate_response() -> AsyncGenerator[str, None]:
         try:
@@ -686,6 +650,133 @@ async def deep_undo_action(
     except Exception as e:
         logger.error(f"deep_undo_action error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/actions/confirm")
+async def deep_confirm_action(
+    request: Request,
+    current_user: user_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """确认卡「帮我记录」直调（不经过 LLM，PRD 4.2）。
+
+    卡片上的 confirm_token 指向后端预先备好的动作调用（见 actions/pending_store）：
+    这里按原参数直接执行，份量、餐次、AI 估算热量都不会被模型重新理解一遍，
+    凭证取出即作废——重复点击或网络重试不会写第二条。
+
+    一轮多张卡（一次说了多样食物）用 confirm_tokens 一次性提交，
+    执行的用户消息与结果卡同样落库，历史回显与撤销入口与普通轮次一致。
+    """
+    from agent.diet_deep_agent.actions import ActionContext, registry
+    from agent.diet_deep_agent.actions.pending_store import consume_confirm
+
+    body: dict[str, Any] = {}
+    try:
+        payload = await request.json()
+        if isinstance(payload, dict):
+            body = payload
+    except Exception:
+        body = {}
+
+    raw_tokens = body.get("confirm_tokens")
+    if not isinstance(raw_tokens, list):
+        raw_tokens = [body.get("confirm_token")] if body.get("confirm_token") else []
+    tokens = [str(t) for t in raw_tokens if t]
+    if not tokens:
+        raise HTTPException(status_code=400, detail="缺少 confirm_token")
+
+    ctx = ActionContext(user_id=current_user.id, input_channel="app")
+    cards: list[dict[str, Any]] = []
+    messages: list[str] = []
+    labels: list[str] = []
+    ok_count = 0
+    fail_count = 0
+
+    for token in tokens:
+        entry = await consume_confirm(token, current_user.id)
+        if entry is None:  # 已用过 / 已过期 / 不属于该用户
+            continue
+        if entry.label:
+            labels.append(entry.label)
+        for call in entry.calls:
+            name = str(call.get("action") or "")
+            spec = registry.get(name)
+            handler = registry.handler(name)
+            if spec is None or handler is None:
+                fail_count += 1
+                messages.append("这张卡片对应的动作已不可用，请重新说一次需要记录的内容")
+                continue
+            kwargs = dict(call.get("params") or {})
+            field = call.get("field")
+            if field:
+                kwargs[str(field)] = call.get("value")
+            try:
+                result = await handler(spec.args_schema(**kwargs), ctx)
+            except Exception as e:
+                logger.exception(f"确认卡动作执行失败: {name}")
+                fail_count += 1
+                messages.append(f"记录失败：{e}")
+                continue
+            if result.ok:
+                ok_count += 1
+            else:
+                fail_count += 1
+            if result.message:
+                messages.append(result.message)
+            if result.ok and result.card_type.value != "text":
+                cards.append(json.loads(result.to_tool_output()))
+
+    if ok_count == 0 and fail_count == 0:
+        return {
+            "success": False,
+            "message": "这张卡片已经处理过或已超过 10 分钟，请再说一次需要记录的内容。",
+            "data": {"cards": []},
+        }
+
+    summary = "；".join(messages) or "已完成。"
+
+    # 落库：与普通轮次一致（用户消息 + 带 cards 的 AI 消息），失败不影响已完成的记录
+    session_id = None
+    message_id = None
+    try:
+        session = _ensure_deep_session(
+            db, current_user.id, body.get("session_id"), body.get("session_type")
+        )
+        session_id = session.id
+        db.add(
+            conversation_models.ConversationMessage(
+                session_id=session.id,
+                message_type=1,
+                content=f"帮我记录：{'、'.join(labels)}" if labels else "帮我记录",
+            )
+        )
+        ai_message = conversation_models.ConversationMessage(
+            session_id=session.id,
+            message_type=2,
+            content=summary,
+            message_metadata={
+                "cards": cards,
+                "agent_invocation": "confirm_action",
+            },
+        )
+        db.add(ai_message)
+        session.last_message_at = datetime.now()
+        db.commit()
+        db.refresh(ai_message)
+        message_id = ai_message.id
+    except Exception as e:
+        logger.warning(f"确认结果落库失败（非致命，记录已生效）: {e}")
+        db.rollback()
+
+    return {
+        "success": ok_count > 0,
+        "message": summary,
+        "data": {
+            "cards": cards,
+            "session_id": session_id,
+            "message_id": message_id,
+        },
+    }
 
 
 @router.get("/daily-status")

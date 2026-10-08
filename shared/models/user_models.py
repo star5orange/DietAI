@@ -115,6 +115,11 @@ class Disease(Base):
     diagnosed_date = Column(Date, nullable=True)
     is_current = Column(Boolean, default=True)
     notes = Column(EncryptedText, nullable=True)
+    # 康复建议（AI 生成，按疾病缓存）：JSON 字符串 + 输入签名 + 生成时间
+    # sig 用于判断是否需要重建——不用 updated_at，因为写入本列会触发 onupdate 刷新它
+    rehab_advice = Column(Text, nullable=True)
+    rehab_advice_sig = Column(String(64), nullable=True)
+    rehab_advice_generated_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     

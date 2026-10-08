@@ -1,9 +1,10 @@
 """动作注册表元数据单元测试（纯进程内，不需要后端 / LLM / 数据库）。
 
 覆盖：
-    - 全部动作注册（V5.1 一期 6 + V5.2 二期 9 + 引导卡 1 = 16）
+    - 全部动作注册（V5.1 一期 6 + V5.2 二期 9 + 引导卡 1 + V6 健康档案 5 = 21）
     - 表驱动元数据断言（kind / card_type / requires_confirmation / undoable / sessions）
     - PRD 合规：4.2 写操作需授权、4.5 undoable 与 UNDOABLE_ACTIONS 双向一致
+    - always_confirm 动作必须带 confirmed_by_user 内部参数（只能由确认凭证回填）
     - D18/D3 域隔离：宠物 prompt 工具集精确等于 {record_pet_feeding, query_pet, undo}
     - System Prompt 授权规则段关键词存在
 
@@ -26,7 +27,7 @@ from agent.diet_deep_agent.actions.definitions.undo import UNDOABLE_ACTIONS
 from agent.diet_deep_agent.actions.registry import ActionRegistry
 from agent.diet_deep_agent.actions.spec import ActionKind, CardType
 
-EXPECTED_TOTAL = 16
+EXPECTED_TOTAL = 21
 
 # 表驱动期望值：name → (card_type, requires_confirmation, undoable)
 WRITE_EXPECT = {
@@ -36,7 +37,17 @@ WRITE_EXPECT = {
     "record_pet_feeding": (CardType.RECORD_RESULT, True, True),
     "set_reminder": (CardType.ACTION_CONFIRM, True, True),
     "send_reminder_to_family": (CardType.ACTION_CONFIRM, True, False),  # 消息不可撤回
+    # V6 健康档案扩权（全部可撤销）
+    "record_exercise": (CardType.ACTION_CONFIRM, True, True),
+    "record_disease": (CardType.ACTION_CONFIRM, True, True),
+    "mark_disease_recovered": (CardType.ACTION_CONFIRM, True, True),
+    "record_allergy": (CardType.ACTION_CONFIRM, True, True),
+    "set_health_target": (CardType.ACTION_CONFIRM, True, True),
 }
+# 任何输入都先出确认卡的动作（内部参数由确认凭证回填）
+ALWAYS_CONFIRM_ACTIONS = {"record_disease", "mark_disease_recovered"}
+# always_confirm 动作用于回填的内部入参名（模型必须始终留空）
+CONFIRM_FIELD = "confirmed_by_user"
 QUERY_EXPECT = {
     "query_today": CardType.DAILY_SUMMARY,
     "query_nutrition": CardType.TREND,
@@ -102,6 +113,47 @@ class TestWriteActions:
         assert spec.card_type is card_type, name
         assert spec.requires_confirmation is True, name  # 写操作一律需授权
         assert spec.undoable is undoable, name
+
+
+class TestAlwaysConfirmActions:
+    """高敏感档案动作（疾病写入 / 标记痊愈）：任何输入都先出确认卡，参数只能由凭证回填"""
+
+    @pytest.mark.parametrize("name", sorted(ALWAYS_CONFIRM_ACTIONS))
+    def test_flag_and_confirm_field(self, registry: ActionRegistry, name: str):
+        spec = registry.get(name)
+        assert spec.always_confirm is True, name
+        # 更严的档位必须仍然满足"写操作需授权"的基本要求
+        assert spec.requires_confirmation is True, name
+        # 回填字段必须真实存在于入参 schema（否则确认时 Pydantic 会忽略它，卡片点了也不落库）
+        assert CONFIRM_FIELD in spec.args_schema.model_fields, name
+
+    def test_confirm_field_absent_elsewhere(self, registry: ActionRegistry):
+        """只有 always_confirm 动作才带这个内部参数，避免被别的动作误用"""
+        for spec in registry.all():
+            if spec.name in ALWAYS_CONFIRM_ACTIONS:
+                continue
+            assert CONFIRM_FIELD not in spec.args_schema.model_fields, spec.name
+
+    def test_always_confirm_only_for_write_actions(self, registry: ActionRegistry):
+        for spec in registry.all():
+            if spec.always_confirm:
+                assert spec.kind is ActionKind.WRITE, spec.name
+
+    def test_prompt_labels_always_confirm(self, registry: ActionRegistry):
+        """提示词要给出正确标签，而不是误导成「叙述性输入会出确认卡」"""
+        prompt = registry.prompt_section("human")
+        for name in sorted(ALWAYS_CONFIRM_ACTIONS):
+            line = next(
+                (ln for ln in prompt.splitlines() if ln.startswith(f"- {name}（")),
+                "",
+            )
+            assert "任何输入都出确认卡" in line, name
+
+    def test_health_profile_rules_present(self, registry: ActionRegistry):
+        """档案类写操作规则段（只追加不删除 / 不再双写记忆）"""
+        prompt = registry.prompt_section("human")
+        assert "健康档案类写操作" in prompt
+        assert "不要声称已删除" in prompt
 
 
 class TestQueryActions:
