@@ -9,6 +9,8 @@ class ApiConfig {
   static const String devBaseUrl = 'http://localhost:8000'; // 本地开发环境
   static const String devLocalNetworkUrl =
       'http://192.168.31.96:8000'; // 局域网IP（真机调试用）
+  static const String cloudBaseUrl =
+      'http://124.223.212.106:9002'; // 云端部署环境（科研管理平台 9002 端口）
 
   // MinIO配置
   static const String devMinioUrl = 'http://localhost:9000';
@@ -44,7 +46,8 @@ class ApiConfig {
 
   /// 智能选择开发环境URL
   static String _getDevBaseUrl() {
-    return devBaseUrl; // 使用localhost，真机通过 adb reverse 连接
+    return cloudBaseUrl; // 指向云端部署后端（124.223.212.106:9002）
+    //return devBaseUrl; // 使用localhost，真机通过 adb reverse 连接
     //return devLocalNetworkUrl; // 真机调试时使用局域网IP
   }
 

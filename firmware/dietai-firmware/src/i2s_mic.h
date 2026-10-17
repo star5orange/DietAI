@@ -405,10 +405,11 @@ static bool i2s_mic_analyze(const char* api_base, const char* token, const Strin
     String taskId = resp.substring(q1 + 1, q2);
     Serial.printf("[MIC] Task: %s\n", taskId.c_str());
 
-    // 2. 轮询结果 (每 2 秒一次, 最多 90 次 = 180 秒)
+    // 2. 轮询结果 (前 30 次每 400ms, 之后退回 2s; 最多 90 次 ≈ 132 秒上限)
+    //    提交后立即查一次: 结果可能已就绪, 不必干等一个完整间隔
     String queryUrl = String(api_base) + "/voice/analyze-food/" + taskId;
     for (int i = 0; i < 90; i++) {
-        delay(2000);
+        if (i > 0) delay(i <= 30 ? 400 : 2000);
 
         HTTPClient qHttp;
         qHttp.begin(queryUrl);

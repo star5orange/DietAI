@@ -50,7 +50,7 @@ def _build_chat_model(model_cls, **kwargs):
 def get_model(model_provider: Enum, model_name: str):
     load_dotenv(".env", override=True, encoding="utf-8")
     dashscope_api_key = os.getenv("DASHSCOPE_API_KEY", "")
-    deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "") or os.getenv("DEEPSEEK_API_BASE", "")
+    deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "") or os.getenv("DIETAI_DEEPSEEK_API_KEY", "")
     provider_val = _get_provider_value(model_provider)
 
     match provider_val:

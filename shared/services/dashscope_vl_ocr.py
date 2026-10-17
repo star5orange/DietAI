@@ -23,8 +23,11 @@ logger = logging.getLogger("dashscope_vl_ocr")
 
 DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
-# 默认模型回退链：优先用实测可用的模型，逐个降级尝试
-DEFAULT_MODELS = ("qwen-vl-max", "qwen-vl-plus", "qwen-vl-ocr")
+# 默认模型回退链：优先用实测可用的模型，逐个降级尝试。
+# qwen-vl-ocr 前置于 qwen-vl-plus：vl-plus 免费额度已耗尽（403），而 vl-ocr 是
+# OCR/文档结构化专用模型，更契合营养成分表这类密集数值抽取任务；让它先于已知
+# 不可用的 vl-plus 被尝试，可避免每次降级都白跑一次失败调用。
+DEFAULT_MODELS = ("qwen-vl-max", "qwen-vl-ocr", "qwen-vl-plus")
 
 
 def get_api_key() -> str:

@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
@@ -92,6 +96,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   int? _currentSessionId;
   List<ChatMessageDetail> _messages = [];
+
+  /// 本轮发出去的成分表照片缩略图（仅本地内存，按用户消息 id 索引）。
+  /// 只用于对话内预览，不回传后端、不写历史；换上下文域时清空。
+  final Map<int, Uint8List> _localImages = {};
+  final ImagePicker _imagePicker = ImagePicker();
   bool _isLoading = false;
   bool _isSending = false;
   String? _errorMessage;
@@ -500,6 +509,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       context.push('/exam/upload');
       return;
     }
+    // 成分表评价（对话）：不进相机页记录链路，就地取图后直接发给 AI 助手做评价
+    if (CameraSheetSource.isLabelReview(source)) {
+      await _pickReviewImage(useGallery: CameraSheetSource.useGallery(source));
+      return;
+    }
     // 弹窗已选定目的（餐食/包装），取景器内锁定模式不再显示切换选项
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -513,25 +527,66 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     );
   }
 
+  /// 成分表评价（对话）：就地取图（拍照/相册）→ 压到 1024/85 → base64 → 随消息发给 AI 助手
+  ///
+  /// 与「拍营养成分表」记录链路（CameraPage → 食物记录）不同，这里不做食物记录，
+  /// 只把图连同用户诉求发给 /deep/chat，由后端 OCR 后结合健康档案给评价与购买建议。
+  Future<void> _pickReviewImage({required bool useGallery}) async {
+    if (_isSending) return;
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: useGallery ? ImageSource.gallery : ImageSource.camera,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      if (picked == null || !mounted) return;
+      final bytes = await picked.readAsBytes();
+      if (bytes.isEmpty || !mounted) return;
+      await _sendText(
+        '',
+        imageBase64: base64Encode(bytes),
+        localImageBytes: bytes,
+      );
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('成分表照片读取失败，请重试');
+      }
+    }
+  }
+
   /// 发送一条文本并走流式链路（输入框与卡片快捷选项共用）
-  Future<void> _sendText(String message) async {
-    if (message.isEmpty || _isSending) return;
+  ///
+  /// [imageBase64] / [localImageBytes]：本轮附带的成分表照片（base64 走请求，
+  /// bytes 仅作对话内缩略图预览）。带图时 message 允许为空（用户只发图）。
+  Future<void> _sendText(
+    String message, {
+    String? imageBase64,
+    Uint8List? localImageBytes,
+  }) async {
+    if ((message.isEmpty && imageBase64 == null) || _isSending) return;
 
     // 页面上下文（PRD 4.8）：首条消息附带"当前正在看什么"，界面只展示用户原话
     final ctx = widget.pageContext;
-    final outgoing = (_contextPending && !_contextDismissed && ctx != null)
-        ? '【当前页面上下文】${ctx.hint}\n\n$message'
-        : message;
+    final outgoing = message.isEmpty
+        ? message
+        : ((_contextPending && !_contextDismissed && ctx != null)
+            ? '【当前页面上下文】${ctx.hint}\n\n$message'
+            : message);
     _contextPending = false;
 
-    // 添加用户消息到界面
+    // 添加用户消息到界面（带图轮的缩略图按消息 id 存本地 Map）
+    final userMessageId = DateTime.now().millisecondsSinceEpoch;
     setState(() {
       _messages.add(ChatMessageDetail(
-        id: DateTime.now().millisecondsSinceEpoch,
+        id: userMessageId,
         role: 'user',
         content: message,
         timestamp: DateTime.now().toIso8601String(),
       ));
+      if (localImageBytes != null) {
+        _localImages[userMessageId] = localImageBytes;
+      }
       _isSending = true;
     });
 
@@ -560,6 +615,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         sessionType: _sessionType,
         petId: _petId,
         useDeepAgent: widget.useDeepAgent,
+        imageBase64: imageBase64,
       )) {
         if (event.isSession && event.sessionId != null) {
           // 更新会话ID（后端可能在本轮新建/切换会话，同步持久化以免下次进来又新开）
@@ -765,6 +821,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     setState(() {
       _messages = [];
       _cardsByMessageId.clear();
+      _localImages.clear();
       _currentSessionId = null;
       // 页面上下文属于原上下文域（如人的饮食记录），换域后不得再注入（PRD 4.8 / D18）
       _contextPending = false;
@@ -1061,6 +1118,74 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     return '帮我记录：夜宵吃了一碗泡面';
   }
 
+  /// 助手消息的 Markdown 渲染：把 AI 回复里的表格 / 加粗 / 列表渲染成真正的可视化内容
+  /// （此前用纯 Text，Markdown 表格会以 `| 列 | 列 |` 原文暴露）。
+  ///
+  /// 表格列宽刻意用 [IntrinsicColumnWidth]：flutter_markdown 仅在列宽为
+  /// Fixed/Intrinsic 时才会把表格包进横向滚动容器，避免多商品成分对比表在气泡里溢出。
+  Widget _buildAssistantMarkdown(String data) {
+    const base = TextStyle(color: Color(0xFF222222), fontSize: 16, height: 1.5);
+    return MarkdownBody(
+      data: data,
+      styleSheetTheme: MarkdownStyleSheetBaseTheme.material,
+      styleSheet: MarkdownStyleSheet(
+        p: base,
+        a: const TextStyle(color: Color(0xFF2BAF74)),
+        strong: const TextStyle(fontWeight: FontWeight.bold),
+        em: const TextStyle(fontStyle: FontStyle.italic),
+        h1: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 18,
+            height: 1.4,
+            fontWeight: FontWeight.bold),
+        h2: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 17,
+            height: 1.4,
+            fontWeight: FontWeight.bold),
+        h3: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 16,
+            height: 1.4,
+            fontWeight: FontWeight.bold),
+        h4: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 16,
+            height: 1.4,
+            fontWeight: FontWeight.bold),
+        h5: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 16,
+            height: 1.4,
+            fontWeight: FontWeight.w600),
+        h6: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 16,
+            height: 1.4,
+            fontWeight: FontWeight.w600),
+        listBullet: base,
+        code: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 14,
+            backgroundColor: Color(0xFFF2F3F5)),
+        blockSpacing: 8,
+        listIndent: 20,
+        tableHead: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 14,
+            fontWeight: FontWeight.w600),
+        tableBody:
+            const TextStyle(color: Color(0xFF222222), fontSize: 14, height: 1.3),
+        tableHeadAlign: TextAlign.left,
+        tableColumnWidth: const IntrinsicColumnWidth(),
+        tableBorder: TableBorder.all(color: const Color(0xFFE3E5E8), width: 1),
+        tableCellsPadding:
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        tablePadding: const EdgeInsets.only(bottom: 8),
+      ),
+    );
+  }
+
   Widget _buildMessageBubble(
     ChatMessageDetail message, {
     bool allowRetry = false,
@@ -1123,6 +1248,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // 用户发出的成分表照片：本地缩略图（仅内存，历史消息无图）
+                        if (isUser && _localImages[message.id] != null) ...[
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.memory(
+                              _localImages[message.id]!,
+                              width: 160,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          if (message.content.isNotEmpty)
+                            const SizedBox(height: 8),
+                        ],
                         // 仅本轮流式输出中的占位显示思考态（历史空消息/纯卡片轮不显示）
                         if (!isUser &&
                             message.content.isEmpty &&
@@ -1150,17 +1288,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                               ),
                             ],
                           )
-                        else
-                          Text(
-                            message.content,
-                            style: TextStyle(
-                              color: isUser
-                                  ? Colors.white
-                                  : const Color(0xFF222222),
-                              fontSize: 16,
-                              height: 1.4,
-                            ),
-                          ),
+                        else if (message.content.isNotEmpty)
+                          isUser
+                              ? Text(
+                                  message.content,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    height: 1.4,
+                                  ),
+                                )
+                              : _buildAssistantMarkdown(message.content),
                         const SizedBox(height: 4),
                         Text(
                           _formatTime(message.timestamp),
@@ -1193,7 +1331,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       ],
                     ),
                   ),
-                if (isUser && allowRetry)
+                // 纯图片轮（无文字）不提供重试：重发空文本会丢掉照片上下文
+                if (isUser && allowRetry && message.content.isNotEmpty)
                   _buildRetryEntry(message.content, message.id),
               ],
             ),

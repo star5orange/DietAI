@@ -1,6 +1,6 @@
 """轻断食/辟谷 ORM 模型"""
 from sqlalchemy import Column, Integer, String, DateTime, Date, Boolean, Text, Numeric, ForeignKey, Time, Index
-from sqlalchemy.dialects.postgresql import JSONB
+from .json_types import PortableJSON
 from sqlalchemy.sql import func
 from .database import Base
 
@@ -33,10 +33,10 @@ class FastingPlan(Base):
     disclaimer_accepted_at = Column(DateTime, nullable=True)
 
     # 禁忌筛查结果
-    health_assessment = Column(JSONB, nullable=True)
+    health_assessment = Column(PortableJSON, nullable=True)
 
     # 断食日配置
-    fasting_days = Column(JSONB, nullable=True, comment="断食日列表，如[0,2]表示周一、周三")
+    fasting_days = Column(PortableJSON, nullable=True, comment="断食日列表，如[0,2]表示周一、周三")
 
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
@@ -66,7 +66,7 @@ class FastingCheckin(Base):
     completed = Column(Boolean, nullable=False, default=False)
 
     # 不适症状（用于风险预警）
-    discomfort = Column(JSONB, nullable=True)
+    discomfort = Column(PortableJSON, nullable=True)
 
     # 备注
     notes = Column(Text, nullable=True)
@@ -78,5 +78,4 @@ class FastingCheckin(Base):
 
     __table_args__ = (
         Index("idx_fasting_checkin_plan_date", "plan_id", "checkin_date", unique=True),
-        Index("idx_fasting_checkin_discomfort", "discomfort"),
     )

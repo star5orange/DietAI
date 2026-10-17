@@ -16,11 +16,19 @@ class CameraSheetSource {
   static const String labelCamera = 'label_camera';
   static const String labelGallery = 'label_gallery';
 
+  /// 成分表评价（对话）：拍/选一张包装食品成分表，直接发给 AI 助手做评价与购买建议，
+  /// 不落食物记录、不只做 OCR 记录（与 `label_*` 的区别）。
+  static const String labelReviewCamera = 'review_camera';
+  static const String labelReviewGallery = 'review_gallery';
+
   /// 体检报告：不属于「饮食识别」，调用方据此分支到体检上传页而非相机页
   static const String examReport = 'exam_report';
 
   /// 是否包装食品（营养成分表 OCR）模式；null/未知值按餐食识别处理
   static bool isLabel(String? source) => source?.startsWith('label') ?? false;
+
+  /// 是否「成分表评价（对话）」入口；调用方据此走对话发图，而非相机页记录链路
+  static bool isLabelReview(String? source) => source?.startsWith('review') ?? false;
 
   /// 是否走系统相册（autoPickGallery）；null/未知值按取景器拍照处理
   static bool useGallery(String? source) =>
@@ -32,8 +40,10 @@ class CameraSheetSource {
 
 /// 「拍照记录」来源选择弹窗内容（showModalBottomSheet 的 builder 部分）。
 ///
-/// 分组展示拍照目的（记录饮食 / 包装食品）× 来源（拍照 / 相册），
+/// 分组展示拍照目的（记录饮食 / 包装食品 / 成分表评价 / 体检报告）× 来源（拍照 / 相册），
 /// 选中后通过 [onSelect] 回传 CameraSheetSource 编码，由调用方 pop 并跳转。
+///
+/// 目前唯一调用方是 chat_page 的相机入口，故新增分组直接扩展本弹窗，不另加开关参数。
 class CameraSourceSheet extends StatelessWidget {
   const CameraSourceSheet({super.key, required this.onSelect});
 
@@ -96,6 +106,27 @@ class CameraSourceSheet extends StatelessWidget {
               title: const Text('包装图片'),
               subtitle: const Text('从相册选择包装照片'),
               onTap: () => onSelect(CameraSheetSource.labelGallery),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
+              child: Text(
+                '成分表评价（对话）',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ),
+            ListTile(
+              key: const Key('sheet_review_camera'),
+              leading: const Icon(Icons.document_scanner_outlined),
+              title: const Text('拍成分表'),
+              subtitle: const Text('直接发给 AI 助手评价，并建议是否适合购买'),
+              onTap: () => onSelect(CameraSheetSource.labelReviewCamera),
+            ),
+            ListTile(
+              key: const Key('sheet_review_gallery'),
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('相册选成分表'),
+              subtitle: const Text('从相册选商品截图或成分表照片'),
+              onTap: () => onSelect(CameraSheetSource.labelReviewGallery),
             ),
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 4, 16, 4),

@@ -190,13 +190,14 @@ async def lifespan(app: FastAPI):
     # 启动时执行
     logger.info("正在启动DietAI后端服务...")
 
-    # 创建数据库表
+    # 创建数据库表（兜底：平台已用持 DDL 的迁移账号建好表，这里大概率是空跑。
+    # 运行账号只有 DML 权限，缺表时这里会因无 DDL 而失败 —— 不阻断启动，
+    # 真正的连不上库由下面的连接测试兜住。）
     try:
         create_tables()
         logger.info("数据库表创建完成")
     except Exception as e:
-        logger.error(f"数据库表创建失败: {e}")
-        raise
+        logger.warning(f"数据库表创建失败 (非致命，交由平台建表): {e}")
 
     # 测试数据库连接
     try:
@@ -252,20 +253,22 @@ app.add_middleware(
 from shared.middleware.rate_limiter import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware)
 
-# 生产环境：HTTPS 强制重定向 + 受信任主机
+# 生产环境：受信任主机；HTTPS 强制跳转需显式开启（DIETAI_FORCE_HTTPS=true），
+# 否则明文 HTTP 反代回传 X-Forwarded-Proto: http 会把请求跳到不可达的 https 端口。
 if not settings.debug:
     # HTTPS 重定向中间件
-    @app.middleware("http")
-    async def enforce_https(request: Request, call_next):
-        # 检查 X-Forwarded-Proto 头（反向代理如 Nginx 设置）
-        if request.headers.get("x-forwarded-proto", "https") == "http":
-            https_url = request.url.replace(scheme="https")
-            from fastapi.responses import RedirectResponse
-            return RedirectResponse(https_url, status_code=301)
-        response = await call_next(request)
-        # 添加 HSTS 头：告诉浏览器未来 1 年只走 HTTPS
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
-        return response
+    if settings.force_https:
+        @app.middleware("http")
+        async def enforce_https(request: Request, call_next):
+            # 检查 X-Forwarded-Proto 头（反向代理如 Nginx 设置）
+            if request.headers.get("x-forwarded-proto", "https") == "http":
+                https_url = request.url.replace(scheme="https")
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(https_url, status_code=301)
+            response = await call_next(request)
+            # 添加 HSTS 头：告诉浏览器未来 1 年只走 HTTPS
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+            return response
 
     # 受信任主机中间件
     app.add_middleware(

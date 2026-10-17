@@ -154,13 +154,39 @@ class AnalyzeFoodRequest(BaseModel):
 # 内存中的分析任务存储 (key=task_id, value={status, data, error})
 _analyze_tasks: dict[str, dict] = {}
 
+# 硬件分析 assistant 复用缓存: config 固定, 每轮新建 assistant 只是多一次 LangGraph 往返
+_hw_assistant_id: str | None = None
+
+
+def _invalidate_hw_assistant() -> None:
+    """作废 assistant 复用缓存 (LangGraph 服务重启后旧的 assistant_id 会失效)"""
+    global _hw_assistant_id
+    _hw_assistant_id = None
+
+
+async def _get_hw_assistant_id(client) -> str:
+    """取硬件分析专用 assistant id, 首次创建后复用"""
+    global _hw_assistant_id
+    if _hw_assistant_id:
+        return _hw_assistant_id
+
+    from routers.food_router import get_agent_model_config
+
+    assistant = await client.assistants.create(
+        graph_id="hardware_nutrition_agent",
+        config={"configurable": get_agent_model_config()},
+    )
+    _hw_assistant_id = assistant["assistant_id"]
+    logging.warning(f"[HW_AGENT] assistant created & cached: {_hw_assistant_id[:16]}...")
+    return _hw_assistant_id
+
 
 async def _run_analysis(task_id: str, text: str, user_id: int):
     """后台执行硬件专用 Agent 分析 (hardware_nutrition_agent, 精简快速)"""
     logging.warning(f"[HW_AGENT] START task={task_id[:8]}... text={text[:30]}...")
 
     from langgraph_sdk import get_client
-    from routers.food_router import get_user_preferences, get_agent_model_config
+    from routers.food_router import get_user_preferences
 
     db = SessionLocal()
     try:
@@ -168,11 +194,8 @@ async def _run_analysis(task_id: str, text: str, user_id: int):
         logging.warning(f"[HW_AGENT] user_prefs ok, connecting to {settings.ai_service_url}")
 
         client = get_client(url=settings.ai_service_url)
-        assistant = await client.assistants.create(
-            graph_id="hardware_nutrition_agent",
-            config={"configurable": get_agent_model_config()}
-        )
-        logging.warning(f"[HW_AGENT] assistant created: {assistant['assistant_id'][:16]}...")
+        # assistant 复用 (config 固定): 省掉每轮 assistants.create 的往返
+        assistant_id = await _get_hw_assistant_id(client)
 
         thread = await client.threads.create()
         logging.warning(f"[HW_AGENT] thread created, streaming...")
@@ -180,7 +203,7 @@ async def _run_analysis(task_id: str, text: str, user_id: int):
         result = None
         chunk_count = 0
         async for chunk in client.runs.stream(
-            assistant_id=assistant["assistant_id"],
+            assistant_id=assistant_id,
             thread_id=thread['thread_id'],
             input={
                 "text_description": text,
@@ -243,6 +266,8 @@ async def _run_analysis(task_id: str, text: str, user_id: int):
         import traceback
         logging.warning(f"[HW_AGENT] EXCEPTION: {e}")
         traceback.print_exc()
+        # 作废 assistant 缓存: 若因 LangGraph 服务重启导致旧 id 失效, 下次请求自动重建
+        _invalidate_hw_assistant()
         _analyze_tasks[task_id] = {"status": "failed", "data": None, "error": f"分析失败: {str(e)}"}
     finally:
         db.close()

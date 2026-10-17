@@ -19,6 +19,7 @@ from .social_models import UserRelationship, DataPermission
 from .message_models import Message
 from .exam_models import ExamReport, ExamMetric
 from .proxy_models import ProxyRecord
+from .food_label_models import FoodLabelReview
 
 # 导入所有Pydantic模型
 from . import schemas
@@ -70,6 +71,7 @@ __all__ = [
     "ExamReport",
     "ExamMetric",
     "ProxyRecord",
+    "FoodLabelReview",
 
     # Pydantic模型
     #"schemas"

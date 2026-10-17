@@ -2,7 +2,7 @@
 DietDeepAgent 统一 API 路由
 
 提供 DietDeepAgent 的 HTTP 端点：
-- POST /api/deep/chat          统一对话入口（文字+图片）
+- POST /api/deep/chat          统一对话入口（文字 + 可选「包装食品成分表」照片）
 - POST /api/deep/analyze        食物图像分析
 - POST /api/deep/actions/undo   卡片「撤销」直调（最近一条 + 10 分钟窗口）
 - POST /api/deep/actions/confirm 确认卡「帮我记录」直调（按卡片原参数落库，凭证券后作废）
@@ -10,8 +10,10 @@ DietDeepAgent 统一 API 路由
 - GET  /api/deep/memory/{uid}   查看用户记忆（调试用）
 """
 
+import asyncio
 import json
 import logging
+import re
 import uuid
 from datetime import datetime
 from typing import Any, AsyncGenerator, Optional
@@ -34,7 +36,7 @@ async def _resolve_deep_chat_params(
     message: str,
     session_id: Optional[str],
     input_channel: str = "app",
-) -> tuple[str, Optional[str], Optional[str], str]:
+) -> tuple[str, Optional[str], Optional[str], str, Optional[str]]:
     body: dict[str, Any] = {}
     content_type = request.headers.get("content-type", "") if request else ""
 
@@ -57,11 +59,17 @@ async def _resolve_deep_chat_params(
         or str(input_channel or "").strip()
         or "app"
     )
+    # 可选：包装食品成分表照片（base64，不含 data URI 前缀）。
+    # 对话里图片只有「成分表评价」一种语义，故不额外传 image_purpose，
+    # OCR 的 is_packaged_food 已足够区分走评价还是走「请改用餐食识别」引导。
+    raw_image = body.get("image_base64")
+    image_base64 = raw_image.strip() if isinstance(raw_image, str) and raw_image.strip() else None
     return (
         str(body.get("message", message) or ""),
         body.get("session_id", session_id),
         session_type,
         channel,
+        image_base64,
     )
 
 
@@ -175,6 +183,155 @@ def _message_text(msg: Any) -> str:
     return ""
 
 
+# ---------- 成分表评价（对话内发送包装食品成分表照片）----------
+
+_LABEL_REVIEW_DEFAULT_ASK = "请帮我评价这张成分表，并结合我的健康档案告诉我适不适合买。"
+
+# OCR 字段 → 中文标签与单位（元组顺序即展示顺序）
+_LABEL_NUTRIENTS = (
+    ("calories_per_100g", "能量", "kcal"),
+    ("protein_per_100g", "蛋白质", "g"),
+    ("fat_per_100g", "脂肪", "g"),
+    ("carbs_per_100g", "碳水化合物", "g"),
+    ("sugar_per_100g", "糖", "g"),
+    ("fiber_per_100g", "膳食纤维", "g"),
+    ("sodium_per_100g", "钠", "mg"),
+)
+
+# 落库列名（与 OCR 字段同名，直接展开进模型构造）
+_REVIEW_NUMERIC_FIELDS = (
+    "serving_size_g",
+    "calories_per_100g",
+    "protein_per_100g",
+    "fat_per_100g",
+    "carbs_per_100g",
+    "sugar_per_100g",
+    "fiber_per_100g",
+    "sodium_per_100g",
+)
+
+# 模型按提示词约定在末行输出机器可读结论；取不到则 verdict 为 None
+_VERDICT_PATTERN = re.compile(r"【购买建议】\s*(推荐购买|谨慎购买|不推荐购买)")
+
+
+def _fmt_label_value(value: Any, unit: str) -> str:
+    """把 OCR 数值渲染成「12 g」，未识别统一写「未标注」（不写 null 以免模型误解）"""
+    if value is None:
+        return "未标注"
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return "未标注"
+    text = f"{num:.0f}" if num == int(num) else f"{num:.1f}"
+    return f"{text} {unit}"
+
+
+def _clip_text(value: Any, limit: int) -> Optional[str]:
+    """截断超长文本，避免超出 DB 列长度导致落库失败"""
+    if not value:
+        return None
+    text = str(value).strip()
+    return text[:limit] or None
+
+
+def _build_label_review_text(user_text: str, label: dict) -> str:
+    """把成分表 OCR 结果拼成本轮 Agent 可见的文本。
+
+    图片本体绝不进入 Agent 消息（markdown checkpoint 无裁剪，base64 会让存档膨胀），
+    只注入结构化文本。三种形态：
+    - is_packaged_food=True  → 完整结构化数值 + 用户诉求，走「成分表评价」规则
+    - is_packaged_food=False → 说明不是预包装食品，引导改用餐食识别
+    - is_packaged_food=None  → OCR 失败，提示重拍且禁止编造数值
+    """
+    ask = (user_text or "").strip() or _LABEL_REVIEW_DEFAULT_ASK
+    is_packaged = label.get("is_packaged_food")
+
+    if is_packaged is False:
+        return (
+            "【用户发来一张照片，但 OCR 判断它不是预包装食品成分表（可能是菜品、食材或包装正面）。"
+            "请用一两句话说明：本入口只评价包装食品的成分表；想记录已经做好的饭菜，"
+            "请用 App 首页「拍照记录」的餐食识别。不要输出任何营养数值，也不要给购买结论。】"
+        )
+
+    if is_packaged is not True:
+        reason = (label.get("raw_text") or "").strip()
+        reason_line = f"（原因：{reason}）" if reason else ""
+        return (
+            f"【用户发来一张成分表照片，但 OCR 未能识别出营养数据{reason_line}。"
+            "请提示用户拍摄清晰完整的营养成分表后重新发送；"
+            "严禁编造任何营养数值，也不要给出购买结论。】"
+        )
+
+    brand = (label.get("brand") or "").strip() or "未识别"
+    food_name = (label.get("food_name") or "").strip() or "未识别"
+    lines = [
+        "【用户发来了一张预包装食品的成分表照片，以下为 OCR 提取结果（每 100g）】",
+        f"品牌：{brand}",
+        f"产品：{food_name}",
+    ]
+    if label.get("serving_size_g") is not None:
+        lines.append(f"包装标注每份：{_fmt_label_value(label.get('serving_size_g'), 'g')}")
+    for field, name, unit in _LABEL_NUTRIENTS:
+        lines.append(f"{name}：{_fmt_label_value(label.get(field), unit)}")
+    lines.extend(
+        [
+            "",
+            f"【用户诉求】{ask}",
+            "",
+            "请按系统提示词中的「成分表评价与购买建议」规则作答。",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _extract_verdict(answer_text: str) -> Optional[str]:
+    """从回答里抓机器可读结论（推荐购买/谨慎购买/不推荐购买），取不到返回 None"""
+    match = _VERDICT_PATTERN.search(answer_text or "")
+    return match.group(1) if match else None
+
+
+def _save_label_review(
+    db: Session,
+    user_id: int,
+    session_id: Optional[int],
+    label: dict,
+    answer_text: str,
+) -> None:
+    """把一次成分表评价落库（单表，一个商品一行；session_id 即对比容器）。
+
+    数值全部来自 OCR（确定性），verdict 为尽力而为字段。整体容错：
+    任何异常只记日志并回滚，绝不影响已经产出的回答。
+    """
+    try:
+        from shared.models.food_label_models import FoodLabelReview
+
+        def _num(field: str) -> Optional[float]:
+            value = label.get(field)
+            if value is None:
+                return None
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
+        review = FoodLabelReview(
+            user_id=user_id,
+            session_id=session_id,
+            brand=_clip_text(label.get("brand"), 128),
+            food_name=_clip_text(label.get("food_name"), 128),
+            is_packaged_food=True,
+            raw_text=(label.get("raw_text") or None),
+            verdict=_extract_verdict(answer_text),
+            answer_text=(answer_text or None),
+            **{field: _num(field) for field in _REVIEW_NUMERIC_FIELDS},
+        )
+        db.add(review)
+        db.commit()
+    except Exception as e:
+        logger.warning(f"成分表评价落库失败（不影响回答）: {e}")
+        db.rollback()
+
+
 def _ensure_deep_session(
     db: Session,
     user_id: int,
@@ -235,8 +392,12 @@ async def deep_chat(
     """
     DietDeepAgent 统一对话入口。
 
-    支持文字消息，Agent 自动规划任务并调用工具。
+    支持文字消息（+ 可选「包装食品成分表」照片），Agent 自动规划任务并调用工具。
     返回 SSE 流式响应。
+
+    image_base64（可选）：包装食品成分表照片的 base64（不含 data URI 前缀）。
+    带图时先做 OCR，把结构化的每 100g 数值以**文本**注入本轮消息做成分评价
+    （图片本体不进入 Agent 消息；评价结果落 food_label_reviews）。
 
     session_type 区分：
     - None / "1"~"5"：人类营养师模式，注入人类顾问风格 Prompt
@@ -244,9 +405,13 @@ async def deep_chat(
 
     input_channel（PRD 4.9）：app（默认）/ hardware（老人线硬件语音，模糊量词按默认值记录）
     """
-    message, session_id, session_type, input_channel = await _resolve_deep_chat_params(
-        request, message, session_id, input_channel
-    )
+    (
+        message,
+        session_id,
+        session_type,
+        input_channel,
+        image_base64,
+    ) = await _resolve_deep_chat_params(request, message, session_id, input_channel)
     is_pet_session = (session_type == "6")
 
     # 根据 session_type 加载不同的 System Prompt
@@ -319,18 +484,30 @@ async def deep_chat(
 
             yield f"data: {json.dumps({'type': 'session', 'data': {'session_id': session.id}}, ensure_ascii=False)}\n\n"
 
-            # 2. 用户消息落库
+            # 1b. 成分表照片：OCR 得到结构化数值，只把文本注入本轮消息
+            #（图片本体不进 Agent 消息；OCR 是同步阻塞调用，放线程池避免卡住事件循环）
+            label_payload: Optional[dict] = None
+            agent_text = message
+            persist_text = message
+            if image_base64:
+                from shared.services.food_label_ocr_service import parse_food_label
+
+                label_payload = await asyncio.to_thread(parse_food_label, image_base64)
+                agent_text = _build_label_review_text(message, label_payload)
+                persist_text = message or "（发送了成分表照片）"
+
+            # 2. 用户消息落库（带图轮落「（发送了成分表照片）」，避免 OCR 大段文本污染历史与搜索）
             db.add(
                 conversation_models.ConversationMessage(
                     session_id=session.id,
                     message_type=1,
-                    content=message,
+                    content=persist_text,
                 )
             )
             session.last_message_at = datetime.now()
             db.commit()
 
-            # 3. 调用 DietDeepAgent（流式：工具结果即时出卡，文本随节点逐步下发）
+            # 3. 调用 DietDeepAgent（流式：工具结果即时出卡，模型文本逐 token 下发）
             agent = _get_cached_agent()
 
             config = {
@@ -345,7 +522,7 @@ async def deep_chat(
             messages = []
             if advisor_prompt:
                 messages.append({"role": "system", "content": advisor_prompt})
-            messages.append({"role": "user", "content": message})
+            messages.append({"role": "user", "content": agent_text})
 
             action_names = _load_action_names()
             has_action_failure = False  # 任一动作失败（ok=false）→ 文字保留给解释（PRD 4.6）
@@ -361,10 +538,36 @@ async def deep_chat(
             except Exception as e:
                 logger.warning(f"读取线程历史消息失败（非致命）: {e}")
 
-            async for chunk in agent.astream(
-                {"messages": messages}, config=config, stream_mode="updates"
+            tokens_streamed = False  # messages 模式已逐 token 下发过文本
+
+            async for mode, chunk in agent.astream(
+                {"messages": messages},
+                config=config,
+                stream_mode=["messages", "updates"],
             ):
-                if not isinstance(chunk, dict):
+                # ① token 级事件：逐字下发模型文本
+                if mode == "messages":
+                    token_msg = chunk[0] if isinstance(chunk, (list, tuple)) and chunk else chunk
+                    # messages 模式同时会流经工具消息等非模型产出，其 content 是工具返回的
+                    # 卡片负载 JSON（含 confirm_token / params 等表单字段），必须只认模型消息，
+                    # 否则会把表单数据当作正文吐进气泡
+                    # 注意：AIMessageChunk.type 是 "AIMessageChunk"（非 "ai"）
+                    if getattr(token_msg, "type", "") not in ("ai", "AIMessageChunk"):
+                        continue
+                    piece = _message_text(token_msg)
+                    if not piece:
+                        continue  # 工具调用参数等非文本 chunk
+                    # 卡片即结果：卡片已由工具节点更早透传，最终文本按要求丢弃不逐字回显（PRD 4.8）
+                    if cards and not has_action_failure and not any(
+                        c.get("card_type") in TEXT_WITH_CARD_TYPES for c in cards
+                    ):
+                        continue
+                    tokens_streamed = True
+                    yield f"data: {json.dumps({'type': 'content', 'content': piece}, ensure_ascii=False)}\n\n"
+                    continue
+
+                # ② 节点级事件：卡片透传 / 动作失败判定 / 文本落库
+                if mode != "updates" or not isinstance(chunk, dict):
                     continue
                 for update in chunk.values():
                     if not isinstance(update, dict):
@@ -404,6 +607,9 @@ async def deep_chat(
                                 )
                                 if cards and not has_action_failure and not needs_text:
                                     continue
+                                # 已在 messages 模式逐 token 下发过 → 此处仅落库，不整段重复下发
+                                if tokens_streamed:
+                                    continue
                                 yield f"data: {json.dumps({'type': 'content', 'content': text}, ensure_ascii=False)}\n\n"
 
             if not full_text.strip():
@@ -431,6 +637,16 @@ async def deep_chat(
             session.updated_at = datetime.now()
             db.commit()
             db.refresh(ai_message)
+
+            # 4b. 成分表评价落库（仅识别为预包装食品时；宠物会话不落）
+            if label_payload and label_payload.get("is_packaged_food") is True and not is_pet_session:
+                _save_label_review(
+                    db,
+                    user_id=current_user.id,
+                    session_id=session.id,
+                    label=label_payload,
+                    answer_text=full_text,
+                )
 
             yield f"data: {json.dumps({'type': 'complete', 'message_id': ai_message.id}, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
@@ -502,7 +718,7 @@ async def deep_analyze(
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
     # 解析 session_type（与 /chat 一致）
-    _, _, session_type, _ = await _resolve_deep_chat_params(request, message, None)
+    _, _, session_type, _, _ = await _resolve_deep_chat_params(request, message, None)
     is_pet_session = (session_type == "6")
 
     # 根据 session_type 加载不同的 System Prompt

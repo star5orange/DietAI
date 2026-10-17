@@ -1,0 +1,56 @@
+app: dietai
+name: DietAI 智能饮食健康管理后端
+version: 1.0.3
+runtime: python
+deploy_root: /opt/apps
+python:
+  version: auto
+  entry: "main:app"
+  workdir: .
+  requirements: requirements.txt
+  port: 9002
+  server: uvicorn
+service:
+  bind: 0.0.0.0
+  restart_sec: 5
+  timeout_stop: 30
+health:
+  path: /health
+env:
+  # 平台推不出来、也无法编造的真实凭据：取值由「部署单 → 运行期配置」一次性填入。
+  # 放 optional 而非 required：缺漏某一个都不会把整个部署卡死。
+  optional:
+    - DIETAI_FIELD_ENCRYPTION_KEY
+    - DEEPSEEK_API_KEY
+    - DASHSCOPE_API_KEY
+    - VOLC_ARK_API_KEY
+    - DIETAI_VOLC_ASR_API_KEY
+    - DIETAI_VOLC_TTS_API_KEY
+    - DIETAI_REDIS_HOST
+    - DIETAI_MINIO_ENDPOINT
+    - DIETAI_CORS_ORIGINS
+  # 非密钥的项目口径，写进这里就不必由人在部署单里填。
+  defaults:
+    DIETAI_DEBUG: "false"
+    DIETAI_JWT_ALGORITHM: "RS256"
+    DIETAI_LOG_LEVEL: "INFO"
+    DEEPSEEK_API_BASE: "https://api.deepseek.com"
+    DEEPSEEK_MODEL: "deepseek-v4-flash"
+    ANALYSIS_MODEL_PROVIDER: "deepseek"
+    ANALYSIS_MODEL: "deepseek-v4-flash"
+    VISION_MODEL_PROVIDER: "qwen"
+    VISION_MODEL: "qwen3.7-plus"
+database:
+  engine: mysql
+  name_pattern: dietai
+  # 建库、建运行/迁移双账号、发口令由平台负责；本项目只负责库内对象。
+  provision: platform
+  rotate_password: false
+  migrate:
+    # 运行账号只有 DML 权限、没有建表权限，表必须在 migrate 步骤以迁移账号建好。
+    # 平台会把制品自带 venv 的 bin 放上 PATH，故直接写 python。
+    # 不用 alembic：历史迁移是 PostgreSQL 方言，且含破坏性 DDL（会被平台扫描阻断）。
+    command: "python scripts/create_all_tables.py"
+    workdir: .
+    backup_before: true
+    allow_breaking: false

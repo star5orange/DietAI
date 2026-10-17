@@ -226,9 +226,9 @@ class TestPromptRules:
         for keyword in ("先问", "撤销", "10 分钟"):
             assert keyword in prompt, keyword
 
-    def test_no_image_rule_present(self, registry: ActionRegistry):
-        """对话不支持发图的引导规则（PRD 4.9）"""
-        assert "不支持发送图片" in registry.prompt_section("human")
+    def test_label_photo_rule_present(self, registry: ActionRegistry):
+        """对话仅支持发「包装食品成分表」照片的引导规则（PRD 4.9）"""
+        assert "对话仅支持发送" in registry.prompt_section("human")
 
     def test_quantifier_rules_present(self, registry: ActionRegistry):
         """模糊量词规则段（PRD 4.3/4.4/D5）"""

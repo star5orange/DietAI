@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Boolean, Time, Text, DateTime, ForeignKey, func, Index
-from sqlalchemy.dialects.postgresql import JSON
+from .json_types import PortableJSON
 from .database import Base
 
 class Reminder(Base):
@@ -14,7 +14,7 @@ class Reminder(Base):
     fasting_plan_id = Column(Integer, ForeignKey("fasting_plans.id"), nullable=True)  # M2: 关联轻断食计划
     title = Column(String(100))
     description = Column(Text)
-    virtual_pet_status = Column(JSON, nullable=True)     # 预留
+    virtual_pet_status = Column(PortableJSON, nullable=True)     # 预留
     fasting_plan_id = Column(Integer, ForeignKey("fasting_plans.id", ondelete="SET NULL"), nullable=True, comment="关联断食计划")
     created_at = Column(DateTime, server_default=func.now())
 

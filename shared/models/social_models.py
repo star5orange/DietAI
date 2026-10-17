@@ -1,6 +1,6 @@
 """社交关系模型 - Milestone 4 家庭健康管理"""
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Index
-from sqlalchemy.dialects.postgresql import JSONB
+from .json_types import PortableJSON
 from sqlalchemy.sql import func
 from .database import Base
 
@@ -35,7 +35,7 @@ class DataPermission(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     target_user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    visible_fields = Column(JSONB, nullable=False, default=list, comment="可见字段列表")
+    visible_fields = Column(PortableJSON, nullable=False, default=list, comment="可见字段列表")
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 

@@ -1,6 +1,7 @@
 // 「拍照记录」弹窗分组逻辑单测：
 // 1) CameraSheetSource 编码 → CameraPage 参数（initialLabelMode / autoPickGallery）的解析矩阵
-// 2) CameraSourceSheet 弹窗内容：分组标题、4 个选项、点按回传编码
+//    （成分表评价 review_* 不走相机页，单独由 isLabelReview 分流）
+// 2) CameraSourceSheet 弹窗内容：分组标题、全部选项、点按回传编码
 //
 // 运行：cd frontend_flutter && flutter test test/camera_source_sheet_test.dart
 import 'package:flutter/material.dart';
@@ -55,6 +56,31 @@ void main() {
           CameraSheetSource.useGallery(CameraSheetSource.labelCamera), isFalse);
     });
 
+    test('成分表评价编码独立于相机页识别链路（不会被误判为餐食/包装）', () {
+      for (final review in [
+        CameraSheetSource.labelReviewCamera,
+        CameraSheetSource.labelReviewGallery,
+      ]) {
+        expect(CameraSheetSource.isLabelReview(review), isTrue,
+            reason: 'isLabelReview($review)');
+        // 不算包装食品识别，否则会被推进 CameraPage 的记录链路
+        expect(CameraSheetSource.isLabel(review), isFalse,
+            reason: 'isLabel($review)');
+        expect(CameraSheetSource.isExamReport(review), isFalse);
+      }
+      // 后缀规则复用 useGallery（review_gallery → 相册，review_camera → 取景器）
+      expect(
+          CameraSheetSource.useGallery(CameraSheetSource.labelReviewGallery),
+          isTrue);
+      expect(
+          CameraSheetSource.useGallery(CameraSheetSource.labelReviewCamera),
+          isFalse);
+      // 其它编码不会被误判成成分表评价
+      expect(CameraSheetSource.isLabelReview(CameraSheetSource.labelCamera),
+          isFalse);
+      expect(CameraSheetSource.isLabelReview(null), isFalse);
+    });
+
     test('体检报告编码独立于饮食识别（不会被误判为餐食/包装）', () {
       const exam = CameraSheetSource.examReport;
       expect(CameraSheetSource.isExamReport(exam), isTrue);
@@ -85,16 +111,19 @@ void main() {
       );
     }
 
-    testWidgets('标题 + 三组分组 + 五个选项齐全', (tester) async {
+    testWidgets('标题 + 四组分组 + 七个选项齐全', (tester) async {
       await pumpSheet(tester, (_) {});
       expect(find.text('拍照记录'), findsOneWidget);
       expect(find.text('记录饮食'), findsOneWidget);
       expect(find.text('包装食品'), findsOneWidget);
+      expect(find.text('成分表评价（对话）'), findsOneWidget);
       expect(find.text('体检报告'), findsOneWidget);
       expect(find.text('拍食物'), findsOneWidget);
       expect(find.text('食物图片'), findsOneWidget);
       expect(find.text('拍营养成分表'), findsOneWidget);
       expect(find.text('包装图片'), findsOneWidget);
+      expect(find.text('拍成分表'), findsOneWidget);
+      expect(find.text('相册选成分表'), findsOneWidget);
       expect(find.text('拍体检报告'), findsOneWidget);
     });
 
@@ -136,6 +165,22 @@ void main() {
       await tester.tap(find.byKey(const Key('sheet_label_gallery')));
       await tester.pump();
       expect(selected, 'label_gallery');
+    });
+
+    testWidgets('点按回传对应编码：拍成分表 → review_camera', (tester) async {
+      String? selected;
+      await pumpSheet(tester, (s) => selected = s);
+      await tester.tap(find.byKey(const Key('sheet_review_camera')));
+      await tester.pump();
+      expect(selected, 'review_camera');
+    });
+
+    testWidgets('点按回传对应编码：相册选成分表 → review_gallery', (tester) async {
+      String? selected;
+      await pumpSheet(tester, (s) => selected = s);
+      await tester.tap(find.byKey(const Key('sheet_review_gallery')));
+      await tester.pump();
+      expect(selected, 'review_gallery');
     });
   });
 }
