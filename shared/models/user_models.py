@@ -89,9 +89,12 @@ class UserProfile(Base):
 class HealthGoal(Base):
     """健康目标表"""
     __tablename__ = "health_goals"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # T16 健康档案挂成员（可空：NULL=账号级，历史数据不回填）
+    member_id = Column(Integer, ForeignKey("family_members.id"), nullable=True,
+                       comment="归属成员ID，空=账号级（所有成员可见）")
     goal_type = Column(Integer, nullable=False)  # 1:减重 2:增重 3:维持 4:增肌 5:减脂
     target_weight = Column(Numeric(5, 2), nullable=True)
     target_date = Column(Date, nullable=True)
@@ -109,6 +112,9 @@ class Disease(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # T16 健康档案挂成员（可空：NULL=账号级，历史数据不回填）
+    member_id = Column(Integer, ForeignKey("family_members.id"), nullable=True,
+                       comment="归属成员ID，空=账号级（所有成员可见）")
     disease_code = Column(EncryptedString(20), nullable=True)  # ICD-10编码
     disease_name = Column(EncryptedString(200), nullable=False)
     severity_level = Column(Integer, nullable=True)  # 1:轻度 2:中度 3:重度
@@ -133,6 +139,9 @@ class Allergy(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # T16 健康档案挂成员（可空：NULL=账号级，历史数据不回填）
+    member_id = Column(Integer, ForeignKey("family_members.id"), nullable=True,
+                       comment="归属成员ID，空=账号级（所有成员可见）")
     allergen_type = Column(Integer, nullable=False)  # 1:食物 2:药物 3:环境 4:其他
     allergen_name = Column(EncryptedString(100), nullable=False)
     severity_level = Column(Integer, nullable=True)  # 1:轻度 2:中度 3:重度

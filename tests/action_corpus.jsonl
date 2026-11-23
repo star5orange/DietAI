@@ -58,3 +58,27 @@
 {"id": "send_reminder_to_family-2", "action": "send_reminder_to_family", "text": "给我爸发个喝水提醒", "tags": ["老人线", "写操作"]}
 {"id": "send_reminder_to_family-3", "action": "send_reminder_to_family", "text": "提醒奶奶喝水", "tags": ["老人线", "写操作"]}
 {"id": "send_reminder_to_family-4", "action": "send_reminder_to_family", "text": "帮我给妈妈发条消息，提醒她吃晚饭", "tags": ["老人线", "写操作"]}
+{"id": "record_exercise-1", "action": "record_exercise", "text": "我今天跑了 5 公里", "tags": ["叙述性", "运动"], "fallback_keywords": ["要帮你记录", "要不要记录", "跑步"]}
+{"id": "record_exercise-2", "action": "record_exercise", "text": "帮我记录：晚上游泳 40 分钟", "tags": ["明确指令", "运动"]}
+{"id": "record_exercise-3", "action": "record_exercise", "text": "下午练了一个小时力量训练", "tags": ["叙述性", "运动"], "fallback_keywords": ["要帮你记录", "要不要记录", "力量"]}
+{"id": "record_exercise-4", "action": "record_exercise", "text": "记一下，刚才快走了半小时", "tags": ["明确指令", "运动"]}
+{"id": "record_disease-1", "action": "record_disease", "text": "我外婆手腕骨折了", "tags": ["写操作", "疾病档案"], "fallback_keywords": ["骨折", "记录"]}
+{"id": "record_disease-2", "action": "record_disease", "text": "帮我记录：我妈有高血压", "tags": ["写操作", "疾病档案"], "fallback_keywords": ["高血压", "记录"]}
+{"id": "record_disease-3", "action": "record_disease", "text": "我昨天查出来有糖尿病", "tags": ["叙述性", "疾病档案"], "fallback_keywords": ["糖尿病", "记录", "要帮你记录"]}
+{"id": "record_disease-4", "action": "record_disease", "text": "记一下，我最近得了胃炎", "tags": ["写操作", "疾病档案"], "fallback_keywords": ["胃炎", "记录"]}
+{"id": "mark_disease_recovered-1", "action": "mark_disease_recovered", "text": "骨折已经好了", "tags": ["写操作", "疾病档案"], "fallback_keywords": ["痊愈", "骨折", "记录"]}
+{"id": "mark_disease_recovered-2", "action": "mark_disease_recovered", "text": "我感冒好了，不用再记着了", "tags": ["写操作", "疾病档案"], "fallback_keywords": ["痊愈", "感冒", "记录"]}
+{"id": "mark_disease_recovered-3", "action": "mark_disease_recovered", "text": "帮我记录：我的胃炎已经痊愈了", "tags": ["明确指令", "疾病档案"], "fallback_keywords": ["痊愈", "胃炎", "记录"]}
+{"id": "mark_disease_recovered-4", "action": "mark_disease_recovered", "text": "我妈的高血压控制住了，不算当前患病了", "tags": ["写操作", "疾病档案"], "fallback_keywords": ["痊愈", "高血压", "记录"]}
+{"id": "record_allergy-1", "action": "record_allergy", "text": "我对青霉素过敏", "tags": ["叙述性", "过敏档案"], "fallback_keywords": ["青霉素", "过敏", "要帮你记录"]}
+{"id": "record_allergy-2", "action": "record_allergy", "text": "帮我记录：我吃花生会起疹子", "tags": ["明确指令", "过敏档案"], "fallback_keywords": ["花生", "过敏"]}
+{"id": "record_allergy-3", "action": "record_allergy", "text": "我花粉过敏，一到春天就打喷嚏", "tags": ["叙述性", "过敏档案"], "fallback_keywords": ["花粉", "过敏", "要帮你记录"]}
+{"id": "record_allergy-4", "action": "record_allergy", "text": "记一下，我对芒果过敏", "tags": ["明确指令", "过敏档案"], "fallback_keywords": ["芒果", "过敏"]}
+{"id": "set_health_target-1", "action": "set_health_target", "text": "把我的热量目标改成 1800", "tags": ["写操作", "健康目标"], "fallback_keywords": ["1800", "热量目标", "记录"]}
+{"id": "set_health_target-2", "action": "set_health_target", "text": "帮我记录：每天喝水目标 2500 毫升", "tags": ["明确指令", "健康目标"], "fallback_keywords": ["2500", "饮水目标", "记录"]}
+{"id": "set_health_target-3", "action": "set_health_target", "text": "我的每日热量目标设成 1500 大卡吧", "tags": ["写操作", "健康目标"], "fallback_keywords": ["1500", "热量目标", "记录"]}
+{"id": "set_health_target-4", "action": "set_health_target", "text": "把饮水目标调到每天 3000 毫升", "tags": ["写操作", "健康目标"], "fallback_keywords": ["3000", "饮水目标", "记录"]}
+{"id": "open_page-1", "action": "open_page", "text": "我要上传体检报告", "tags": ["引导卡", "页面直达"], "fallback_keywords": ["体检", "上传"]}
+{"id": "open_page-2", "action": "open_page", "text": "提醒设置在哪里改", "tags": ["引导卡", "页面直达"], "fallback_keywords": ["提醒", "设置"]}
+{"id": "open_page-3", "action": "open_page", "text": "我想看看家人的健康情况", "tags": ["引导卡", "页面直达"], "fallback_keywords": ["家人", "健康"]}
+{"id": "open_page-4", "action": "open_page", "text": "帮我打开饮食记录页面", "tags": ["引导卡", "页面直达"], "fallback_keywords": ["记录", "页面"]}

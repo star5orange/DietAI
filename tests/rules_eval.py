@@ -51,7 +51,18 @@ DEFAULT_PASSWORD = "Test123456!"
 B3_FIXTURE_USERNAME = "evalma"
 
 # 宠物会话不允许出现的人域动作卡（PRD D18/D9：宠物模式不执行人域写操作）
-HUMAN_WRITE_ACTIONS = {"record_food", "record_water", "record_weight", "set_reminder"}
+HUMAN_WRITE_ACTIONS = {
+    "record_food",
+    "record_water",
+    "record_weight",
+    "set_reminder",
+    # V6 健康档案扩权（全部 sessions=("human",)，宠物会话不得出现）
+    "record_exercise",
+    "record_disease",
+    "mark_disease_recovered",
+    "record_allergy",
+    "set_health_target",
+}
 
 
 class Colors:

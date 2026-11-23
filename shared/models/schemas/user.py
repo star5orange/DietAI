@@ -120,6 +120,7 @@ class HealthGoalCreate(BaseModel):
     goal_type: int = Field(..., ge=1, le=5, description="目标类型：1减重2增重3维持4增肌5减脂")
     target_weight: Optional[float] = Field(None, gt=0, description="目标体重")
     target_date: Optional[date] = Field(None, description="目标日期")
+    member_id: Optional[int] = Field(None, description="归属成员ID，空=账号级（T16）")
 
 
 class HealthGoalResponse(BaseModel):
@@ -143,6 +144,7 @@ class DiseaseCreate(BaseModel):
     diagnosed_date: Optional[date] = Field(None, description="诊断日期")
     is_current: bool = Field(True, description="是否当前患病（骨折等有明确病程的急性状况愈合后置为 false）")
     notes: Optional[str] = Field(None, description="备注")
+    member_id: Optional[int] = Field(None, description="归属成员ID，空=账号级（T16）")
 
 
 class DiseaseUpdate(BaseModel):
@@ -152,6 +154,7 @@ class DiseaseUpdate(BaseModel):
     diagnosed_date: Optional[date] = Field(None, description="诊断日期")
     is_current: Optional[bool] = Field(None, description="是否当前患病")
     notes: Optional[str] = Field(None, description="备注")
+    member_id: Optional[int] = Field(None, description="归属成员ID，空=账号级（T16）")
 
 
 class DiseaseResponse(BaseModel):
@@ -199,6 +202,7 @@ class AllergyCreate(BaseModel):
     allergen_name: str = Field(..., max_length=100, description="过敏原名称")
     severity_level: Optional[int] = Field(None, ge=1, le=3, description="严重程度1-3")
     reaction_description: Optional[str] = Field(None, description="反应描述")
+    member_id: Optional[int] = Field(None, description="归属成员ID，空=账号级（T16）")
 
 
 class AllergyUpdate(BaseModel):
@@ -206,6 +210,7 @@ class AllergyUpdate(BaseModel):
     allergen_name: Optional[str] = Field(None, max_length=100, description="过敏原名称")
     severity_level: Optional[int] = Field(None, ge=1, le=3, description="严重程度1-3")
     reaction_description: Optional[str] = Field(None, description="反应描述")
+    member_id: Optional[int] = Field(None, description="归属成员ID，空=账号级（T16）")
 
 
 class AllergyResponse(BaseModel):

@@ -1,6 +1,6 @@
 """V5.0 对话意图命中率评测（PRD §6：对话意图命中率 ≥90%）。
 
-语料集：tests/action_corpus.jsonl（15 个动作 × 4 条口语表达，共 60 条）
+语料集：tests/action_corpus.jsonl（21 个动作 × 4 条口语表达，共 84 条）
 评测口径：
     对每条语料调用 /api/deep/chat，观察 Agent 本轮实际调用的注册表动作
     （SSE `card` 事件里的 action）。命中条件（满足其一即算命中）：
@@ -53,7 +53,7 @@ FIXTURE_ELDERS = (
     ("evalnn", "奶奶"),
 )
 
-# 语料覆盖度校验的期望动作（PRD 3.1：一期 6 + 二期 9 = 15）
+# 语料覆盖度校验的期望动作（PRD 3.1：一期 6 + 二期 9 + 引导卡 1 + V6 健康档案 5 = 21）
 EXPECTED_ACTIONS = [
     "record_food",
     "record_water",
@@ -70,6 +70,13 @@ EXPECTED_ACTIONS = [
     "query_cost",
     "generate_weekly_report",
     "send_reminder_to_family",
+    "open_page",
+    # V6 健康档案扩权
+    "record_exercise",
+    "record_disease",
+    "mark_disease_recovered",
+    "record_allergy",
+    "set_health_target",
 ]
 
 

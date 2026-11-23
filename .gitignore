@@ -204,10 +204,27 @@ $RECYCLE.BIN/
 # ==========================================
 # Documentation & Personal Files
 # ==========================================
-# docs/
+# docs 与非代码文件一律不上传（用户规则 2026-11-23）
+docs/
 CLAUDE.local.md
 *.draft.md
 notes/
+
+# ===== 本地私有文件 / 工具缓存（绝不上传）=====
+.local_private/
+.workbuddy/
+upgrade.sh
+/*.jpg
+/*.pdf
+
+# 测试输入图片（非代码）
+tests/fixtures/
+
+# ===== 二进制文档类型（绝不上传）=====
+*.pptx
+*.pdf
+*.docx
+*.doc
 
 # ==========================================
 # ESP32 Firmware

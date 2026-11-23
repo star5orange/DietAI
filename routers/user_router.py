@@ -26,6 +26,7 @@ from shared.utils.auth import get_current_user
 from shared.models.user_models import User, UserProfile, HealthGoal, Disease, Allergy, WeightRecord
 from shared.config.redis_config import cache_service
 from shared.utils.nutrition_calc import calculate_bmr, calculate_tdee, calculate_daily_targets
+from shared.services.health_profile_scope import apply_member_scope, validate_member
 
 router = APIRouter(prefix="/users", tags=["用户", "用户管理"])
 logger = logging.getLogger(__name__)
@@ -251,15 +252,18 @@ async def create_health_goal(
 ):
     """创建健康目标"""
     try:
+        if goal_data.member_id is not None:
+            validate_member(db, current_user.id, goal_data.member_id)
         # 暂停其他进行中的目标
         db.query(HealthGoal).filter(
             HealthGoal.user_id == current_user.id,
             HealthGoal.current_status == 1
         ).update({"current_status": 3})  # 暂停
-        
+
         # 创建新目标
         health_goal = HealthGoal(
             user_id=current_user.id,
+            member_id=goal_data.member_id,
             goal_type=goal_data.goal_type,
             target_weight=goal_data.target_weight,
             target_date=goal_data.target_date,
@@ -293,22 +297,24 @@ async def create_health_goal(
 async def get_health_goals(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    status_filter: Optional[int] = Query(None, description="状态筛选")
+    status_filter: Optional[int] = Query(None, description="状态筛选"),
+    member_id: Optional[int] = Query(None, description="成员ID，空=只看账号级（T16）")
 ):
     """获取健康目标列表"""
     try:
         query = db.query(HealthGoal).filter(HealthGoal.user_id == current_user.id)
-        
+
         if status_filter is not None:
             query = query.filter(HealthGoal.current_status == status_filter)
-        
-        goals = query.order_by(HealthGoal.created_at.desc()).all()
-        
+
+        goals = apply_member_scope(query, HealthGoal, member_id).all()
+
         goals_data = []
         for goal in goals:
             goals_data.append({
                 "id": goal.id,
                 "user_id": goal.user_id,
+                "member_id": goal.member_id,
                 "goal_type": goal.goal_type,
                 "target_weight": float(goal.target_weight) if goal.target_weight else None,
                 "target_date": goal.target_date.isoformat() if goal.target_date else None,
@@ -350,6 +356,9 @@ async def update_health_goal(
         goal.goal_type = goal_data.goal_type
         goal.target_weight = goal_data.target_weight
         goal.target_date = goal_data.target_date
+        if goal_data.member_id is not None:
+            validate_member(db, current_user.id, goal_data.member_id)
+            goal.member_id = goal_data.member_id
         goal.updated_at = datetime.utcnow()
         
         db.commit()
@@ -418,8 +427,11 @@ async def add_disease(
 ):
     """添加疾病信息"""
     try:
+        if disease_data.member_id is not None:
+            validate_member(db, current_user.id, disease_data.member_id)
         disease = Disease(
             user_id=current_user.id,
+            member_id=disease_data.member_id,
             disease_code=disease_data.disease_code,
             disease_name=disease_data.disease_name,
             severity_level=disease_data.severity_level,
@@ -427,17 +439,18 @@ async def add_disease(
             is_current=disease_data.is_current,
             notes=disease_data.notes
         )
-        
+
         db.add(disease)
         db.commit()
         db.refresh(disease)
-        
+
         return BaseResponse(
             success=True,
             message="疾病信息添加成功",
             data={
                 "id": disease.id,
                 "user_id": disease.user_id,
+                "member_id": disease.member_id,
                 "disease_code": disease.disease_code,
                 "disease_name": disease.disease_name,
                 "severity_level": disease.severity_level,
@@ -456,22 +469,24 @@ async def add_disease(
 async def get_diseases(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    is_current: Optional[bool] = Query(None, description="是否当前病症")
+    is_current: Optional[bool] = Query(None, description="是否当前病症"),
+    member_id: Optional[int] = Query(None, description="成员ID，空=只看账号级（T16）")
 ):
     """获取疾病信息列表"""
     try:
         query = db.query(Disease).filter(Disease.user_id == current_user.id)
-        
+
         if is_current is not None:
             query = query.filter(Disease.is_current == is_current)
-        
-        diseases = query.order_by(Disease.created_at.desc()).all()
-        
+
+        diseases = apply_member_scope(query, Disease, member_id).all()
+
         diseases_data = []
         for disease in diseases:
             diseases_data.append({
                 "id": disease.id,
                 "user_id": disease.user_id,
+                "member_id": disease.member_id,
                 "disease_code": disease.disease_code,
                 "disease_name": disease.disease_name,
                 "severity_level": disease.severity_level,
@@ -506,20 +521,23 @@ async def update_disease(
         
         if not disease:
             raise HTTPException(status_code=404, detail="疾病记录不存在")
-        
+
         update_data = disease_data.dict(exclude_unset=True)
+        if update_data.get("member_id") is not None:
+            validate_member(db, current_user.id, update_data["member_id"])
         for field, value in update_data.items():
             setattr(disease, field, value)
-        
+
         db.commit()
         db.refresh(disease)
-        
+
         return BaseResponse(
             success=True,
             message="疾病信息更新成功",
             data={
                 "id": disease.id,
                 "user_id": disease.user_id,
+                "member_id": disease.member_id,
                 "disease_code": disease.disease_code,
                 "disease_name": disease.disease_name,
                 "severity_level": disease.severity_level,
@@ -574,24 +592,28 @@ async def add_allergy(
 ):
     """添加过敏信息"""
     try:
+        if allergy_data.member_id is not None:
+            validate_member(db, current_user.id, allergy_data.member_id)
         allergy = Allergy(
             user_id=current_user.id,
+            member_id=allergy_data.member_id,
             allergen_type=allergy_data.allergen_type,
             allergen_name=allergy_data.allergen_name,
             severity_level=allergy_data.severity_level,
             reaction_description=allergy_data.reaction_description
         )
-        
+
         db.add(allergy)
         db.commit()
         db.refresh(allergy)
-        
+
         return BaseResponse(
             success=True,
             message="过敏信息添加成功",
             data={
                 "id": allergy.id,
                 "user_id": allergy.user_id,
+                "member_id": allergy.member_id,
                 "allergen_type": allergy.allergen_type,
                 "allergen_name": allergy.allergen_name,
                 "severity_level": allergy.severity_level,
@@ -608,22 +630,24 @@ async def add_allergy(
 async def get_allergies(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    allergen_type: Optional[int] = Query(None, description="过敏原类型")
+    allergen_type: Optional[int] = Query(None, description="过敏原类型"),
+    member_id: Optional[int] = Query(None, description="成员ID，空=只看账号级（T16）")
 ):
     """获取过敏信息列表"""
     try:
         query = db.query(Allergy).filter(Allergy.user_id == current_user.id)
-        
+
         if allergen_type is not None:
             query = query.filter(Allergy.allergen_type == allergen_type)
-        
-        allergies = query.order_by(Allergy.created_at.desc()).all()
-        
+
+        allergies = apply_member_scope(query, Allergy, member_id).all()
+
         allergies_data = []
         for allergy in allergies:
             allergies_data.append({
                 "id": allergy.id,
                 "user_id": allergy.user_id,
+                "member_id": allergy.member_id,
                 "allergen_type": allergy.allergen_type,
                 "allergen_name": allergy.allergen_name,
                 "severity_level": allergy.severity_level,
@@ -656,20 +680,23 @@ async def update_allergy(
         
         if not allergy:
             raise HTTPException(status_code=404, detail="过敏记录不存在")
-        
+
         update_data = allergy_data.dict(exclude_unset=True)
+        if update_data.get("member_id") is not None:
+            validate_member(db, current_user.id, update_data["member_id"])
         for field, value in update_data.items():
             setattr(allergy, field, value)
-        
+
         db.commit()
         db.refresh(allergy)
-        
+
         return BaseResponse(
             success=True,
             message="过敏信息更新成功",
             data={
                 "id": allergy.id,
                 "user_id": allergy.user_id,
+                "member_id": allergy.member_id,
                 "allergen_type": allergy.allergen_type,
                 "allergen_name": allergy.allergen_name,
                 "severity_level": allergy.severity_level,
