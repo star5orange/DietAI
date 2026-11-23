@@ -141,6 +141,7 @@ class DiseaseCreate(BaseModel):
     disease_name: str = Field(..., max_length=200, description="疾病名称")
     severity_level: Optional[int] = Field(None, ge=1, le=3, description="严重程度1-3")
     diagnosed_date: Optional[date] = Field(None, description="诊断日期")
+    is_current: bool = Field(True, description="是否当前患病（骨折等有明确病程的急性状况愈合后置为 false）")
     notes: Optional[str] = Field(None, description="备注")
 
 
@@ -166,6 +167,31 @@ class DiseaseResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class RehabAdviceItem(BaseModel):
+    """单条疾病的康复建议（AI 生成，缓存在 diseases.rehab_advice）
+
+    疾病被标记为「已痊愈」后不再返回该条，健康页卡片随之消失。
+    """
+    disease_id: int
+    disease_name: str
+    severity_level: Optional[int]
+    diagnosed_date: Optional[date]
+    days_elapsed: Optional[int] = Field(None, description="病程天数，实时计算")
+    summary: Optional[str]
+    diet_recommendations: List[str] = []
+    avoid_recommendations: List[str] = []
+    nutrient_focus: List[str] = []
+    recovery_notes: List[str] = []
+    followup_reminder: Optional[str]
+    disclaimer: Optional[str]
+    generated_at: Optional[datetime]
+    failed: bool = Field(False, description="本次生成失败（无缓存可用），前端提示稍后重试")
+
+
+class RehabAdviceResponse(BaseModel):
+    items: List[RehabAdviceItem] = []
 
 
 class AllergyCreate(BaseModel):

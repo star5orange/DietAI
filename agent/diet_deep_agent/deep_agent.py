@@ -134,6 +134,7 @@ def create_diet_deep_agent(config: DietDeepConfig | None = None, use_custom_pers
             api_key=api_key,
             timeout=_llm_timeout,
             max_retries=_llm_max_retries,
+            streaming=True,
         )
     except Exception:
         # 个别 provider 不支持上述参数时退化为原始构造，保证不影响启动
@@ -142,6 +143,7 @@ def create_diet_deep_agent(config: DietDeepConfig | None = None, use_custom_pers
             primary_model,
             base_url=base_url,
             api_key=api_key,
+            streaming=True,
         )
 
     # 所有自定义工具

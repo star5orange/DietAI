@@ -275,7 +275,7 @@ class _ExamResultPageState extends ConsumerState<ExamResultPage> {
                     label: const Text('查看原始照片'),
                     style: OutlinedButton.styleFrom(
                       visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
+padding: const EdgeInsets.symmetric(horizontal: 8),
                       textStyle: const TextStyle(fontSize: 12),
                     ),
                   ),

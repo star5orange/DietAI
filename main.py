@@ -27,6 +27,7 @@ from routers.water_router import router as water_router
 from routers.reminder_router import router as reminder_router
 from routers.notification_router import router as notification_router
 from routers.wellness_router import router as wellness_router
+from routers.hardware_router import router as hardware_router
 
 # AI 依赖路由器 — 无 AI 包时优雅降级
 _food_router = None
@@ -114,14 +115,6 @@ try:
 except ImportError:
     pass
 
-# 首页模块布局
-_home_layout_router = None
-try:
-    from routers.home_layout_router import router as home_layout_router
-    _home_layout_router = home_layout_router
-except ImportError:
-    pass
-
 # 语音识别路由器
 _voice_router = None
 try:
@@ -163,9 +156,25 @@ try:
 except ImportError:
     pass
 
+# V6: 家庭成员（多成员归属）
+_family_member_router = None
+try:
+    from routers.family_member_router import router as family_member_router
+    _family_member_router = family_member_router
+except ImportError:
+    pass
+
 try:
     from routers.exam_router import router as exam_router
     _exam_router = exam_router
+except ImportError:
+    pass
+
+# 康复建议（健康页按当前患病展示 AI 康复饮食指导）
+_rehab_router = None
+try:
+    from routers.rehab_router import router as rehab_router
+    _rehab_router = rehab_router
 except ImportError:
     pass
 
@@ -190,13 +199,14 @@ async def lifespan(app: FastAPI):
     # 启动时执行
     logger.info("正在启动DietAI后端服务...")
 
-    # 创建数据库表
+    # 创建数据库表（兜底：平台已用持 DDL 的迁移账号建好表，这里大概率是空跑。
+    # 运行账号只有 DML 权限，缺表时这里会因无 DDL 而失败 —— 不阻断启动，
+    # 真正的连不上库由下面的连接测试兜住。）
     try:
         create_tables()
         logger.info("数据库表创建完成")
     except Exception as e:
-        logger.error(f"数据库表创建失败: {e}")
-        raise
+        logger.warning(f"数据库表创建失败 (非致命，交由平台建表): {e}")
 
     # 测试数据库连接
     try:
@@ -252,20 +262,22 @@ app.add_middleware(
 from shared.middleware.rate_limiter import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware)
 
-# 生产环境：HTTPS 强制重定向 + 受信任主机
+# 生产环境：受信任主机；HTTPS 强制跳转需显式开启（DIETAI_FORCE_HTTPS=true），
+# 否则明文 HTTP 反代回传 X-Forwarded-Proto: http 会把请求跳到不可达的 https 端口。
 if not settings.debug:
     # HTTPS 重定向中间件
-    @app.middleware("http")
-    async def enforce_https(request: Request, call_next):
-        # 检查 X-Forwarded-Proto 头（反向代理如 Nginx 设置）
-        if request.headers.get("x-forwarded-proto", "https") == "http":
-            https_url = request.url.replace(scheme="https")
-            from fastapi.responses import RedirectResponse
-            return RedirectResponse(https_url, status_code=301)
-        response = await call_next(request)
-        # 添加 HSTS 头：告诉浏览器未来 1 年只走 HTTPS
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
-        return response
+    if settings.force_https:
+        @app.middleware("http")
+        async def enforce_https(request: Request, call_next):
+            # 检查 X-Forwarded-Proto 头（反向代理如 Nginx 设置）
+            if request.headers.get("x-forwarded-proto", "https") == "http":
+                https_url = request.url.replace(scheme="https")
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(https_url, status_code=301)
+            response = await call_next(request)
+            # 添加 HSTS 头：告诉浏览器未来 1 年只走 HTTPS
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+            return response
 
     # 受信任主机中间件
     app.add_middleware(
@@ -434,8 +446,6 @@ if _fasting_router is not None:
     app.include_router(_fasting_router, prefix="/api", tags=["轻断食"])
 if _advisor_router is not None:
     app.include_router(_advisor_router, prefix="/api", tags=["AI顾问设置"])
-if _home_layout_router is not None:
-    app.include_router(_home_layout_router, prefix="/api", tags=["首页布局"])
 
 # 语音识别路由
 if _voice_router is not None:
@@ -448,10 +458,17 @@ if _message_router is not None:
     app.include_router(_message_router, prefix="/api", tags=["消息"])
 if _family_router is not None:
     app.include_router(_family_router, prefix="/api", tags=["家庭健康"])
+if _family_member_router is not None:
+    app.include_router(_family_member_router, prefix="/api", tags=["家庭成员"])
 if _exam_router is not None:
     app.include_router(_exam_router, prefix="/api", tags=["体检报告"])
+if _rehab_router is not None:
+    app.include_router(_rehab_router, prefix="/api", tags=["康复建议"])
 if _device_router is not None:
     app.include_router(_device_router, tags=["设备绑定"])
+
+# 硬件同步（/api/hardware/*，router 自带 /api 前缀；V6 前遗漏挂载，契约 C2 依赖此端点）
+app.include_router(hardware_router, tags=["hardware"])
 
 # 启动服务器
 if __name__ == "__main__":

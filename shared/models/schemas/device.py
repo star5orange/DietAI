@@ -20,6 +20,11 @@ class PollPairingRequest(BaseModel):
 class ConfirmPairingRequest(BaseModel):
     """App 确认配对"""
     pairing_code: str = Field(..., min_length=6, max_length=6, description="6位配对码")
+    # V6（契约 C6 / 1.5b）：设备形态与自定义名
+    device_type: Optional[str] = Field(
+        "clock", description="设备形态：clock(一人一机，锁定成员) / robot(一家一机，可切换)"
+    )
+    name: Optional[str] = Field(None, max_length=32, description="用户自定义设备名")
 
 
 # --- 响应 ---

@@ -71,6 +71,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   cached_network_image: ^3.3.0
+  flutter_markdown: ^0.7.7+1
   
 dev_dependencies:
   flutter_test:

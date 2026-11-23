@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DietAI 技术架构图</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            text-align: center;
+            color: #2d3748;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #718096;
+            margin-bottom: 40px;
+            font-size: 16px;
+        }
+        .layer {
+            margin-bottom: 30px;
+            border-radius: 16px;
+            padding: 25px;
+            position: relative;
+        }
+        .layer-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .layer-number {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 18px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            border: 2px solid transparent;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        .card-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        .card-title {
+            font-size: 15px;
+            font-weight: bold;
+            color: #2d3748;
+            margin-bottom: 6px;
+        }
+        .card-desc {
+            font-size: 12px;
+            color: #718096;
+            line-height: 1.5;
+        }
+
+        /* 各层颜色 */
+        .layer-1 { background: #e6fffa; }
+        .layer-1 .layer-number { background: #38b2ac; }
+        .layer-1 .card { border-color: #b2f5ea; }
+
+        .layer-2 { background: #faf5ff; }
+        .layer-2 .layer-number { background: #9f7aea; }
+        .layer-2 .card { border-color: #e9d8fd; }
+
+        .layer-3 { background: #fff5f5; }
+        .layer-3 .layer-number { background: #f56565; }
+        .layer-3 .card { border-color: #fed7d7; }
+
+        .layer-4 { background: #f0fff4; }
+        .layer-4 .layer-number { background: #48bb78; }
+        .layer-4 .card { border-color: #c6f6d5; }
+
+        /* 箭头 */
+        .arrow {
+            text-align: center;
+            font-size: 28px;
+            color: #a0aec0;
+            margin: 15px 0;
+            animation: bounce 2s infinite;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(8px); }
+        }
+
+        /* 数据驱动环绕布局 */
+        .loop-box {
+            margin-top: 30px;
+            padding: 20px;
+            background: linear-gradient(90deg, #ebf8ff, #fffaf0);
+            border-radius: 16px;
+            border: 2px dashed #4299e1;
+            text-align: center;
+            position: relative;
+            height: 320px;
+        }
+        .loop-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #2b6cb0;
+            margin-bottom: 10px;
+        }
+        .loop-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 130px;
+            height: 130px;
+            background: linear-gradient(135deg, #4299e1, #667eea);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+            box-shadow: 0 8px 25px rgba(66, 153, 225, 0.4);
+            z-index: 2;
+        }
+        .loop-flow {
+            position: relative;
+            width: 100%;
+            height: 260px;
+        }
+        .loop-step {
+            position: absolute;
+            background: white;
+            padding: 10px 18px;
+            border-radius: 24px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+            font-size: 14px;
+            color: #2d3748;
+            font-weight: 600;
+            z-index: 3;
+        }
+        .loop-step:nth-child(1) { top: 0; left: 50%; transform: translateX(-50%); }
+        .loop-step:nth-child(2) { top: 50%; right: 0; transform: translateY(-50%); }
+        .loop-step:nth-child(3) { bottom: 0; left: 50%; transform: translateX(-50%); }
+        .loop-step:nth-child(4) { top: 50%; left: 0; transform: translateY(-50%); }
+        .loop-arrow {
+            position: absolute;
+            color: #4299e1;
+            font-size: 20px;
+            font-weight: bold;
+            z-index: 1;
+        }
+        .loop-arrow:nth-of-type(1) { top: 22%; right: 32%; transform: rotate(45deg); }
+        .loop-arrow:nth-of-type(2) { bottom: 22%; right: 32%; transform: rotate(135deg); }
+        .loop-arrow:nth-of-type(3) { bottom: 22%; left: 32%; transform: rotate(225deg); }
+        .loop-arrow:nth-of-type(4) { top: 22%; left: 32%; transform: rotate(315deg); }
+
+        /* 亮点标注 */
+        .highlight {
+            position: absolute;
+            top: -10px;
+            right: 20px;
+            background: #ed8936;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .cards {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            h1 { font-size: 24px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🥗 DietAI 智能饮食健康管理平台</h1>
+        <p class="subtitle">面向 iCAN 比赛的技术架构图</p>
+
+        <!-- 第一层：多模态交互层 -->
+        <div class="layer layer-1">
+            <div class="layer-title">
+                <div class="layer-number">1</div>
+                多模态交互层
+            </div>
+            <div class="cards">
+                <div class="card">
+                    <div class="card-icon">📷</div>
+                    <div class="card-title">拍照识餐</div>
+                    <div class="card-desc">拍摄食物识别菜品与营养成分</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🎤</div>
+                    <div class="card-title">语音录餐</div>
+                    <div class="card-desc">语音描述自动转文字记录</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">📋</div>
+                    <div class="card-title">OCR 识包装</div>
+                    <div class="card-desc">宠物食品包装营养成分识别</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">⏰</div>
+                    <div class="card-title">ESP32 宠物时钟</div>
+                    <div class="card-desc">硬件端显示状态与喂食提醒</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="arrow">⬇</div>
+
+        <!-- 第二层：AI 智能处理层 -->
+        <div class="layer layer-2">
+            <div class="highlight">核心创新</div>
+            <div class="layer-title">
+                <div class="layer-number">2</div>
+                AI 智能处理层
+            </div>
+            <div class="cards">
+                <div class="card">
+                    <div class="card-icon">🖼️</div>
+                    <div class="card-title">Seedream 图像生成</div>
+                    <div class="card-desc">食物识别 / 宠物形象生成</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🗣️</div>
+                    <div class="card-title">豆包 ASR 2.0</div>
+                    <div class="card-desc">WebSocket 流式语音识别</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">📄</div>
+                    <div class="card-title">Qwen-VL OCR</div>
+                    <div class="card-desc">宠物食品包装文字识别</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🧠</div>
+                    <div class="card-title">LangGraph 工作流</div>
+                    <div class="card-desc">多节点协作的 AI Agent</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">📚</div>
+                    <div class="card-title">RAG 知识库</div>
+                    <div class="card-desc">24节气 / 体质 / 宠物营养</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">✨</div>
+                    <div class="card-title">个性化推荐</div>
+                    <div class="card-desc">结合历史数据与当前节气</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="arrow">⬇</div>
+
+        <!-- 第三层：业务服务层 -->
+        <div class="layer layer-3">
+            <div class="layer-title">
+                <div class="layer-number">3</div>
+                业务服务层（FastAPI + Uvicorn）
+            </div>
+            <div class="cards">
+                <div class="card">
+                    <div class="card-icon">👤</div>
+                    <div class="card-title">用户管理</div>
+                    <div class="card-desc">JWT RS256 认证</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🍽️</div>
+                    <div class="card-title">饮食记录</div>
+                    <div class="card-desc">营养分析与目标追踪</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">💬</div>
+                    <div class="card-title">AI 对话</div>
+                    <div class="card-desc">多轮记忆与场景化建议</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🌿</div>
+                    <div class="card-title">节气养生</div>
+                    <div class="card-desc">当日推荐与节气饮食指南</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🐕</div>
+                    <div class="card-title">真实宠物</div>
+                    <div class="card-desc">体重/疫苗/驱虫/饮食/饮水</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🧸</div>
+                    <div class="card-title">虚拟桌宠</div>
+                    <div class="card-desc">GIF 状态 + 随机气泡陪伴</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🥫</div>
+                    <div class="card-title">食品库</div>
+                    <div class="card-desc">浏览 / 搜索 / OCR 入库</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">📊</div>
+                    <div class="card-title">健康周报</div>
+                    <div class="card-desc">趋势分析与定时任务</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="arrow">⬇</div>
+
+        <!-- 第四层：数据层 -->
+        <div class="layer layer-4">
+            <div class="layer-title">
+                <div class="layer-number">4</div>
+                数据层
+            </div>
+            <div class="cards">
+                <div class="card">
+                    <div class="card-icon">🗄️</div>
+                    <div class="card-title">PostgreSQL</div>
+                    <div class="card-desc">业务结构化数据</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">⚡</div>
+                    <div class="card-title">Redis</div>
+                    <div class="card-desc">缓存与会话</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🖼️</div>
+                    <div class="card-title">MinIO</div>
+                    <div class="card-desc">图片 / 宠物形象文件</div>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🔍</div>
+                    <div class="card-title">ChromaDB</div>
+                    <div class="card-desc">向量知识库</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 数据驱动 -->
+        <div class="loop-box">
+            <div class="loop-title">🔄 数据驱动</div>
+            <div class="loop-flow">
+                <span class="loop-step">数据采集</span>
+                <span class="loop-step">AI 分析</span>
+                <span class="loop-step">智能推荐</span>
+                <span class="loop-step">效果反馈</span>
+                <span class="loop-arrow">↻</span>
+                <span class="loop-arrow">↻</span>
+                <span class="loop-arrow">↻</span>
+                <span class="loop-arrow">↻</span>
+                <div class="loop-center">数据<br>驱动</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

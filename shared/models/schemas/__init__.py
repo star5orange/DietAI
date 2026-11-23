@@ -64,3 +64,8 @@ from .device import (
     RequestPairingRequest, PollPairingRequest, ConfirmPairingRequest,
     PairingCodeResponse, DeviceTokenResponse, DeviceStatusResponse,
 )
+
+# V6 家庭成员
+from .family_member import (
+    FamilyMemberCreate, FamilyMemberUpdate, AttributionChangeRequest, FamilyMemberOut,
+)

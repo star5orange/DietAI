@@ -31,7 +31,25 @@ def _water_record_to_dict(record) -> dict:
 
 @router.post("/records")
 def create(record: WaterIntakeCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    # V6（1.6）：给成员记录 → 先校验成员属于本家庭且启用
+    if record.member_id is not None:
+        from shared.services.family_member_service import get_member_in_family
+
+        member, reason = get_member_in_family(db, user.id, record.member_id)
+        if member is None:
+            detail = "目标成员已停用，不可作为归属对象" if reason == "inactive" else "成员不存在或不属于本家庭"
+            return BaseResponse(success=False, message=detail, data=None)
+
     db_record = create_water_record(db, user.id, record)
+
+    # V6：成员记录补归属依据与操作者（本人记录保持字段为空，A8 兼容）
+    if record.member_id is not None:
+        db_record.attributed_by = "manual"
+        db_record.attribution_confidence = 1.0
+        db_record.recorded_by_user_id = user.id
+        db.commit()
+        db.refresh(db_record)
+
     return BaseResponse(
         success=True,
         message="添加饮水记录成功",

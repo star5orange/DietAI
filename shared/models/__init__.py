@@ -13,15 +13,14 @@ from .advisor_models import AiAdvisorSettings
 from .fasting_models import FastingPlan, FastingCheckin
 from .pet_models import VirtualPetState, PetUnlockable
 from .device_models import Device
-
-# 首页模块布局偏好
-from .home_layout_models import UserHomeLayout
+from .family_models import FamilyMember
 
 # Milestone 4 新增模型
 from .social_models import UserRelationship, DataPermission
 from .message_models import Message
 from .exam_models import ExamReport, ExamMetric
 from .proxy_models import ProxyRecord
+from .food_label_models import FoodLabelReview
 
 # 导入所有Pydantic模型
 from . import schemas
@@ -65,7 +64,6 @@ __all__ = [
     "PetUnlockable",
     "Device",
     "HealthAchievement",
-    "UserHomeLayout",
 
     # Milestone 4 新增模型
     "UserRelationship",
@@ -74,6 +72,7 @@ __all__ = [
     "ExamReport",
     "ExamMetric",
     "ProxyRecord",
+    "FoodLabelReview",
 
     # Pydantic模型
     #"schemas"

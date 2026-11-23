@@ -1,6 +1,6 @@
 """体检报告模型 - Milestone 4 体检报告管理"""
 from sqlalchemy import Column, Integer, String, DateTime, Date, Text, Numeric, Boolean, ForeignKey, Index, text
-from sqlalchemy.dialects.postgresql import JSONB
+from .json_types import PortableJSON
 from sqlalchemy.sql import func
 from .database import Base
 
@@ -16,7 +16,7 @@ class ExamReport(Base):
     hospital_name = Column(String(200), nullable=True, comment="体检机构")
     report_type = Column(String(50), nullable=True, comment="full|routine|specific")
     photo_url = Column(Text, nullable=True, comment="原始报告照片（MinIO，首张）")
-    photo_urls = Column(JSONB, nullable=True, comment="多页报告照片 URL 列表（MinIO）")
+    photo_urls = Column(PortableJSON, nullable=True, comment="多页报告照片 URL 列表（MinIO）")
     followup_date = Column(Date, nullable=True, comment="建议复查日期（AI解析复查周期）")
     abnormal_count = Column(Integer, nullable=False, default=0, comment="异常指标数量")
     summary = Column(Text, nullable=True, comment="AI生成的体检综述")
@@ -28,7 +28,7 @@ class ExamReport(Base):
         server_default=text("false"),
         comment="是否允许 AI 分析该份体检报告（默认关闭，仅本地私有存储）",
     )
-    compared_to_last = Column(JSONB, nullable=True, comment="与上次对比 {'血糖': '↑ 0.8', ...}")
+    compared_to_last = Column(PortableJSON, nullable=True, comment="与上次对比 {'血糖': '↑ 0.8', ...}")
     created_at = Column(DateTime, nullable=False, default=func.now())
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, comment="代上传者（家人代传）")
 

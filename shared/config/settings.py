@@ -9,10 +9,101 @@ from dotenv import load_dotenv
 _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _env_file = os.path.join(_project_root, ".env")
 _env_dev = os.path.join(_project_root, ".env.dev")
+# 部署平台（PACKAGING.md §3.1）把运行期配置的真相源写在 {app}/shared/.env，
+# 而 release 位于 {app}/releases/<版本> 下，故从 release 根向上两级即 {app}/shared/.env。
+# 本地开发时该路径不存在，不影响原有行为。
+_shared_env_file = os.path.join(_project_root, "..", "..", "shared", ".env")
 if os.path.exists(_env_dev):
     load_dotenv(_env_dev, override=True, encoding="utf-8")
+if os.path.exists(_shared_env_file):
+    load_dotenv(_shared_env_file, override=False, encoding="utf-8")
 if os.path.exists(_env_file):
     load_dotenv(_env_file, override=False, encoding="utf-8")
+
+
+# 让境内 AI 服务直连，不继承系统代理。
+# 开发机常设 HTTP_PROXY / HTTPS_PROXY（Clash 等），而 httpx、requests、openai SDK
+# 默认 trust_env=True 会读取它们；梯子一旦没在监听，DeepSeek / 通义 / 火山这些
+# 境内服务也会被塞进死端口，报 APIConnectionError（表现为「AI 功能时好时坏」）。
+# 这里把境内域名并入 NO_PROXY，进程内生效，不影响真正需要走代理的请求。
+_DOMESTIC_AI_HOSTS = (
+    "api.deepseek.com",
+    "dashscope.aliyuncs.com",
+    "volces.com",
+    "ark.cn-beijing.volces.com",
+    "openspeech.bytedance.com",
+)
+
+
+def _ensure_domestic_ai_bypass() -> None:
+    """把境内 AI 域名并入 NO_PROXY（幂等，可重复调用）"""
+    existing = os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or ""
+    # Windows 系统代理习惯用分号分隔，统一成逗号
+    parts = [p.strip() for p in existing.replace(";", ",").split(",") if p.strip()]
+    lowered = {p.lower() for p in parts}
+    for host in _DOMESTIC_AI_HOSTS:
+        if host.lower() not in lowered:
+            parts.append(host)
+    value = ",".join(parts)
+    # httpx / requests / urllib 对大小写两种写法都会读，都写上最稳妥
+    os.environ["NO_PROXY"] = value
+    os.environ["no_proxy"] = value
+
+
+_ensure_domestic_ai_bypass()
+
+
+def _apply_env_bridge() -> None:
+    """把外部约定的变量名桥接成本项目的 DIETAI_ 前缀配置（幂等，可重复调用）。
+
+    两类来源：
+    1. 部署平台下发：库名/账号/口令由平台建好（database.provision: platform），
+       只以 DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD 形式注入；JWT 密钥由引擎生成，
+       名为 JWT_SECRET。两者都不带 DIETAI_ 前缀，需要在这里拼装。
+    2. 第三方 SDK 约定名：DashScope / 火山 Ark 的 SDK 只认无前缀变量名，
+       从 DIETAI_ 版本兜底，避免部署单里同一个密钥要填两遍。
+    """
+    from urllib.parse import quote
+
+    # 1) 平台发放的数据库凭据 → 拼出应用使用的连接串
+    if not os.environ.get("DIETAI_DATABASE_URL"):
+        db_host = os.environ.get("DB_HOST")
+        db_name = os.environ.get("DB_NAME")
+        db_user = os.environ.get("DB_USER")
+        if db_host and db_name and db_user:
+            # 本地开发跑 PostgreSQL，部署平台只提供 MariaDB。
+            # DB_TYPE 由平台按 deploy.yml 的 database.engine 推导，据此选驱动与默认端口。
+            db_type = (os.environ.get("DB_TYPE") or "mysql").lower()
+            if "mysql" in db_type or "maria" in db_type:
+                scheme, default_port = "mysql+pymysql", "3306"
+            else:
+                scheme, default_port = "postgresql", "5432"
+            db_port = os.environ.get("DB_PORT") or default_port
+            db_password = os.environ.get("DB_PASSWORD") or ""
+            os.environ["DIETAI_DATABASE_URL"] = (
+                f"{scheme}://{quote(db_user, safe='')}:{quote(db_password, safe='')}"
+                f"@{db_host}:{db_port}/{quote(db_name, safe='')}"
+            )
+
+    # 2) 引擎生成的对称密钥与算法（PACKAGING.md §3.1 ③④：JWT_ALGORITHM=HS256、
+    #    JWT_SECRET 由引擎生成，都是无前缀名）
+    if not os.environ.get("DIETAI_JWT_ALGORITHM") and os.environ.get("JWT_ALGORITHM"):
+        os.environ["DIETAI_JWT_ALGORITHM"] = os.environ["JWT_ALGORITHM"]
+    if not os.environ.get("DIETAI_JWT_SECRET_KEY") and os.environ.get("JWT_SECRET"):
+        os.environ["DIETAI_JWT_SECRET_KEY"] = os.environ["JWT_SECRET"]
+
+    # 3) 第三方 SDK 约定名与本项目的 DIETAI_ 前缀名互相兜底
+    for plain, prefixed in (
+        ("DASHSCOPE_API_KEY", "DIETAI_DASHSCOPE_API_KEY"),
+        ("VOLC_ARK_API_KEY", "DIETAI_VOLC_ARK_API_KEY"),
+    ):
+        if not os.environ.get(plain) and os.environ.get(prefixed):
+            os.environ[plain] = os.environ[prefixed]
+        if not os.environ.get(prefixed) and os.environ.get(plain):
+            os.environ[prefixed] = os.environ[plain]
+
+
+_apply_env_bridge()
 
 
 class Settings(BaseSettings):
@@ -138,6 +229,13 @@ class Settings(BaseSettings):
     allowed_hosts: List[str] = Field(
         default=[],
         description="允许的主机名（生产环境通过 DIETAI_ALLOWED_HOSTS 设置，例如: yourdomain.com,api.yourdomain.com）"
+    )
+
+    # 生产环境是否强制 HTTPS 跳转。默认关闭：目标平台以明文 HTTP 暴露服务，
+    # 若反向代理回传 X-Forwarded-Proto: http，跳转会指向不存在的 https 端口。
+    force_https: bool = Field(
+        default=False,
+        description="生产环境是否强制 HTTPS（存在 TLS 终结时可用 DIETAI_FORCE_HTTPS=true 开启）"
     )
 
     # 文件上传配置

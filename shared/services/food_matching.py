@@ -10,7 +10,8 @@
   1. 归一化：NFKC 全角转半角 → 去口语噪声词 → 去份量与单位
      （份量本身由 extract_portion_grams 解析出来，供调用方按真实克数换算）
   2. 切分：按顿号/逗号/斜杠/加号/空白等分隔符拆成多段
-  3. 逐段匹配：精确 → 反向包含（库名被输入包含，取最长最具体）→ 正向包含（库名包含输入）
+  3. 逐段匹配：精确名 → 精确别名 → 反向包含（库名被输入包含，取最长最具体）
+     → 正向包含（库名/别名/英文名包含输入）
 
 多段全部命中时逐项求和（口径为「各 100g」，属于估算），matched_name 用 " + " 拼接。
 
@@ -122,8 +123,18 @@ def _per_100g(row: FoodDatabase) -> dict[str, float]:
 
 
 def _match_one(db: Any, part: str) -> Optional[FoodDatabase]:
-    """单段匹配：精确 → 反向包含 → 正向包含"""
+    """单段匹配：精确名 → 精确别名 → 反向包含 → 正向包含（名/别名/英文名）"""
     row = db.query(FoodDatabase).filter(FoodDatabase.food_name == part).first()
+    if row is not None:
+        return row
+
+    # 精确别名（如「番茄」→别名「西红柿」）。别名命中优先短名。
+    row = (
+        db.query(FoodDatabase)
+        .filter(FoodDatabase.alias_name == part)
+        .order_by(func.length(FoodDatabase.food_name), FoodDatabase.id)
+        .first()
+    )
     if row is not None:
         return row
 
@@ -147,7 +158,11 @@ def _match_one(db: Any, part: str) -> Optional[FoodDatabase]:
     escaped = part.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return (
         db.query(FoodDatabase)
-        .filter(FoodDatabase.food_name.ilike(f"%{escaped}%", escape="\\"))
+        .filter(
+            FoodDatabase.food_name.ilike(f"%{escaped}%", escape="\\")
+            | FoodDatabase.alias_name.ilike(f"%{escaped}%", escape="\\")
+            | FoodDatabase.food_name_en.ilike(f"%{escaped}%", escape="\\")
+        )
         .order_by(func.length(FoodDatabase.food_name), FoodDatabase.id)
         .first()
     )

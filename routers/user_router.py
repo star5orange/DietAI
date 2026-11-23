@@ -424,6 +424,7 @@ async def add_disease(
             disease_name=disease_data.disease_name,
             severity_level=disease_data.severity_level,
             diagnosed_date=disease_data.diagnosed_date,
+            is_current=disease_data.is_current,
             notes=disease_data.notes
         )
         

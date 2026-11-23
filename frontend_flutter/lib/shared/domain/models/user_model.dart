@@ -531,6 +531,96 @@ class Disease {
   }
 }
 
+/// 康复建议（AI 生成，按当前患病逐条返回；疾病标记为已痊愈后不再返回）
+///
+/// 注意：这里手写 fromJson 而不使用 @JsonSerializable —— user_model.dart 其余
+/// 部分依赖 build_runner 代码生成，而当前环境的 pub cache 不完整导致 build_runner
+/// 无法运行，手写可完全绕开代码生成。
+class RehabAdvice {
+  final int diseaseId;
+  final String diseaseName;
+  final int? severityLevel; // 1:轻度 2:中度 3:重度
+  final String? diagnosedDate;
+  final int? daysElapsed; // 病程天数，后端实时计算
+  final String? summary;
+  final List<String> dietRecommendations; // 宜
+  final List<String> avoidRecommendations; // 忌
+  final List<String> nutrientFocus;
+  final List<String> recoveryNotes;
+  final String? followupReminder;
+  final String? disclaimer;
+  final String? generatedAt;
+
+  /// 本次生成失败且无缓存可用，前端提示稍后重试
+  final bool failed;
+
+  const RehabAdvice({
+    required this.diseaseId,
+    required this.diseaseName,
+    this.severityLevel,
+    this.diagnosedDate,
+    this.daysElapsed,
+    this.summary,
+    this.dietRecommendations = const [],
+    this.avoidRecommendations = const [],
+    this.nutrientFocus = const [],
+    this.recoveryNotes = const [],
+    this.followupReminder,
+    this.disclaimer,
+    this.generatedAt,
+    this.failed = false,
+  });
+
+  factory RehabAdvice.fromJson(Map<String, dynamic> json) {
+    return RehabAdvice(
+      diseaseId: (json['disease_id'] as num?)?.toInt() ?? 0,
+      diseaseName: json['disease_name'] as String? ?? '',
+      severityLevel: (json['severity_level'] as num?)?.toInt(),
+      diagnosedDate: json['diagnosed_date'] as String?,
+      daysElapsed: (json['days_elapsed'] as num?)?.toInt(),
+      summary: json['summary'] as String?,
+      dietRecommendations: _rehabStringList(json['diet_recommendations']),
+      avoidRecommendations: _rehabStringList(json['avoid_recommendations']),
+      nutrientFocus: _rehabStringList(json['nutrient_focus']),
+      recoveryNotes: _rehabStringList(json['recovery_notes']),
+      followupReminder: json['followup_reminder'] as String?,
+      disclaimer: json['disclaimer'] as String?,
+      generatedAt: json['generated_at'] as String?,
+      failed: json['failed'] as bool? ?? false,
+    );
+  }
+
+  /// 严重程度描述（与 Disease.severityText 口径一致）
+  String get severityText {
+    switch (severityLevel) {
+      case 1:
+        return '轻度';
+      case 2:
+        return '中度';
+      case 3:
+        return '重度';
+      default:
+        return '未评估';
+    }
+  }
+
+  /// 病程描述
+  String get courseText =>
+      daysElapsed != null ? '已 $daysElapsed 天' : '病程未记录';
+
+  /// 是否有可展示的建议内容（生成本次失败时无内容）
+  bool get hasContent => !failed && (summary?.trim().isNotEmpty ?? false);
+}
+
+/// 把接口返回的列表字段清洗成非空字符串列表
+List<String> _rehabStringList(dynamic value) {
+  if (value is! List) return const [];
+  return value
+      .whereType<String>()
+      .where((item) => item.trim().isNotEmpty)
+      .toList();
+}
+
 /// 疾病信息创建请求模型
 @JsonSerializable()
 class DiseaseCreateRequest {
@@ -542,6 +632,8 @@ class DiseaseCreateRequest {
   final int? severityLevel;
   @JsonKey(name: 'diagnosed_date')
   final String? diagnosedDate;
+  @JsonKey(name: 'is_current', defaultValue: true)
+  final bool isCurrent;
   final String? notes;
 
   const DiseaseCreateRequest({
@@ -549,6 +641,7 @@ class DiseaseCreateRequest {
     required this.diseaseName,
     this.severityLevel,
     this.diagnosedDate,
+    this.isCurrent = true,
     this.notes,
   });
 

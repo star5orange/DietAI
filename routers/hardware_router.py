@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from shared.models.database import get_db
 from shared.utils.auth import get_current_user
@@ -11,6 +11,7 @@ from shared.services.hardware_service import (
     sync_pet_feeding, sync_pet_water,
     get_pet_quick_buttons, get_pet_feeding_plan_for_hardware,
 )
+from routers.family_member_router import _resolve_request_context
 
 router = APIRouter(prefix="/api/hardware", tags=["hardware"])
 
@@ -32,12 +33,18 @@ def get_quick_buttons_endpoint(user_id: int,
 
 
 @router.post("/sync")
-def sync_offline_records_endpoint(request: OfflineSyncRequest, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    """Sync offline records. Supports target_type=human(default) and target_type=pet."""
+def sync_offline_records_endpoint(request: OfflineSyncRequest, http_request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Sync offline records. Supports target_type=human(default) and target_type=pet.
+
+    V6（C2）：user_id 可省略——device_token 场景由令牌解析家庭；
+    显式传入时必须与令牌归属一致，否则拒绝（防串号）。
+    """
     if not hasattr(request, 'target_type') or request.target_type in (None, "human"):
-        if user.id != request.user_id:
+        ctx = _resolve_request_context(http_request, user, db)
+        home_user_id = ctx["home_user_id"]
+        if request.user_id is not None and request.user_id != home_user_id:
             return BaseResponse(success=False, message="用户ID不匹配", data=None)
-        result = sync_offline_records(db, request.user_id, request.records)
+        result = sync_offline_records(db, home_user_id, request.records, device=ctx["device"])
         return BaseResponse(success=True, message="同步完成", data=result)
 
     # M3: pet branch

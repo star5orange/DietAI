@@ -7,6 +7,8 @@ class WaterIntakeCreate(BaseModel):
     amount_ml: int = Field(..., gt=0, le=5000, description="饮水量（毫升）")
     record_time: datetime = Field(default_factory=datetime.now, description="喝水时间")
     drink_type: Optional[str] = Field("水", max_length=20, description="饮品类型：水/茶/咖啡/果汁等")
+    # V6 多成员归属（1.6）：空 = 记给账号本人；给成员记录时后端补 attributed_by=manual
+    member_id: Optional[int] = Field(None, ge=1, description="归属成员ID（空=账号本人）")
 
 
 class WaterIntakeOut(BaseModel):

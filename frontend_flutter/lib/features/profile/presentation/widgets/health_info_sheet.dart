@@ -583,6 +583,7 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
     final notesController = TextEditingController(text: disease.notes ?? '');
     int severityLevel = disease.severityLevel ?? 1;
     bool isCurrent = disease.isCurrent;
+    String? diagnosedDate = disease.diagnosedDate;
 
     showDialog(
       context: context,
@@ -627,8 +628,49 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
                   },
                 ),
                 const SizedBox(height: 12),
+                // 诊断日期：编辑时保留原值，可修改或清除（避免保存后丢日期）
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: diagnosedDate != null
+                          ? DateTime.parse(diagnosedDate!)
+                          : DateTime.now(),
+                      firstDate: DateTime(1900),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) {
+                      setDialogState(
+                          () => diagnosedDate = picked.toIso8601String());
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: '诊断日期',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: diagnosedDate != null
+                          ? IconButton(
+                              icon: const Icon(LucideIcons.x, size: 16),
+                              tooltip: '清除日期',
+                              onPressed: () =>
+                                  setDialogState(() => diagnosedDate = null),
+                            )
+                          : const Icon(LucideIcons.calendar, size: 16),
+                    ),
+                    child: Text(
+                      diagnosedDate?.split('T')[0] ?? '未设置',
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: diagnosedDate != null
+                            ? AppColors.textPrimary
+                            : AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 SwitchListTile(
                   title: const Text('当前患病'),
+                  subtitle: const Text('骨折等有明确病程的状况，愈合后关闭'),
                   value: isCurrent,
                   onChanged: (value) {
                     setDialogState(() => isCurrent = value);
@@ -663,12 +705,14 @@ class _HealthInfoSheetState extends ConsumerState<HealthInfoSheet>
                 final success =
                     await ref.read(diseasesProvider.notifier).updateDisease(
                           disease.id,
-                          DiseaseCreateRequest(
+                          DiseaseUpdateRequest(
                             diseaseName: nameController.text.trim(),
                             diseaseCode: codeController.text.trim().isEmpty
                                 ? null
                                 : codeController.text.trim(),
                             severityLevel: severityLevel,
+                            diagnosedDate: diagnosedDate,
+                            isCurrent: isCurrent,
                             notes: notesController.text.trim().isEmpty
                                 ? null
                                 : notesController.text.trim(),
@@ -895,6 +939,7 @@ class _AddDiseaseFormState extends ConsumerState<_AddDiseaseForm> {
 
   int? _selectedSeverity;
   String? _selectedDiagnosedDate;
+  bool _isCurrent = true;
   bool _isLoading = false;
 
   @override
@@ -935,7 +980,15 @@ class _AddDiseaseFormState extends ConsumerState<_AddDiseaseForm> {
             _buildSeveritySelector(),
             const SizedBox(height: 16),
             _buildDiagnosedDateSelector(),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('当前患病', style: AppTextStyles.bodyMedium),
+              subtitle: const Text('骨折等有明确病程的状况，愈合后关闭'),
+              value: _isCurrent,
+              onChanged: (value) => setState(() => _isCurrent = value),
+            ),
+            const SizedBox(height: 8),
             AppInput(
               controller: _notesController,
               label: '备注',
@@ -1079,6 +1132,7 @@ class _AddDiseaseFormState extends ConsumerState<_AddDiseaseForm> {
             : _diseaseCodeController.text.trim(),
         severityLevel: _selectedSeverity,
         diagnosedDate: _selectedDiagnosedDate,
+        isCurrent: _isCurrent,
         notes: _notesController.text.trim().isEmpty
             ? null
             : _notesController.text.trim(),

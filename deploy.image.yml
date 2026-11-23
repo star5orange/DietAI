@@ -1,0 +1,133 @@
+app: dietai
+name: DietAI 智能饮食健康管理后端
+version: 1.0.3
+runtime: image
+# 镜像引用（镜像名:标签）—— 平台据此 podman run 容器；
+# 该标签必须与 image.tar 内 docker save 时的 tag 完全一致。
+image: localhost/dietai:1.0.3
+deploy_root: /project/deploy
+# 打包方对照目标机画像声明的运行前提（平台上线前会比对）。
+requires:
+  arch: x86_64
+  python: "3.12"
+  abi: cp312
+  glibc: "2.39"
+python:
+  entry: "main:app"
+  workdir: .
+  # 容器内监听端口；对外由平台 nginx 承担（部署单里另给 expose_port）。
+  port: 19002
+service:
+  bind: 0.0.0.0
+  restart_sec: 5
+  timeout_stop: 30
+health:
+  path: /health
+env:
+  # 平台推不出来、也无法编造的真实凭据：由「部署单 → 运行期配置」一次性填入。
+  # 放进 required 才会进入部署单的「需要你提供」清单并随单注入 shared/.env
+  # （口径与已验证通过的 python 版 deploy.yml 一致）。
+  required:
+    - DIETAI_FIELD_ENCRYPTION_KEY
+    - DEEPSEEK_API_KEY
+    - DASHSCOPE_API_KEY
+    - VOLC_ARK_API_KEY
+    - DIETAI_VOLC_ASR_API_KEY
+    - DIETAI_VOLC_TTS_API_KEY
+  optional:
+    - DIETAI_REDIS_HOST
+    - DIETAI_MINIO_ENDPOINT
+    - DIETAI_CORS_ORIGINS
+  defaults:
+    DIETAI_DEBUG: "false"
+    DIETAI_JWT_ALGORITHM: "RS256"
+    DIETAI_LOG_LEVEL: "INFO"
+    DEEPSEEK_API_BASE: "https://api.deepseek.com"
+    DEEPSEEK_MODEL: "deepseek-v4-flash"
+    ANALYSIS_MODEL_PROVIDER: "deepseek"
+    ANALYSIS_MODEL: "deepseek-v4-flash"
+    VISION_MODEL_PROVIDER: "qwen"
+    VISION_MODEL: "qwen3.7-plus"
+database:
+  engine: mysql
+  name_pattern: dietai
+  provision: platform
+  rotate_password: false
+  # 平台镜像模式实测不建库：翻遍全部 23 张 image 部署单（32–59），
+  # 只有「数据库结构预检」，从未出现「平台接管库与账号 / 已应用数据库变更：新建库」；
+  # 而 python 单（53/54/55/56）每次都建库建双账号。order 43（image）的系统行也写明：
+  # 「数据库采用外部已有库：uniteachdb（平台不建库、不改账号，仅把连接信息送进 shared/.env）」。
+  # 故镜像模式的正确口径是「外部已有库 + 连接信息随部署单运行期配置注入」
+  # （order 43 就随单带了 DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD/DB_TYPE）。
+  #
+  # 这里仍按 python 版同形声明 migrate：若引擎在镜像模式下也认它，即可触发建库链路；
+  # 若不认，则由外部已有库 + db_schema 自动补齐表兜住，两条路都不落空。
+  migrate:
+    command: "python scripts/create_all_tables.py"
+    workdir: .
+    backup_before: true
+    # 建表命令只做 CREATE（幂等、纯扩展）。平台会把制品内所有文件的 DROP/TRUNCATE
+    # 一并静态扫描（order 11 实测连 site-packages 里的语句都算命中），故显式放行。
+    allow_breaking: true
+# 库内对象改由 db_schema 在启动前补齐：目标库缺表时，平台在镜像内执行
+# create_all_cmd 建表（幂等，order 59 已实测会触发）。
+#
+# 注意：引擎的数据库处理整段以 expected_tables 是否声明为闸门 —— 未列时
+# 会打印「db_schema 已声明但未列 expected_tables，跳过结构预检」，
+# 既不建库也不建表（order 57 试装即因此拿到空 DB_* 环境变量、启动即退出）。
+# 列出期望表后，引擎才会做结构预检（对照 order 52 的「期望表 79 张」）。
+db_schema:
+  on_missing: auto
+  create_all_cmd: "python scripts/create_all_tables.py"
+  expected_tables:
+    # 用户与健康档案
+    - users
+    - user_profiles
+    - health_goals
+    - diseases
+    - allergies
+    - weight_records
+    - health_achievements
+    # 饮食与营养
+    - food_records
+    - nutrition_details
+    - daily_nutrition_summaries
+    - food_database
+    - saved_meals
+    - saved_meal_nutrition
+    - user_saved_meal_favorites
+    - food_label_reviews
+    - water_intake_records
+    - exercise_records
+    - fasting_plans
+    - fasting_checkins
+    # 对话与顾问
+    - conversation_sessions
+    - conversation_messages
+    - conversation_contexts
+    - ai_advisor_settings
+    - messages
+    - notification_responses
+    - reminders
+    - wellness_knowledge
+    # 设备与宠物
+    - devices
+    - hardware_quick_buttons
+    - offline_sync_log
+    - virtual_pet_states
+    - pet_unlockables
+    - pet_profiles
+    - pet_weight_records
+    - pet_vaccine_records
+    - pet_feeding_records
+    - pet_water_records
+    - pet_daily_summaries
+    - pet_avatars
+    - pet_deworming_records
+    - pet_food_database
+    # 体检与社交
+    - exam_reports
+    - exam_metrics
+    - proxy_records
+    - user_relationships
+    - data_permissions

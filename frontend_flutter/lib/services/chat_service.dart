@@ -9,12 +9,16 @@ class ChatService {
   ///
   /// [useDeepAgent] 为 true 时走 DietDeepAgent 统一对话入口（支持动作卡片与撤销），
   /// 为 false 时走原 chat_agent 咨询链路。
+  ///
+  /// [imageBase64] 为可选的包装食品成分表照片（base64，不含 data URI 前缀）：
+  /// 后端先 OCR 出每 100g 数值，再结合健康档案给评价与购买建议。
   Stream<ChatStreamEvent> sendMessageStream({
     required String message,
     int? sessionId,
     int sessionType = 1,
     int? petId, // 宠物ID
     bool useDeepAgent = true,
+    String? imageBase64,
   }) async* {
     try {
       final requestData = {
@@ -22,6 +26,8 @@ class ChatService {
         'session_type': sessionType,
         if (sessionId != null) 'session_id': sessionId,
         if (petId != null) 'pet_id': petId,
+        if (imageBase64 != null && imageBase64.isNotEmpty)
+          'image_base64': imageBase64,
       };
 
       final endpoint =
@@ -59,6 +65,21 @@ class ChatService {
   Future<ApiResponse<dynamic>> undoLastAction({String? undoToken}) {
     return _apiService.post('/deep/actions/undo', data: {
       if (undoToken != null && undoToken.isNotEmpty) 'undo_token': undoToken,
+    });
+  }
+
+  /// 确认卡「帮我记录」：直调后端确认接口（PRD 4.2）
+  ///
+  /// [confirmTokens] 为卡片上的确认凭证，后端据此取出预先备好的动作调用按原参数执行，
+  /// 不再经模型重新理解（份量、餐次、AI 估算热量不会被改写，重复提交也不会写第二条）。
+  /// 一次说了多样食物时会有多张卡，用 confirmTokens 一次性提交。
+  Future<ApiResponse<dynamic>> confirmPendingActions({
+    required List<String> confirmTokens,
+    int? sessionId,
+  }) {
+    return _apiService.post('/deep/actions/confirm', data: {
+      'confirm_tokens': confirmTokens,
+      if (sessionId != null) 'session_id': sessionId,
     });
   }
 

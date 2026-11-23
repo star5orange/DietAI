@@ -11,6 +11,7 @@
     context.py         运行期上下文（user_id 等由 Router 注入，不进 LLM schema）
     registry.py        注册与派发（生成 LangChain 工具 + Prompt 段落）
     undo_journal.py    撤销日志（最近一条 + 10 分钟窗口）
+    pending_store.py   确认卡凭证（点「帮我记录」按卡片原参数落库，一次性）
     definitions/       动作定义（record_food、undo；V6 在此扩展）
 """
 

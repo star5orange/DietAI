@@ -102,8 +102,101 @@ def _generate_default_buttons(db: Session, user_id: int) -> list:
         db.refresh(b)
     return buttons
 
-def sync_offline_records(db: Session, user_id: int, records: List[dict]) -> dict:
-    """Sync offline records from hardware device"""
+# V6（C2）：late_sync 阈值——时间戳早于 7 天前仍落库，但置信度压低
+LATE_SYNC_THRESHOLD_DAYS = 7
+LATE_SYNC_MAX_CONFIDENCE = 0.30
+REASSIGNED_DEFAULT_CONFIDENCE = 0.30
+
+
+def _naive(dt: datetime) -> datetime:
+    """统一成 naive 时间，避免 aware/naive 比较报错"""
+    return dt.replace(tzinfo=None) if dt.tzinfo else dt
+
+
+def _find_by_client_uuid(db: Session, user_id: int, client_uuid: str, record_type: str):
+    """A3 幂等去重依据：client_uuid 唯一索引（m6_02），命中即视为已入库"""
+    if not client_uuid:
+        return None
+    model = WaterIntakeRecord if record_type == "water" else FoodRecord
+    return db.query(model).filter(
+        model.user_id == user_id, model.client_uuid == client_uuid
+    ).first()
+
+
+def _resolve_member_for_sync(db: Session, user_id: int, record: dict, device) -> dict:
+    """V6（C2）归属解析。返回 (member_id, attributed_by, confidence, status)。
+
+    解析顺序（契约 C2/C4）：
+    1. 显式 member_id：校验属于本家庭 → ok；串号 → rejected_member（不落库不回落）；
+       停用 → 回落 default_member_id（无默认成员则本人），reassigned_default
+    2. 无 member_id（旧固件）：时钟有锁定成员 → 锁定成员（device_bind）；
+       否则归属本人（V5 存量语义，default）
+    3. 时间戳超 7 天 → late_sync，置信度压至 ≤0.30
+    """
+    member_id = record.get("member_id")
+    attributed_by = record.get("attributed_by")
+    confidence = record.get("attribution_confidence")
+    status = "ok"
+
+    if member_id:
+        from shared.services.family_member_service import (
+            get_member_in_family, get_default_member_id,
+        )
+
+        member, reason = get_member_in_family(db, user_id, member_id)
+        if reason == "not_in_family":
+            return None, None, None, "rejected_member"
+        if reason == "inactive":
+            # 停用成员回落 default，不丢数据（契约 rejected vs reassigned 二分）
+            member_id = get_default_member_id(db, user_id)
+            attributed_by = "default"
+            confidence = REASSIGNED_DEFAULT_CONFIDENCE
+            status = "reassigned_default"
+        else:
+            attributed_by = attributed_by or "default"
+            confidence = confidence if confidence is not None else 0.95
+    else:
+        if device is not None and getattr(device, "locked_member_id", None):
+            # 旧固件时钟：按锁定成员归属（升级窗口期不落错人）
+            member_id = device.locked_member_id
+            attributed_by = "device_bind"
+            confidence = 0.95
+        else:
+            member_id = None  # 归属账号本人
+            attributed_by = attributed_by or "default"
+            confidence = confidence if confidence is not None else 0.90
+
+    timestamp_str = record.get("timestamp")
+    if timestamp_str:
+        ts = _naive(datetime.fromisoformat(timestamp_str.replace("Z", "+00:00")))
+        if ts < datetime.now() - timedelta(days=LATE_SYNC_THRESHOLD_DAYS):
+            status = "late_sync"
+            confidence = min(confidence or 0.0, LATE_SYNC_MAX_CONFIDENCE)
+
+    return member_id, attributed_by, confidence, status
+
+
+def _maybe_update_device_current_member(db: Session, device, record: dict, user_id: int) -> None:
+    """C4 方向一：设备在记录里顺带上报 current_member_id → 云端权威值更新（best-effort）"""
+    current_member_id = record.get("current_member_id")
+    if device is None or current_member_id is None:
+        return
+    from shared.services.family_member_service import (
+        get_member_in_family, bump_member_version,
+    )
+
+    member, _ = get_member_in_family(db, user_id, current_member_id)
+    if member is not None and device.current_member_id != current_member_id:
+        device.current_member_id = current_member_id
+        # C1 版本覆盖 current/locked 变化，设备下次拉成员列表能感知
+        bump_member_version(device.home_user_id or device.user_id)
+
+
+def sync_offline_records(db: Session, user_id: int, records: List[dict], device=None) -> dict:
+    """Sync offline records from hardware device（契约 C2：归属五件套 + 幂等去重 + 状态机）
+
+    返回 {"synced", "failed", "results": [...], "details": [...]}（C5 双字段过渡期）。
+    """
     synced = 0
     failed = 0
     details = []
@@ -113,13 +206,62 @@ def sync_offline_records(db: Session, user_id: int, records: List[dict]) -> dict
             record_type = record.get("type")
             timestamp_str = record.get("timestamp")
             timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00")) if timestamp_str else datetime.now()
+            client_uuid = record.get("client_uuid")
+            device_id = record.get("device_id") or (device.device_key if device is not None else None)
+
+            if record_type not in ("water", "food"):
+                failed += 1
+                details.append({"type": record_type, "status": "unknown_type"})
+                continue
+
+            # A3 幂等：同 client_uuid 已入库 → duplicate（静默去重，视为成功）
+            if client_uuid and _find_by_client_uuid(db, user_id, client_uuid, record_type):
+                details.append({"type": record_type, "status": "duplicate", "client_uuid": client_uuid})
+                synced += 1
+                continue
+
+            member_id, attributed_by, confidence, status = _resolve_member_for_sync(
+                db, user_id, record, device
+            )
+            if status == "rejected_member":
+                # 安全红线：串号成员不落库、绝不回落
+                failed += 1
+                details.append({
+                    "type": record_type, "status": "rejected_member",
+                    "member_id": record.get("member_id"),
+                    "message": "成员不属于本家庭，记录已拒绝",
+                })
+                continue
+
+            _maybe_update_device_current_member(db, device, record, user_id)
 
             if record_type == "water":
                 amount_ml = record.get("amount_ml", 250)
-                water_create = WaterIntakeCreate(amount_ml=amount_ml, record_time=timestamp, drink_type="水")
-                create_water_record(db, user_id, water_create)
+                water_record = WaterIntakeRecord(
+                    user_id=user_id,
+                    amount_ml=amount_ml,
+                    record_time=timestamp,
+                    drink_type="水",
+                    member_id=member_id,
+                    attributed_by=attributed_by,
+                    attribution_confidence=confidence,
+                    device_id=device_id,
+                    client_uuid=client_uuid,
+                )
+                db.add(water_record)
+                db.flush()
+
+                from shared.services.water_service import _recalc_daily_water
+
+                record_date = timestamp.date() if hasattr(timestamp, "date") else date.today()
+                _recalc_daily_water(db, user_id, record_date)
+                db.commit()
+
                 synced += 1
-                details.append({"type": "water", "status": "ok"})
+                details.append({
+                    "type": "water", "status": status, "record_id": water_record.id,
+                    "member_id": member_id,
+                })
 
             elif record_type == "food":
                 food_name = (record.get("food_name") or "").strip()
@@ -146,6 +288,11 @@ def sync_offline_records(db: Session, user_id: int, records: List[dict]) -> dict
                     recording_method=1,
                     analysis_status=1,
                     from_source="hardware",
+                    member_id=member_id,
+                    attributed_by=attributed_by,
+                    attribution_confidence=confidence,
+                    device_id=device_id,
+                    client_uuid=client_uuid,
                 )
                 db.add(food_record)
                 db.flush()
@@ -199,17 +346,14 @@ def sync_offline_records(db: Session, user_id: int, records: List[dict]) -> dict
                     logger.warning(f"硬件记录重算当日汇总失败（非致命）: {e}")
 
                 synced += 1
-                details.append({"type": "food", "status": "ok", "food_name": food_name})
-            else:
-                failed += 1
-                details.append({"type": record_type, "status": "unknown_type"})
+                details.append({
+                    "type": "food", "status": status, "record_id": food_record.id,
+                    "member_id": member_id, "food_name": food_name,
+                })
         except Exception as e:
             logger.error(f"Failed to sync record: {e}")
             failed += 1
             details.append({"type": record.get("type", "unknown"), "status": "error", "error": str(e)})
-
-    # 注：原「update_streak」调用已移除——shared.services.pet_service 并无该函数，
-    # 该 import 会让整个模块导入失败（硬件路由已因此不可用）。连续打卡由宠物喂食链路维护。
 
     # Log sync
     log = OfflineSyncLog(
@@ -219,7 +363,8 @@ def sync_offline_records(db: Session, user_id: int, records: List[dict]) -> dict
     db.add(log)
     db.commit()
 
-    return {"synced": synced, "failed": failed}
+    # C5：逐条结果统一 results 字段；过渡期保留 details 双字段
+    return {"synced": synced, "failed": failed, "results": details, "details": details}
 
 
 # ============================================================

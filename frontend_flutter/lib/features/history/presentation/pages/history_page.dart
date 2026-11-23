@@ -5,7 +5,11 @@ import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
 import '../../../../core/services/api_service.dart';
 import '../../../../services/food_service.dart';
+import '../../../../services/goal_tracking_service.dart';
 import '../../../../services/saved_meal_service.dart';
+import '../../../../shared/presentation/widgets/daily_calorie_ring.dart';
+import '../../../../shared/presentation/widgets/water_intake_widget.dart';
+import '../../../profile/presentation/providers/profile_provider.dart';
 import '../../../../shared/domain/models/food_model.dart';
 import '../../../../shared/presentation/widgets/food_image_preview.dart';
 import '../../../home/presentation/widgets/food_record_modal.dart';
@@ -27,9 +31,13 @@ class HistoryPage extends ConsumerStatefulWidget {
 class _HistoryPageState extends ConsumerState<HistoryPage> {
   final FoodService _foodService = FoodService();
   final ApiService _apiService = ApiService();
+  final GoalTrackingService _goalTrackingService = GoalTrackingService();
   late DateTime _selectedDate = widget.initialDate ?? DateTime.now();
   bool _isLoading = true;
   List<FoodRecord> _records = [];
+  /// 所选日期的营养汇总（当日概览卡用）
+  DailyNutritionSummary? _dailySummary;
+  double _targetCalories = 2000.0;
   String _searchQuery = '';
   bool _showSearch = false;
   int? _activeMealFilter;
@@ -65,6 +73,28 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     _loadRecords();
     _fetchCategories();
     _fetchTags();
+    _loadTargetCalories();
+  }
+
+  /// 热量目标口径与首页/健康页一致：用户设置值优先，未设置时取系统计算值
+  Future<void> _loadTargetCalories() async {
+    try {
+      final profile = await ref
+          .read(userProfileProvider.notifier)
+          .loadUserProfileAndGet();
+      var target = (profile?.targetCalories ?? 0).toDouble();
+      if (target <= 0) {
+        final goalResult = await _goalTrackingService.getDailyStatus();
+        final targets =
+            goalResult.data?['daily_targets'] as Map<String, dynamic>?;
+        target = (targets?['calories'] as num?)?.toDouble() ?? 0;
+      }
+      if (mounted && target > 0) {
+        setState(() => _targetCalories = target);
+      }
+    } catch (_) {
+      // 取不到就沿用默认目标，不阻塞记录列表
+    }
   }
 
   Future<void> _fetchCategories() async {
@@ -129,6 +159,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   Future<void> _loadRecords() async {
     setState(() {
       _isLoading = true;
+      _dailySummary = null; // 换日期先清空，避免概览卡残留上一天的汇总
     });
 
     try {
@@ -136,6 +167,8 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
           '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
       // 先清除缓存，确保与首页数据同步
       await _foodService.invalidateRecordsCache(dateString);
+      // 与记录列表并发拉取当日汇总（口径同首页：只统计已分析记录）
+      final summaryFuture = _foodService.getDailyNutritionSummary(dateString);
       print('📋 历史页面加载记录: date=$dateString');
       final result = await _foodService.getFoodRecordsByDay(dateString);
 
@@ -153,6 +186,11 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         });
       } else {
         print('📋 加载失败: ${result.message}');
+      }
+
+      final summaryResult = await summaryFuture;
+      if (summaryResult.success && summaryResult.data != null) {
+        _dailySummary = summaryResult.data;
       }
     } catch (e, stackTrace) {
       print('📋 加载食物记录异常: $e');
@@ -283,41 +321,23 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
 
-            // 记录列表
+            // 当日概览（热量环 + 饮水，随日期切换）+ 记录列表
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : RefreshIndicator(
                       onRefresh: _loadRecords,
-                      child: _filteredRecords.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    LucideIcons.calendar,
-                                    size: 48,
-                                    color: AppColors.textTertiary,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    _searchQuery.isNotEmpty ||
-                                            _activeMealFilter != null
-                                        ? '没有匹配的记录'
-                                        : '该日期暂无记录',
-                                    style: const TextStyle(
-                                      color: AppColors.textTertiary,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : ListView(
-                              children: _buildMealSections(),
-                            ),
+                      child: ListView(
+                        children: [
+                          _buildDailyOverview(),
+                          if (_filteredRecords.isEmpty)
+                            _buildEmptyRecords()
+                          else
+                            ..._buildMealSections(),
+                        ],
+                      ),
                     ),
             ),
           ],
@@ -326,6 +346,69 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showFoodRecordModal(_getMealNameForNow()),
         child: const Icon(LucideIcons.plus),
+      ),
+    );
+  }
+
+  /// 当日概览：热量环 + 饮水打卡，数据随 [ _selectedDate ] 走
+  ///
+  /// 旧首页（数据看板）精简后融入这里：切到哪天就看哪天的热量与饮水，
+  /// 比旧首页只能看「今天」更贴合记录页的用法。
+  Widget _buildDailyOverview() {
+    final now = DateTime.now();
+    final isToday = _selectedDate.year == now.year &&
+        _selectedDate.month == now.month &&
+        _selectedDate.day == now.day;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundCard,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: AppColors.cardShadow,
+          ),
+          child: DailyCalorieRing(
+            currentCalories: _dailySummary?.totalCalories ?? 0.0,
+            targetCalories: _targetCalories,
+            title: isToday ? '今日热量' : '当日热量',
+            caption: '目标 ${_targetCalories.round()} kcal',
+          ),
+        ),
+        const SizedBox(height: 12),
+        WaterIntakeWidget(
+          selectedDate: _selectedDate,
+          collapsible: true,
+          initiallyCollapsed: true,
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildEmptyRecords() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48),
+      child: Column(
+        children: [
+          const Icon(
+            LucideIcons.calendar,
+            size: 48,
+            color: AppColors.textTertiary,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _searchQuery.isNotEmpty || _activeMealFilter != null
+                ? '没有匹配的记录'
+                : '该日期暂无记录',
+            style: const TextStyle(
+              color: AppColors.textTertiary,
+              fontSize: 16,
+            ),
+          ),
+        ],
       ),
     );
   }

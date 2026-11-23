@@ -89,13 +89,22 @@ async def confirm_pairing_endpoint(
     需要用户 JWT 认证。
     """
     try:
-        device = confirm_pairing(db, current_user.id, req.pairing_code)
+        device = confirm_pairing(
+            db, current_user.id, req.pairing_code,
+            device_type=req.device_type, name=req.name,
+        )
         return BaseResponse(
             success=True,
             message="设备绑定成功",
             data={
                 "device_id": device.id,
                 "device_token": device.device_token,
+                # V6 C6 字段：设备形态 / 归属家庭 / 当前与锁定成员
+                "device_type": device.device_type,
+                "name": device.name,
+                "home_user_id": device.home_user_id,
+                "current_member_id": device.current_member_id,
+                "locked_member_id": device.locked_member_id,
             },
         )
     except ValueError as e:
@@ -128,6 +137,13 @@ async def device_status_endpoint(
             "device_key": device.device_key,
             "last_seen_at": device.last_seen_at.isoformat() if device.last_seen_at else None,
             "created_at": device.created_at.isoformat() if device.created_at else None,
+            # V6 C6 字段（1.5b）：App 设备详情页需要
+            "device_type": device.device_type,
+            "name": device.name,
+            "home_user_id": device.home_user_id,
+            "current_member_id": device.current_member_id,
+            "locked_member_id": device.locked_member_id,
+            "firmware_version": device.firmware_version,
         },
     )
 

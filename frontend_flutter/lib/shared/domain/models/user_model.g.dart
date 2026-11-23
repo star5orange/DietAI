@@ -282,6 +282,7 @@ DiseaseCreateRequest _$DiseaseCreateRequestFromJson(
       diseaseName: json['disease_name'] as String,
       severityLevel: (json['severity_level'] as num?)?.toInt(),
       diagnosedDate: json['diagnosed_date'] as String?,
+      isCurrent: json['is_current'] as bool? ?? true,
       notes: json['notes'] as String?,
     );
 
@@ -292,6 +293,7 @@ Map<String, dynamic> _$DiseaseCreateRequestToJson(
       'disease_name': instance.diseaseName,
       'severity_level': instance.severityLevel,
       'diagnosed_date': instance.diagnosedDate,
+      'is_current': instance.isCurrent,
       'notes': instance.notes,
     };
 

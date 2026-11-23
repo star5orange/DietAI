@@ -69,10 +69,17 @@ def request_pairing(db: Session, device_key: str) -> Tuple[str, int]:
     return code, int(PAIRING_CODE_TTL.total_seconds())
 
 
-def confirm_pairing(db: Session, user_id: int, pairing_code: str) -> Device:
+def confirm_pairing(
+    db: Session, user_id: int, pairing_code: str,
+    device_type: Optional[str] = None, name: Optional[str] = None,
+) -> Device:
     """
     App 确认配对。
     验证配对码 → 绑定用户 → 颁发 device_token → 返回 Device 对象
+
+    V6（契约 C6 / 1.5b）：
+    - device_type: clock(一人一机，锁定成员) / robot(一家一机，可切换)，缺省 clock
+    - home_user_id 由绑定账号写入；时钟初始锁定 = 家庭默认成员（无成员则空=本人）
     """
     now = datetime.utcnow()
 
@@ -95,6 +102,9 @@ def confirm_pairing(db: Session, user_id: int, pairing_code: str) -> Device:
         old_device.is_bound = False
         old_device.user_id = None
         old_device.device_token = None
+        old_device.current_member_id = None
+        old_device.locked_member_id = None
+        old_device.home_user_id = None
         logger.info(f"[Device] 旧设备解绑: device_id={old_device.id}")
 
     # 生成 device_token (长期 JWT, type=device)
@@ -108,10 +118,30 @@ def confirm_pairing(db: Session, user_id: int, pairing_code: str) -> Device:
     device.pairing_expires_at = None
     device.last_seen_at = now
 
+    # V6 C6 字段：设备形态 / 归属家庭 / 锁定成员
+    resolved_type = device_type if device_type in ("clock", "robot") else "clock"
+    device.device_type = resolved_type
+    device.home_user_id = user_id
+    if name:
+        device.name = name[:32]
+    if resolved_type == "clock":
+        # 时钟一人一机：初始锁定 = 家庭默认成员（首个创建且启用）；无成员 → 空（记本人）
+        from shared.services.family_member_service import get_default_member_id
+
+        device.locked_member_id = get_default_member_id(db, user_id)
+        device.current_member_id = device.locked_member_id
+    else:
+        # 机器人一家一机：不锁定，当前成员初始为空（记本人）
+        device.locked_member_id = None
+        device.current_member_id = None
+
     db.commit()
     db.refresh(device)
 
-    logger.info(f"[Device] 绑定成功: device_id={device.id}, user_id={user_id}")
+    logger.info(
+        f"[Device] 绑定成功: device_id={device.id}, user_id={user_id}, "
+        f"type={device.device_type}, locked={device.locked_member_id}"
+    )
     return device
 
 
@@ -152,6 +182,9 @@ def unbind_device(db: Session, user_id: int) -> bool:
     device.is_bound = False
     device.user_id = None
     device.device_token = None
+    device.current_member_id = None
+    device.locked_member_id = None
+    device.home_user_id = None
     db.commit()
 
     logger.info(f"[Device] 解绑: device_id={device.id}, user_id={user_id}")

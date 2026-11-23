@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/themes/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
-import '../../../core/utils/landing_preference.dart';
 import '../../../core/services/modal_tracker.dart';
 import '../../../features/pet/presentation/widgets/pet_widget.dart';
 import '../../../features/pet/presentation/providers/pet_provider.dart';
@@ -284,8 +283,8 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
   /// 域高亮：非 tab 页面按业务归属点亮所属 tab（如体检页点亮「健康」、家人页点亮「社交」）
   bool _inDomain(String location, String tabRoute) {
     switch (tabRoute) {
-      case AppConstants.homeRoute: // 首页域：对话页 + 数据看板（跟随启动偏好）
-        return location == '/' || location == '/dashboard';
+      case AppConstants.homeRoute: // 首页域：Agent 对话页
+        return location == '/';
       case AppConstants.historyRoute:
         return location == '/history';
       case AppConstants.healthRoute: // 健康域：健康/体重趋势/养生/体检/断食/花销/宠物健康
@@ -318,11 +317,6 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
 
   Widget _buildBottomNavigationBar(BuildContext context) {
     final currentLocation = GoRouterState.of(context).matchedLocation;
-    // 「首页」tab 跟随启动落地偏好动态指向（对话页 ↔ 数据看板）
-    final landing = ref.watch(landingProvider);
-    final homeTabRoute = landing == LandingPreference.dashboard
-        ? '/dashboard'
-        : AppConstants.homeRoute;
 
     return Container(
       decoration: BoxDecoration(
@@ -345,7 +339,7 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
                 context,
                 icon: LucideIcons.home,
                 label: '首页',
-                route: homeTabRoute,
+                route: AppConstants.homeRoute,
                 isActive: _inDomain(currentLocation, AppConstants.homeRoute),
               ),
               _buildNavItem(

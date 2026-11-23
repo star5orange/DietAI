@@ -48,6 +48,10 @@ class ActionSpec:
     args_schema: Type[BaseModel]
     card_type: CardType = CardType.TEXT
     requires_confirmation: bool = False  # 写操作默认需授权（PRD 4.2 叙述性输入先问一句）
+    # 更严格的授权档位：任何输入（含「帮我记录」这类明确指令）都先出确认卡，
+    # 卡上带一个系统内部参数（如 confirmed_by_user）只能由用户点确认后回填。
+    # 用于错误半径大的动作（疾病档案写入 / 标记痊愈）。
+    always_confirm: bool = False
     undoable: bool = False  # 是否进入撤销日志（PRD 4.5）
     # 适用会话域：human（人/家人对话，默认）/ pet（宠物模式）。
     # PRD D18：宠物模式仅切换上下文域，人与宠物能力集隔离，因此宠物会话的提示词

@@ -35,6 +35,12 @@ UNDOABLE_ACTIONS = {
     "record_weight",
     "record_pet_feeding",
     "set_reminder",
+    # V6 健康档案扩权：运动 / 疾病 / 标记痊愈 / 过敏原 / 健康目标
+    "record_exercise",
+    "record_disease",
+    "mark_disease_recovered",
+    "record_allergy",
+    "set_health_target",
 }
 
 # 撤销成功后的补充说明（不同动作影响的面不同）
@@ -44,6 +50,11 @@ AFTER_NOTE = {
     "record_weight": "体重已回退到记录前的数值。",
     "record_pet_feeding": "宠物当日汇总已同步更新。",
     "set_reminder": "该提醒已删除。",
+    "record_exercise": "当日运动消耗已同步更新。",
+    "record_disease": "这条疾病已从健康档案移除，康复建议会同步更新。",
+    "mark_disease_recovered": "已恢复为「当前患病」，健康页的康复建议已重新生效。",
+    "record_allergy": "这条过敏原已从健康档案移除。",
+    "set_health_target": "目标已回退到设置前的数值。",
 }
 
 
@@ -335,12 +346,161 @@ def _undo_reminder(db, user_id: int, entry: UndoEntry) -> tuple[dict, dict]:
     return removed, {}
 
 
+def _undo_exercise(db, user_id: int, entry: UndoEntry) -> tuple[dict, dict]:
+    """回滚一条运动记录：删记录 + 重算当日运动消耗汇总"""
+    from shared.models.exercise_models import ExerciseRecord
+    from shared.services.exercise_service import delete_exercise_record
+
+    record = (
+        db.query(ExerciseRecord)
+        .filter(ExerciseRecord.id == int(entry.undo_token), ExerciseRecord.user_id == user_id)
+        .first()
+    )
+    if record is None:
+        raise _UndoRejected("这条运动记录不存在或已被撤销，无需重复操作。", clear_journal=True)
+    if _latest_id(db, ExerciseRecord, user_id) != record.id:
+        raise _UndoRejected(f"该条不是最近一条运动记录，不支持撤销；{PAGE_HINT}")
+
+    removed = {
+        "record_id": record.id,
+        "exercise_type": record.exercise_type,
+        "duration_minutes": record.duration_minutes,
+        "distance_km": float(record.distance_km) if record.distance_km is not None else None,
+        "calories_burned": (
+            float(record.calories_burned) if record.calories_burned is not None else None
+        ),
+        "record_date": record.record_date.isoformat() if record.record_date else None,
+    }
+    # delete_exercise_record 内部会重算当日汇总并提交
+    try:
+        delete_exercise_record(db, record.id, user_id)
+    except ValueError:
+        raise _UndoRejected("这条运动记录不存在或已被撤销，无需重复操作。", clear_journal=True)
+
+    return removed, {}
+
+
+def _undo_disease(db, user_id: int, entry: UndoEntry) -> tuple[dict, dict]:
+    """回滚一条疾病档案：删掉这一行（追加动作的逆操作）
+
+    Disease 有 user_id，本可用 _latest_id 校验；但「标记痊愈」改的是同一张表
+    且不新增行，用 max(id) 会误判。这里只校验归属，「仅最近一条」由撤销日志保证。
+    """
+    from shared.models.user_models import Disease
+
+    disease = (
+        db.query(Disease)
+        .filter(Disease.id == int(entry.undo_token), Disease.user_id == user_id)
+        .first()
+    )
+    if disease is None:
+        raise _UndoRejected("这条疾病档案不存在或已被撤销，无需重复操作。", clear_journal=True)
+
+    removed = {
+        "disease_id": disease.id,
+        "disease_name": disease.disease_name,
+        "is_current": bool(disease.is_current),
+    }
+    db.delete(disease)
+    db.commit()
+    return removed, {}
+
+
+def _undo_disease_recovered(db, user_id: int, entry: UndoEntry) -> tuple[dict, dict]:
+    """回滚「标记痊愈」：把 is_current 置回 True（记录仍在档案里）
+
+    该动作不新增行，因此不能用 _latest_id 校验（见 _undo_pet_feeding 同理）。
+    """
+    from shared.models.user_models import Disease
+
+    disease = (
+        db.query(Disease)
+        .filter(Disease.id == int(entry.undo_token), Disease.user_id == user_id)
+        .first()
+    )
+    if disease is None:
+        raise _UndoRejected("这条疾病档案不存在或已被删除，无法撤销。", clear_journal=True)
+
+    disease.is_current = True
+    db.commit()
+    return (
+        {"disease_id": disease.id, "disease_name": disease.disease_name, "is_current": True},
+        {},
+    )
+
+
+def _undo_allergy(db, user_id: int, entry: UndoEntry) -> tuple[dict, dict]:
+    """回滚一条过敏原：删掉这一行"""
+    from shared.models.user_models import Allergy
+
+    allergy = (
+        db.query(Allergy)
+        .filter(Allergy.id == int(entry.undo_token), Allergy.user_id == user_id)
+        .first()
+    )
+    if allergy is None:
+        raise _UndoRejected("这条过敏原不存在或已被撤销，无需重复操作。", clear_journal=True)
+
+    removed = {
+        "allergy_id": allergy.id,
+        "allergen_name": allergy.allergen_name,
+        "allergen_type": allergy.allergen_type,
+    }
+    db.delete(allergy)
+    db.commit()
+    return removed, {}
+
+
+def _undo_health_target(db, user_id: int, entry: UndoEntry) -> tuple[dict, dict]:
+    """回滚健康目标：按快照把 UserProfile 的热量/饮水目标还原
+
+    该动作是更新而非新增，不能用 _latest_id 校验；undo_token 是 UserProfile.id，
+    这里额外校验 user_id 归属，避免撤销到别人的资料。
+    """
+    from shared.models.user_models import UserProfile
+
+    profile = (
+        db.query(UserProfile)
+        .filter(UserProfile.id == int(entry.undo_token), UserProfile.user_id == user_id)
+        .first()
+    )
+    if profile is None:
+        raise _UndoRejected("找不到对应的个人资料，无法撤销。", clear_journal=True)
+
+    snapshot = entry.payload or {}
+    if "target_calories" not in snapshot and "daily_water_goal" not in snapshot:
+        raise _UndoRejected(f"这条撤销缺少目标快照，无法还原；{PAGE_HINT}")
+
+    profile.target_calories = snapshot.get("target_calories")
+    profile.daily_water_goal = snapshot.get("daily_water_goal")
+    db.commit()
+
+    restored = {
+        "target_calories": profile.target_calories,
+        "daily_water_goal": profile.daily_water_goal,
+    }
+    # 目标值参与缓存计算，还原后同样要清（否则页面仍显示新值）
+    try:
+        from shared.config.redis_config import cache_service
+
+        cache_service.clear_user_cache(user_id)
+    except Exception as e:
+        logger.warning(f"清除用户缓存失败（非致命）: {e}")
+
+    return {"profile_id": profile.id}, {"profile_restored": restored}
+
+
 _HANDLERS: dict[str, Callable[[Any, int, UndoEntry], tuple[dict, dict]]] = {
     "record_food": _undo_food,
     "record_water": _undo_water,
     "record_weight": _undo_weight,
     "record_pet_feeding": _undo_pet_feeding,
     "set_reminder": _undo_reminder,
+    "record_exercise": _undo_exercise,
+    "record_disease": _undo_disease,
+    "mark_disease_recovered": _undo_disease_recovered,
+    "record_allergy": _undo_allergy,
+    "set_health_target": _undo_health_target,
 }
 
 

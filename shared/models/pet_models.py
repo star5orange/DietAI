@@ -1,6 +1,6 @@
-﻿"""宠物相关 ORM 模型（M2 虚拟宠物 + M3 真实宠物 + 硬件）"""
+"""宠物相关 ORM 模型（M2 虚拟宠物 + M3 真实宠物 + 硬件）"""
 from sqlalchemy import Column, Integer, String, DateTime, Date, Boolean, Text, Numeric, ForeignKey, Index, Time
-from sqlalchemy.dialects.postgresql import JSONB
+from .json_types import PortableJSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
@@ -20,11 +20,11 @@ class VirtualPetState(Base):
     level = Column(Integer, nullable=False, default=1)
     exp = Column(Integer, nullable=False, default=0)
     current_skin = Column(String(50), nullable=False, default="default")
-    unlocked_skins = Column(JSONB, nullable=False, default=list)
+    unlocked_skins = Column(PortableJSON, nullable=False, default=list)
     habit_score = Column(Integer, nullable=False, default=0)
     version = Column(Integer, nullable=False, default=1)
     pet_name = Column(String(50), nullable=True)
-    custom_messages = Column(JSONB, nullable=True, default=dict)
+    custom_messages = Column(PortableJSON, nullable=True, default=dict)
     last_interact_at = Column(DateTime, nullable=False, default=func.now())
     last_feed_at = Column(DateTime, nullable=True)
     last_play_at = Column(DateTime, nullable=True)
@@ -90,7 +90,7 @@ class OfflineSyncLog(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     target_type = Column(String(20), nullable=False, default="human")
     sync_type = Column(String(20), nullable=False)
-    payload = Column(JSONB, nullable=False)
+    payload = Column(PortableJSON, nullable=False)
     synced_at = Column(DateTime, nullable=False, default=func.now())
     created_at = Column(DateTime, nullable=False, default=func.now())
 

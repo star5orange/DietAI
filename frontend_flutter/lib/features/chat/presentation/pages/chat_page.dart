@@ -1,12 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../services/chat_service.dart';
 import '../../../../services/food_service.dart';
 import '../../../../core/constants/app_constants.dart';
@@ -15,8 +20,11 @@ import '../../../advisor/presentation/pages/advisor_style_page.dart';
 import '../../../advisor/data/services/advisor_service.dart';
 import '../../../camera/presentation/widgets/camera_source_sheet.dart';
 import '../../../pet/data/real_pet_api_service.dart';
+import '../../../profile/presentation/providers/profile_provider.dart';
 import '../../../camera/presentation/pages/camera_page.dart';
 import '../../../../core/services/api_service.dart';
+import '../../../../shared/utils/species_utils.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 /// 页面 → 对话携带的上下文（PRD 4.8）。
 ///
@@ -78,12 +86,36 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final FocusNode _inputFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
 
+  /// 豆包式历史抽屉：左侧滑出、占屏宽 2/3
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final TextEditingController _drawerSearchController =
+      TextEditingController();
+  List<ChatSessionSummary> _drawerSessions = [];
+  bool _drawerLoading = false;
+  String _drawerKeyword = '';
+
   int? _currentSessionId;
   List<ChatMessageDetail> _messages = [];
+
+  /// 本轮发出去的成分表照片缩略图（仅本地内存，按用户消息 id 索引）。
+  /// 只用于对话内预览，不回传后端、不写历史；换上下文域时清空。
+  final Map<int, Uint8List> _localImages = {};
+  final ImagePicker _imagePicker = ImagePicker();
   bool _isLoading = false;
   bool _isSending = false;
   String? _errorMessage;
   String _currentStyleName = '获取中...';
+
+  /// 豆包式输入栏：输入文字后隐藏相机/语音并显示发送键
+  bool _hasTextInput = false;
+  void _onInputTextChanged() {
+    final hasText = _messageController.text.trim().isNotEmpty;
+    if (hasText != _hasTextInput) {
+      setState(() {
+        _hasTextInput = hasText;
+      });
+    }
+  }
 
   /// 当前上下文域（PRD D18）：默认「人的饮食对话」，可一键切到宠物模式。
   /// 切换后走独立的 session_type（1=人 / 6=宠物），数据与人/家人对话不混用。
@@ -135,6 +167,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     _currentSessionId = widget.sessionId;
     _initializeChat();
     _loadAdvisorStyle();
+    // 豆包式输入栏：有文字时相机/语音隐藏并显示发送键
+    _messageController.addListener(_onInputTextChanged);
   }
 
   Future<void> _loadAdvisorStyle() async {
@@ -208,7 +242,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   @override
   void dispose() {
+    _messageController.removeListener(_onInputTextChanged);
     _messageController.dispose();
+    _drawerSearchController.dispose();
     _inputFocusNode.dispose();
     _scrollController.dispose();
     _voiceTimer?.cancel();
@@ -304,11 +340,39 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Future<void> _initializeChat() async {
+    // 会话保活：切到导航栏其它 tab 再回首页时 go_router 会重建本页，
+    // 这里先复用上次的活跃会话，避免每次回来都新开一段对话；
+    // 用户想另起一段用抽屉里的「新建对话」（会清掉这个记录）。
+    _currentSessionId ??= await _readSavedSessionId();
     if (_currentSessionId != null) {
       await _loadSessionMessages();
-    } else {
-      await _createNewSession();
+      // 加载成功即复用；失败说明该会话已失效（被删/换了账号），丢弃后新建
+      if (_errorMessage == null) return;
+      await _clearSavedSessionId();
+      _currentSessionId = null;
     }
+    await _createNewSession();
+  }
+
+  /// 活跃会话的本地存储 key：按账号 + 会话域隔离（同设备多账号互不影响）
+  String get _activeSessionKey {
+    final userId = ref.read(currentUserProvider)?.id ?? 0;
+    return 'active_chat_session_${userId}_$_sessionType';
+  }
+
+  Future<int?> _readSavedSessionId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_activeSessionKey);
+  }
+
+  Future<void> _saveSessionId(int sessionId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_activeSessionKey, sessionId);
+  }
+
+  Future<void> _clearSavedSessionId() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_activeSessionKey);
   }
 
   Future<void> _createNewSession() async {
@@ -328,6 +392,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           _currentSessionId = response.data!.sessionId;
           _isLoading = false;
         });
+        await _saveSessionId(response.data!.sessionId);
       } else {
         setState(() {
           _errorMessage = response.message;
@@ -421,8 +486,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   // ---------- 拍照记录（PRD 4.9）：对话内快捷入口，复用相机页 AI 图像分析链路 ----------
   //
-  // 体检报告上传为低频操作，不常驻对话栏：入口在「体检」页（自带 5.4 隐私提醒
-  // 与 AI 分析开关），对话内由 Agent 按话题引导前往（见 registry 提示词）。
+  // 体检报告在弹窗内单列一项（不常驻对话栏）：体检上传页自带 5.4 隐私提醒与 AI
+  // 分析开关，选中后直接跳转，对话内亦可由 Agent 按话题引导前往（见 registry 提示词）。
   Future<void> _openCameraRecord() async {
     final now = DateTime.now();
     final today =
@@ -439,6 +504,16 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       ),
     );
     if (!mounted || source == null) return;
+    // 体检报告不是饮食识别：跳体检上传页（自带隐私提醒与分析开关），不进相机页
+    if (CameraSheetSource.isExamReport(source)) {
+      context.push('/exam/upload');
+      return;
+    }
+    // 成分表评价（对话）：不进相机页记录链路，就地取图后直接发给 AI 助手做评价
+    if (CameraSheetSource.isLabelReview(source)) {
+      await _pickReviewImage(useGallery: CameraSheetSource.useGallery(source));
+      return;
+    }
     // 弹窗已选定目的（餐食/包装），取景器内锁定模式不再显示切换选项
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -452,25 +527,66 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     );
   }
 
+  /// 成分表评价（对话）：就地取图（拍照/相册）→ 压到 1024/85 → base64 → 随消息发给 AI 助手
+  ///
+  /// 与「拍营养成分表」记录链路（CameraPage → 食物记录）不同，这里不做食物记录，
+  /// 只把图连同用户诉求发给 /deep/chat，由后端 OCR 后结合健康档案给评价与购买建议。
+  Future<void> _pickReviewImage({required bool useGallery}) async {
+    if (_isSending) return;
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: useGallery ? ImageSource.gallery : ImageSource.camera,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      if (picked == null || !mounted) return;
+      final bytes = await picked.readAsBytes();
+      if (bytes.isEmpty || !mounted) return;
+      await _sendText(
+        '',
+        imageBase64: base64Encode(bytes),
+        localImageBytes: bytes,
+      );
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('成分表照片读取失败，请重试');
+      }
+    }
+  }
+
   /// 发送一条文本并走流式链路（输入框与卡片快捷选项共用）
-  Future<void> _sendText(String message) async {
-    if (message.isEmpty || _isSending) return;
+  ///
+  /// [imageBase64] / [localImageBytes]：本轮附带的成分表照片（base64 走请求，
+  /// bytes 仅作对话内缩略图预览）。带图时 message 允许为空（用户只发图）。
+  Future<void> _sendText(
+    String message, {
+    String? imageBase64,
+    Uint8List? localImageBytes,
+  }) async {
+    if ((message.isEmpty && imageBase64 == null) || _isSending) return;
 
     // 页面上下文（PRD 4.8）：首条消息附带"当前正在看什么"，界面只展示用户原话
     final ctx = widget.pageContext;
-    final outgoing = (_contextPending && !_contextDismissed && ctx != null)
-        ? '【当前页面上下文】${ctx.hint}\n\n$message'
-        : message;
+    final outgoing = message.isEmpty
+        ? message
+        : ((_contextPending && !_contextDismissed && ctx != null)
+            ? '【当前页面上下文】${ctx.hint}\n\n$message'
+            : message);
     _contextPending = false;
 
-    // 添加用户消息到界面
+    // 添加用户消息到界面（带图轮的缩略图按消息 id 存本地 Map）
+    final userMessageId = DateTime.now().millisecondsSinceEpoch;
     setState(() {
       _messages.add(ChatMessageDetail(
-        id: DateTime.now().millisecondsSinceEpoch,
+        id: userMessageId,
         role: 'user',
         content: message,
         timestamp: DateTime.now().toIso8601String(),
       ));
+      if (localImageBytes != null) {
+        _localImages[userMessageId] = localImageBytes;
+      }
       _isSending = true;
     });
 
@@ -499,12 +615,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         sessionType: _sessionType,
         petId: _petId,
         useDeepAgent: widget.useDeepAgent,
+        imageBase64: imageBase64,
       )) {
         if (event.isSession && event.sessionId != null) {
-          // 更新会话ID
-          setState(() {
-            _currentSessionId = event.sessionId;
-          });
+          // 更新会话ID（后端可能在本轮新建/切换会话，同步持久化以免下次进来又新开）
+          final newSessionId = event.sessionId!;
+          if (newSessionId != _currentSessionId) {
+            setState(() {
+              _currentSessionId = newSessionId;
+            });
+            await _saveSessionId(newSessionId);
+          }
         } else if (event.isCard && event.card != null) {
           // 动作结果卡片（记录结果卡，PRD 4.8）
           setState(() {
@@ -618,7 +739,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
 
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: const Color(0xFFF5F7F6),
+      // 豆包式：首页历史对话从左侧滑出，占屏宽 2/3
+      drawer: widget.isHomeEntry ? _buildHistoryDrawer() : null,
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -643,9 +767,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         ),
         backgroundColor: Colors.white,
         elevation: 0,
-        // 首页主入口不给返回箭头（PRD D15）
+        // 首页主入口：左上角菜单键打开历史抽屉（豆包式）；否则给返回箭头
         leading: widget.isHomeEntry
-            ? null
+            ? IconButton(
+                icon: const Icon(Icons.menu, color: Color(0xFF222222)),
+                tooltip: '历史对话',
+                onPressed: _openHistoryDrawer,
+              )
             : IconButton(
                 icon:
                     const Icon(Icons.arrow_back_ios, color: Color(0xFF222222)),
@@ -653,18 +781,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               ),
         automaticallyImplyLeading: false,
         actions: [
-          // 数据看板：页面层入口保留在页面层，可切换访问（PRD D15）
-          // go 平级切换，与看板页右上角「回对话」(go('/')) 完全对称
-          if (widget.isHomeEntry)
-            IconButton(
-              icon: const Icon(
-                Icons.grid_view_rounded,
-                size: 22,
-                color: Color(0xFF2BAF74),
-              ),
-              tooltip: '数据看板',
-              onPressed: () => context.go('/dashboard'),
-            ),
           // 人 ↔ 宠物 模式切换（PRD 4.8 / D18）
           IconButton(
             icon: Icon(
@@ -675,41 +791,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             tooltip: _sessionType == 6 ? '切换到人的饮食对话' : '切换到宠物模式',
             onPressed: _switchingMode ? null : _toggleAgentMode,
           ),
-          IconButton(
-            icon: const Icon(
-              Icons.history,
-              size: 24,
-              color: Color(0xFF2BAF74),
-            ),
-            tooltip: '历史记录',
-            onPressed: () => _navigateToChatHistory(),
-          ),
-          // 会话信息收进溢出菜单，降低 AppBar 密度
-          if (_currentSessionId != null)
-            PopupMenuButton<String>(
-              icon: const Icon(
-                Icons.more_vert,
-                size: 22,
-                color: Color(0xFF2BAF74),
-              ),
-              tooltip: '更多',
-              onSelected: (value) {
-                if (value == 'session_info') _showSessionInfo();
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                  value: 'session_info',
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline,
-                          size: 18, color: Color(0xFF2BAF74)),
-                      SizedBox(width: 8),
-                      Text('会话信息'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
         ],
       ),
       body: body,
@@ -740,6 +821,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     setState(() {
       _messages = [];
       _cardsByMessageId.clear();
+      _localImages.clear();
       _currentSessionId = null;
       // 页面上下文属于原上下文域（如人的饮食记录），换域后不得再注入（PRD 4.8 / D18）
       _contextPending = false;
@@ -790,7 +872,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               ListTile(
                 leading: const Icon(Icons.pets, color: Color(0xFF2BAF74)),
                 title: Text((pet['name'] ?? '未命名').toString()),
-                subtitle: Text((pet['species'] ?? '').toString()),
+                subtitle: Text(() {
+                  final species = pet['species'] as String? ?? '';
+                  return species.isEmpty
+                      ? ''
+                      : '$species · ${getSpeciesLabel(species)}';
+                }()),
                 onTap: () => Navigator.of(ctx).pop(pet),
               ),
           ],
@@ -907,14 +994,26 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              color: const Color(0xFF2BAF74).withValues(alpha: 0.1),
+              // 首页主入口直接展示产品 LOGO，不加图标底色圆
+              color: _sessionType == 1
+                  ? Colors.transparent
+                  : const Color(0xFF2BAF74).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(40),
             ),
-            child: Icon(
-              welcomeIcon,
-              size: 40,
-              color: const Color(0xFF2BAF74),
-            ),
+            child: _sessionType == 1
+                ? ClipOval(
+                    child: Image.asset(
+                      'assets/images/logo_welcome.png',
+                      width: 80,
+                      height: 80,
+                      fit: BoxFit.cover,
+                    ),
+                  )
+                : Icon(
+                    welcomeIcon,
+                    size: 40,
+                    color: const Color(0xFF2BAF74),
+                  ),
           ),
           const SizedBox(height: 24),
           Text(
@@ -1019,6 +1118,74 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     return '帮我记录：夜宵吃了一碗泡面';
   }
 
+  /// 助手消息的 Markdown 渲染：把 AI 回复里的表格 / 加粗 / 列表渲染成真正的可视化内容
+  /// （此前用纯 Text，Markdown 表格会以 `| 列 | 列 |` 原文暴露）。
+  ///
+  /// 表格列宽刻意用 [IntrinsicColumnWidth]：flutter_markdown 仅在列宽为
+  /// Fixed/Intrinsic 时才会把表格包进横向滚动容器，避免多商品成分对比表在气泡里溢出。
+  Widget _buildAssistantMarkdown(String data) {
+    const base = TextStyle(color: Color(0xFF222222), fontSize: 16, height: 1.5);
+    return MarkdownBody(
+      data: data,
+      styleSheetTheme: MarkdownStyleSheetBaseTheme.material,
+      styleSheet: MarkdownStyleSheet(
+        p: base,
+        a: const TextStyle(color: Color(0xFF2BAF74)),
+        strong: const TextStyle(fontWeight: FontWeight.bold),
+        em: const TextStyle(fontStyle: FontStyle.italic),
+        h1: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 18,
+            height: 1.4,
+            fontWeight: FontWeight.bold),
+        h2: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 17,
+            height: 1.4,
+            fontWeight: FontWeight.bold),
+        h3: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 16,
+            height: 1.4,
+            fontWeight: FontWeight.bold),
+        h4: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 16,
+            height: 1.4,
+            fontWeight: FontWeight.bold),
+        h5: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 16,
+            height: 1.4,
+            fontWeight: FontWeight.w600),
+        h6: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 16,
+            height: 1.4,
+            fontWeight: FontWeight.w600),
+        listBullet: base,
+        code: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 14,
+            backgroundColor: Color(0xFFF2F3F5)),
+        blockSpacing: 8,
+        listIndent: 20,
+        tableHead: const TextStyle(
+            color: Color(0xFF222222),
+            fontSize: 14,
+            fontWeight: FontWeight.w600),
+        tableBody:
+            const TextStyle(color: Color(0xFF222222), fontSize: 14, height: 1.3),
+        tableHeadAlign: TextAlign.left,
+        tableColumnWidth: const IntrinsicColumnWidth(),
+        tableBorder: TableBorder.all(color: const Color(0xFFE3E5E8), width: 1),
+        tableCellsPadding:
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        tablePadding: const EdgeInsets.only(bottom: 8),
+      ),
+    );
+  }
+
   Widget _buildMessageBubble(
     ChatMessageDetail message, {
     bool allowRetry = false,
@@ -1081,6 +1248,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // 用户发出的成分表照片：本地缩略图（仅内存，历史消息无图）
+                        if (isUser && _localImages[message.id] != null) ...[
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.memory(
+                              _localImages[message.id]!,
+                              width: 160,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          if (message.content.isNotEmpty)
+                            const SizedBox(height: 8),
+                        ],
                         // 仅本轮流式输出中的占位显示思考态（历史空消息/纯卡片轮不显示）
                         if (!isUser &&
                             message.content.isEmpty &&
@@ -1108,17 +1288,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                               ),
                             ],
                           )
-                        else
-                          Text(
-                            message.content,
-                            style: TextStyle(
-                              color: isUser
-                                  ? Colors.white
-                                  : const Color(0xFF222222),
-                              fontSize: 16,
-                              height: 1.4,
-                            ),
-                          ),
+                        else if (message.content.isNotEmpty)
+                          isUser
+                              ? Text(
+                                  message.content,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    height: 1.4,
+                                  ),
+                                )
+                              : _buildAssistantMarkdown(message.content),
                         const SizedBox(height: 4),
                         Text(
                           _formatTime(message.timestamp),
@@ -1151,7 +1331,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       ],
                     ),
                   ),
-                if (isUser && allowRetry)
+                // 纯图片轮（无文字）不提供重试：重发空文本会丢掉照片上下文
+                if (isUser && allowRetry && message.content.isNotEmpty)
                   _buildRetryEntry(message.content, message.id),
               ],
             ),
@@ -1286,7 +1467,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   Widget _buildInputArea() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -1302,124 +1483,128 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           children: [
             Expanded(
               child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF5F7F6),
-                  borderRadius: BorderRadius.circular(25),
-                ),
-                child: TextField(
-                  controller: _messageController,
-                  focusNode: _inputFocusNode,
-                  decoration: InputDecoration(
-                    hintText: _isRecording
-                        ? '正在录音 ${_voiceSeconds}s，点右侧红色按钮停止并识别'
-                        : '输入消息...',
-                    hintStyle: const TextStyle(
-                      color: Color(0xFF999999),
-                      fontSize: 16,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(25),
-                      borderSide: BorderSide.none,
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(25),
-                      borderSide: BorderSide.none,
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(25),
-                      borderSide:
-                          const BorderSide(color: Color(0xFF2BAF74), width: 2),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 12,
-                    ),
-                    filled: true,
-                    fillColor: const Color(0xFFF5F7F6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F7F6),
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: Color(0xFF222222),
+                  child: TextField(
+                    controller: _messageController,
+                    focusNode: _inputFocusNode,
+                    decoration: InputDecoration(
+                      hintText: _isRecording
+                          ? '正在录音 ${_voiceSeconds}s，点右侧红色按钮停止并识别'
+                          : '输入消息...',
+                      hintStyle: const TextStyle(
+                        color: Color(0xFF999999),
+                        fontSize: 14,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: const BorderSide(
+                            color: Color(0xFF2BAF74), width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFFF5F7F6),
+                      // 豆包式：未输入文字时框内左相机（人域）+ 右语音；
+                      // 输入文字后相机/语音隐藏，右侧出现发送键
+                      prefixIcon: (!_hasTextInput &&
+                              _sessionType != 6 &&
+                              !_isRecording)
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: IconButton(
+                                tooltip: '拍照记录',
+                                icon: const Icon(
+                                  Icons.camera_alt_outlined,
+                                  color: Color(0xFF2BAF74),
+                                  size: 18,
+                                ),
+                                onPressed: _openCameraRecord,
+                              ),
+                            )
+                          : null,
+                      suffixIcon: _hasTextInput
+                          ? null
+                          : Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 6),
+                              child: _isRecognizingVoice
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(11),
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Color(0xFF2BAF74),
+                                      ),
+                                    )
+                                  : IconButton(
+                                      tooltip: _isRecording
+                                          ? '停止并识别'
+                                          : '语音输入',
+                                      icon: Icon(
+                                        _isRecording
+                                            ? Icons.stop_rounded
+                                            : Icons.mic_none_rounded,
+                                        color: _isRecording
+                                            ? const Color(0xFFE53935)
+                                            : const Color(0xFF2BAF74),
+                                        size: 18,
+                                      ),
+                                      onPressed: _toggleVoiceInput,
+                                    ),
+                            ),
+                    ),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF222222),
+                    ),
+                    maxLines: null,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendMessage(),
                   ),
-                  maxLines: null,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => _sendMessage(),
                 ),
-              ),
             ),
             const SizedBox(width: 8),
-            // 拍照记录（PRD 4.9）：高频动作单击直达相机页（AI 图像分析，营养自动补齐落库）。
-            // 体检报告为低频操作，不常驻对话栏——由体检页上传入口与 Agent 引导承接（5.4）。
-            // 仅人的对话域显示（D18/D3）：宠物模式无宠物图像链路，且不能把记录落进人的数据域
-            if (_sessionType != 6)
-              Container(
-                width: 48,
-                height: 48,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF5F7F6),
-                  shape: BoxShape.circle,
-                ),
-                child: IconButton(
-                  tooltip: '拍照记录',
-                  icon: const Icon(
-                    Icons.camera_alt_outlined,
-                    color: Color(0xFF2BAF74),
-                    size: 20,
-                  ),
-                  onPressed: _openCameraRecord,
-                ),
+            // 发送键：输入文字后出现（豆包式）
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 150),
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: ScaleTransition(scale: animation, child: child),
               ),
-            const SizedBox(width: 8),
-            // 语音输入（PRD 4.9）：录音中变红，识别中转圈
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: _isRecording
-                    ? const Color(0xFFFFEBEE)
-                    : const Color(0xFFF5F7F6),
-                shape: BoxShape.circle,
-              ),
-              child: _isRecognizingVoice
-                  ? const Padding(
-                      padding: EdgeInsets.all(14),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Color(0xFF2BAF74),
+              child: _hasTextInput
+                  ? Container(
+                      key: const ValueKey('send'),
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: _isSending
+                            ? const Color(0xFFE6FAF0)
+                            : const Color(0xFF2BAF74),
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        icon: Icon(
+                          Icons.send_rounded,
+                          color:
+                              _isSending ? const Color(0xFF999999) : Colors.white,
+                          size: 18,
+                        ),
+                        onPressed: _isSending ? null : _sendMessage,
                       ),
                     )
-                  : IconButton(
-                      tooltip: _isRecording ? '停止并识别' : '语音输入',
-                      icon: Icon(
-                        _isRecording
-                            ? Icons.stop_rounded
-                            : Icons.mic_none_rounded,
-                        color: _isRecording
-                            ? const Color(0xFFE53935)
-                            : const Color(0xFF2BAF74),
-                        size: 20,
-                      ),
-                      onPressed: _toggleVoiceInput,
-                    ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: _isSending
-                    ? const Color(0xFFE6FAF0)
-                    : const Color(0xFF2BAF74),
-                shape: BoxShape.circle,
-              ),
-              child: IconButton(
-                icon: Icon(
-                  Icons.send_rounded,
-                  color: _isSending ? const Color(0xFF999999) : Colors.white,
-                  size: 20,
-                ),
-                onPressed: _isSending ? null : _sendMessage,
-              ),
+                  : const SizedBox.shrink(key: ValueKey('no-send')),
             ),
           ],
         ),
@@ -1435,15 +1620,37 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
     final cards = _cardsByMessageId[messageId];
     if (cards == null || cards.isEmpty) return const SizedBox.shrink();
+
+    // 一次叙述里提到多样食物时，模型会各调一次写操作、各返回一张确认卡；
+    // 逐卡渲染就会出现多个同名「帮我记录」。这里把本轮所有「要帮你记录吗」
+    // 确认卡聚合成一排按钮（要记/不记的都是这一批），其余卡片原样渲染。
+    final confirmCards = cards.where(_isRecordConfirmCard).toList();
+
+    final children = <Widget>[];
+    var confirmRowAdded = false;
+    for (final card in cards) {
+      if (_isRecordConfirmCard(card)) {
+        if (!confirmRowAdded) {
+          confirmRowAdded = true;
+          children.add(
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: _buildRecordConfirmButtons(confirmCards),
+            ),
+          );
+        }
+        continue;
+      }
+      children.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: _buildActionCard(card),
+        ),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final card in cards)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: _buildActionCard(card),
-          ),
-      ],
+      children: children,
     );
   }
 
@@ -2541,13 +2748,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     );
   }
 
-  /// 操作确认卡（PRD 4.8：提醒已设置 / 已发送）
-  /// 生产者是二期的 set_reminder（可撤销）与 send_reminder_to_family（仅发提醒，不可撤销）
+  /// 操作确认卡（PRD 4.8：提醒已设置 / 已发送 / 档案已更新）
+  /// 生产者：二期的 set_reminder（可撤销）与 send_reminder_to_family（仅发提醒，不可撤销），
+  /// 以及 V6 健康档案类写操作（运动 / 疾病 / 过敏原 / 健康目标）。
   Widget _buildActionConfirmCard(_ActionCardState card) {
     final data = card.data;
     final jump = _asMap(data['jump']);
     final message = (card.payload['message'] ?? '').toString();
-    final isReminder = card.action == 'set_reminder';
+    final meta = _actionConfirmMeta(card.action);
     final undone = card.undone;
     final accent = undone ? const Color(0xFF9E9E9E) : const Color(0xFF2BAF74);
 
@@ -2564,12 +2772,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         ),
       );
     }
-    final detail = isReminder
-        ? _reminderDetailLine(data)
-        : [
-            (data['member_name'] ?? data['target_name'] ?? '').toString(),
-            (data['content'] ?? '').toString(),
-          ].where((text) => text.isNotEmpty).join(' · ');
+    final detail = _actionConfirmDetailLine(card.action, data);
     if (detail.isNotEmpty) {
       body.add(
         Padding(
@@ -2584,10 +2787,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     return _cardShell(
       accent: accent,
-      icon: undone
-          ? Icons.undo
-          : (isReminder ? Icons.alarm_on_outlined : Icons.favorite_border),
-      title: undone ? '已撤销' : (isReminder ? '提醒已设置' : '提醒已发送'),
+      icon: undone ? Icons.undo : meta.icon,
+      title: undone ? '已撤销' : meta.title,
       body: body.isEmpty
           ? [
               const Text(
@@ -2614,15 +2815,86 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 : const Text('撤销', style: TextStyle(fontSize: 13)),
           ),
         _jumpButton(
-          isReminder ? '管理提醒' : '查看家人健康',
-          () => _openCardJump(
-            jump.isEmpty
-                ? {'page': isReminder ? 'reminder' : 'family_health'}
-                : jump,
-          ),
+          meta.jumpLabel,
+          () => _openCardJump(jump.isEmpty ? meta.defaultJump : jump),
           color: accent,
         ),
       ],
+    );
+  }
+
+  /// 操作确认卡的明细行：提醒类走「重复方式 + 时间 + 标题」，
+  /// 家人提醒走「谁 · 内容」，其余动作优先用后端给的 data['detail']
+  String _actionConfirmDetailLine(String action, Map<String, dynamic> data) {
+    if (action == 'set_reminder') return _reminderDetailLine(data);
+    if (action == 'send_reminder_to_family') {
+      return [
+        (data['member_name'] ?? data['target_name'] ?? '').toString(),
+        (data['content'] ?? '').toString(),
+      ].where((text) => text.isNotEmpty).join(' · ');
+    }
+    return (data['detail'] ?? '').toString();
+  }
+
+  /// 操作确认卡的动作 → (标题 / 图标 / 跳转按钮文案 / 跳转目标) 映射。
+  /// 后端新增写动作时在这里补一条即可，未登记的走通用兜底。
+  _ActionConfirmMeta _actionConfirmMeta(String action) {
+    switch (action) {
+      case 'set_reminder':
+        return const _ActionConfirmMeta(
+          '提醒已设置',
+          Icons.alarm_on_outlined,
+          '管理提醒',
+          {'page': 'reminder'},
+        );
+      case 'send_reminder_to_family':
+        return const _ActionConfirmMeta(
+          '提醒已发送',
+          Icons.favorite_border,
+          '查看家人健康',
+          {'page': 'family_health'},
+        );
+      case 'record_exercise':
+        return const _ActionConfirmMeta(
+          '运动已记录',
+          Icons.directions_run,
+          '查看健康页',
+          {'page': 'health'},
+        );
+      case 'record_disease':
+        return const _ActionConfirmMeta(
+          '档案已更新',
+          Icons.medical_information_outlined,
+          '查看健康页',
+          {'page': 'health'},
+        );
+      case 'mark_disease_recovered':
+        return const _ActionConfirmMeta(
+          '已标记痊愈',
+          Icons.verified_outlined,
+          '查看健康页',
+          {'page': 'health'},
+        );
+      case 'record_allergy':
+        return const _ActionConfirmMeta(
+          '过敏原已记录',
+          Icons.warning_amber_outlined,
+          '查看健康页',
+          {'page': 'health'},
+        );
+      case 'set_health_target':
+        return const _ActionConfirmMeta(
+          '目标已更新',
+          Icons.flag_outlined,
+          '查看目标',
+          {'page': 'health'},
+        );
+    }
+    return const _ActionConfirmMeta(
+      '已完成',
+      Icons.check_circle_outline,
+      '查看',
+      {'page': 'health'},
     );
   }
 
@@ -2642,6 +2914,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   /// 待确认卡（PRD 4.3 / 4.8）：一句追问 + 快捷选项，点一下即答完，不跳转页面
   Widget _buildPendingConfirmCard(_ActionCardState card) {
     final data = card.data;
+    // 叙述性提及的「要帮你记录吗？」确认卡（backend field=explicit_request）：只渲染
+    // 气泡下方一排按钮，不做成大卡片（需求 2026-09-26）。正常情况下这类卡已在
+    // _buildMessageCards 里被聚合处理，这里兜底单卡。
+    if (data['field'] == 'explicit_request') {
+      return _buildRecordConfirmButtons([card]);
+    }
     final question = (data['question'] ?? '这个份量大概是多少？').toString();
     final rawOptions = data['options'];
     final options = rawOptions is List ? rawOptions : const [];
@@ -2734,11 +3012,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     Map<String, dynamic> option,
     bool answered,
   ) {
-    const accent = Color(0xFFF39C12);
     final label = (option['label'] ?? '').toString();
-    final enabled = !answered && !_isSending;
+    return _pendingPill(
+      label,
+      !answered && !_isSending,
+      () => _answerPendingCard(card, option),
+    );
+  }
+
+  /// 待确认卡的按钮样式（量词快捷选项与记录确认按钮共用）
+  Widget _pendingPill(String label, bool enabled, VoidCallback onTap) {
+    const accent = Color(0xFFF39C12);
     return InkWell(
-      onTap: enabled ? () => _answerPendingCard(card, option) : null,
+      onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -2776,6 +3062,212 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final label = (option['label'] ?? '').toString();
     setState(() => card.answeredLabel = label);
     await _sendText(label);
+  }
+
+  /// 叙述性提及的「要帮你记录吗？」确认卡：渲染成 AI 意见气泡下方一排按钮，
+  /// 不做成「需要确认一下」大卡片（需求 2026-09-26）。
+  ///
+  /// [cards] 是本轮全部确认卡：通常只有一条；用户一次说到多味食物时，
+  /// 模型会对每样各出一张卡，这里合并成一排按钮，避免出现多个同名「帮我记录」。
+  Widget _buildRecordConfirmButtons(List<_ActionCardState> cards) {
+    if (cards.isEmpty) return const SizedBox.shrink();
+    final answered =
+        cards.any((card) => card.answeredLabel != null) || _isSending;
+    final names = cards.map(_confirmCardItemName).toList();
+    final recordLabel =
+        cards.length == 1 ? '帮我记录' : '帮我记录这 ${cards.length} 样';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (cards.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                '将记录：${names.join('、')}',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF999999)),
+              ),
+            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _pendingPill(
+                recordLabel,
+                !answered,
+                () => _answerRecordConfirmCards(cards, record: true),
+              ),
+              _pendingPill(
+                '先不记了',
+                !answered,
+                () => _answerRecordConfirmCards(cards, record: false),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 是否是「要帮你记录吗」确认卡（叙述性提及但未明确要求记录）
+  bool _isRecordConfirmCard(_ActionCardState card) =>
+      card.cardType == 'pending_confirm' &&
+      card.data['field'] == 'explicit_request';
+
+  /// 确认卡待记录项的名字：饮食取菜名、饮水取饮品与量、体重固定「体重」
+  String _confirmCardItemName(_ActionCardState card) {
+    // 后端在建卡时写好了 label（新动作入参各不相同，靠 params 猜不出来）
+    final label = card.data['label'];
+    if (label != null && label.toString().trim().isNotEmpty) {
+      return label.toString().trim();
+    }
+    final raw = card.data['params'];
+    final params =
+        raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    final food = params['food_name'];
+    if (food != null && food.toString().trim().isNotEmpty) {
+      return food.toString().trim();
+    }
+    final amountText = params['amount_text'];
+    if (amountText != null && amountText.toString().trim().isNotEmpty) {
+      final drink = params['drink_type'];
+      return drink == null
+          ? amountText.toString().trim()
+          : '${drink.toString().trim()} ${amountText.toString().trim()}';
+    }
+    final weight = params['weight_kg'];
+    if (weight != null) return '体重 ${weight}kg';
+    final drink = params['drink_type'];
+    if (drink != null && drink.toString().trim().isNotEmpty) {
+      return drink.toString().trim();
+    }
+    // 参数缺失时退回动作语义，避免按钮文案出现「记录」这种空话
+    switch (card.data['action']) {
+      case 'record_food':
+        return '饮食';
+      case 'record_water':
+        return '饮水';
+      case 'record_weight':
+        return '体重';
+    }
+    return _cardTitle(card.data);
+  }
+
+  /// 确认卡作答：记录这一批 / 都不记。
+  ///
+  /// 点「帮我记录」直调后端确认接口：卡片上的 confirm_token 指向服务端预先备好的
+  /// 动作调用（份量、餐次、AI 估算热量都在里面），后端按原参数落库、不再经模型
+  /// 重新理解，凭证取出即作废，重复点击不会写第二条。
+  /// 早于本版本的历史卡片没有凭证，退回「把按钮文案当消息发出去」的旧路径。
+  /// 「先不记了」只做本地标记，不落库。
+  Future<void> _answerRecordConfirmCards(
+    List<_ActionCardState> cards, {
+    required bool record,
+  }) async {
+    if (_isSending || cards.any((card) => card.answeredLabel != null)) return;
+    final names = cards.map(_confirmCardItemName).toList();
+    final label = record
+        ? (cards.length == 1 ? '帮我记录' : '帮我记录这 ${cards.length} 样')
+        : '先不记了';
+    setState(() {
+      for (final card in cards) {
+        card.answeredLabel = label;
+      }
+    });
+    if (!record) return;
+
+    final tokens = cards
+        .map((card) => card.confirmToken)
+        .where((token) => token.isNotEmpty)
+        .toList();
+    if (tokens.length < cards.length) {
+      await _sendText('帮我记录：${names.join('、')}');
+      return;
+    }
+    await _submitRecordConfirms(cards, tokens);
+  }
+
+  /// 提交确认凭证，并把后端返回的结果卡挂到一条新的 AI 消息下
+  Future<void> _submitRecordConfirms(
+    List<_ActionCardState> cards,
+    List<String> tokens,
+  ) async {
+    setState(() => _isSending = true);
+    try {
+      final response = await _chatService.confirmPendingActions(
+        confirmTokens: tokens,
+        sessionId: _currentSessionId,
+      );
+      if (!mounted) return;
+
+      // ApiService 把响应体解包：message 在顶层，cards/session_id 在 data 里
+      final data = response.data;
+      final resultCards = <_ActionCardState>[];
+      final message = response.message;
+      if (data is Map) {
+        final rawCards = data['cards'];
+        if (rawCards is List) {
+          for (final item in rawCards) {
+            if (item is Map) {
+              resultCards.add(_ActionCardState(Map<String, dynamic>.from(item)));
+            }
+          }
+        }
+      }
+
+      setState(() {
+        _isSending = false;
+        final newSessionId = data is Map ? data['session_id'] : null;
+        if (newSessionId is int) _currentSessionId = newSessionId;
+        final aiMessageId = DateTime.now().millisecondsSinceEpoch;
+        _messages.add(ChatMessageDetail(
+          id: aiMessageId,
+          role: 'assistant',
+          content: message.isNotEmpty ? message : '已完成。',
+          timestamp: DateTime.now().toIso8601String(),
+        ));
+        if (resultCards.isNotEmpty) {
+          _cardsByMessageId[aiMessageId] = resultCards;
+        }
+      });
+      _scrollToBottom();
+
+      if (!response.success) {
+        _showSnackBar(message.isNotEmpty ? message : '记录失败，请稍后再试');
+      } else {
+        _refreshProfileProvidersFor(cards);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      // 网络异常下凭证还没被消费，放开按钮让用户能再点一次
+      setState(() {
+        _isSending = false;
+        for (final card in cards) {
+          card.answeredLabel = null;
+        }
+      });
+      _showSnackBar('记录失败: $e');
+    }
+  }
+
+  /// 确认凭证落库成功后，点名刷新被写入数据所属的 provider。
+  ///
+  /// provider 的 notifier 构造只把状态置为 loading、不会自动拉取，
+  /// 所以这里必须显式调 load*（invalidate 只会置回 loading，页面拿不到数据）。
+  void _refreshProfileProvidersFor(List<_ActionCardState> cards) {
+    final actions = cards.map((card) => card.action).toSet();
+    if (actions.contains('record_disease') ||
+        actions.contains('mark_disease_recovered')) {
+      ref.read(diseasesProvider.notifier).loadDiseases();
+    }
+    if (actions.contains('record_allergy')) {
+      ref.read(allergiesProvider.notifier).loadAllergies();
+    }
+    if (actions.contains('set_health_target')) {
+      ref.read(userProfileProvider.notifier).loadUserProfile();
+    }
   }
 
   /// 记录结果卡标题：饮食取菜名，饮水取饮品，体重固定「体重」
@@ -2818,10 +3310,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       final matched = source['nutrition_matched'] == true;
       final nutrition = source['nutrition'];
       final calories = nutrition is Map ? nutrition['calories'] : null;
-      if (matched && calories is num) {
-        parts.add('${calories.toStringAsFixed(0)} kcal');
+      if (calories is num) {
+        // 食物库命中直接给值；库外食物用对话模型的估算值，需标注来源
+        parts.add(
+          matched
+              ? '${calories.toStringAsFixed(0)} kcal'
+              : '约 ${calories.toStringAsFixed(0)} kcal（AI 估算）',
+        );
       } else {
-        parts.add('营养库未命中，暂不计入今日汇总');
+        parts.add('热量待补充');
       }
     }
     return parts.isEmpty ? '—' : parts.join(' · ');
@@ -2920,52 +3417,252 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
 
-  void _navigateToChatHistory() {
-    Navigator.push(
+  /// 打开豆包式历史抽屉（左侧滑出，占屏宽 2/3）
+  void _openHistoryDrawer() {
+    _scaffoldKey.currentState?.openDrawer();
+    _loadDrawerSessions();
+  }
+
+  Future<void> _loadDrawerSessions() async {
+    setState(() => _drawerLoading = true);
+    try {
+      final response = await _chatService.getSessions(
+        sessionType: _sessionType,
+        limit: 30,
+      );
+      if (!mounted) return;
+      setState(() {
+        _drawerSessions = response.data ?? [];
+        _drawerLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _drawerLoading = false);
+    }
+  }
+
+  /// 抽屉内切换会话
+  Future<void> _openSessionFromDrawer(int sessionId) async {
+    Navigator.pop(context);
+    // 记住这次选中的会话，切 tab 回来仍停在这一段（而不是退回上一条活跃会话）
+    await _saveSessionId(sessionId);
+    if (!mounted) return;
+    Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (context) => ChatHistoryPage(
+        builder: (context) => ChatPage(
+          sessionId: sessionId,
           sessionType: _sessionType,
-          onSessionSelected: (sessionId) {
-            Navigator.pop(context);
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ChatPage(
-                  sessionId: sessionId,
-                  sessionType: _sessionType,
-                  title: widget.title,
-                ),
-              ),
-            );
-          },
+          title: widget.title,
+          isHomeEntry: widget.isHomeEntry,
         ),
       ),
     );
   }
 
-  void _showSessionInfo() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('会话信息'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+  /// 抽屉内新建对话
+  Future<void> _newChatFromDrawer() async {
+    Navigator.pop(context);
+    // 主动新建：先丢弃活跃会话记录，否则新页面会把它当成待复用的会话加载回来
+    await _clearSavedSessionId();
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatPage(
+          sessionType: _sessionType,
+          title: widget.title,
+          isHomeEntry: widget.isHomeEntry,
+        ),
+      ),
+    );
+  }
+
+  /// 历史对话抽屉（对齐豆包形态）：搜索 + 最近会话列表 + 底部用户区
+  Widget _buildHistoryDrawer() {
+    final width = MediaQuery.of(context).size.width * 2 / 3;
+    final keyword = _drawerKeyword;
+    final filtered = keyword.isEmpty
+        ? _drawerSessions
+        : _drawerSessions.where((s) => s.title.contains(keyword)).toList();
+
+    return Drawer(
+      width: width,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.only(
+          topRight: Radius.circular(16),
+          bottomRight: Radius.circular(16),
+        ),
+      ),
+      child: SafeArea(
+        child: Column(
           children: [
-            Text('会话ID: ${_currentSessionId ?? '未知'}'),
-            const SizedBox(height: 8),
-            Text('会话类型: ${_chatService.getSessionTypeName(_sessionType)}'),
-            const SizedBox(height: 8),
-            Text('消息数量: ${_messages.length}'),
+            // 搜索 + 新建对话
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 6, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF2F4F3),
+                        borderRadius: BorderRadius.circular(19),
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 10),
+                          const Icon(Icons.search,
+                              size: 18, color: Color(0xFF9AA0A6)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: TextField(
+                              controller: _drawerSearchController,
+                              style: const TextStyle(fontSize: 14),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                border: InputBorder.none,
+                                hintText: '搜索',
+                                hintStyle: TextStyle(
+                                    fontSize: 14, color: Color(0xFF9AA0A6)),
+                              ),
+                              onChanged: (v) =>
+                                  setState(() => _drawerKeyword = v.trim()),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add,
+                        size: 22, color: Color(0xFF222222)),
+                    tooltip: '新建对话',
+                    onPressed: _newChatFromDrawer,
+                  ),
+                ],
+              ),
+            ),
+            // 「最近」标题 + 更多（进完整历史页）
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 12, 4),
+              child: Row(
+                children: [
+                  const Text(
+                    '最近',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF9AA0A6),
+                    ),
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              ChatHistoryPage(sessionType: _sessionType),
+                        ),
+                      );
+                    },
+                    child: const Icon(Icons.more_horiz,
+                        size: 18, color: Color(0xFF9AA0A6)),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: _drawerLoading
+                  ? const Center(
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : filtered.isEmpty
+                      ? const Center(
+                          child: Text(
+                            '暂无历史对话',
+                            style: TextStyle(
+                                fontSize: 13, color: Color(0xFF9AA0A6)),
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          itemCount: filtered.length,
+                          itemBuilder: (context, index) {
+                            final s = filtered[index];
+                            final selected = s.id == _currentSessionId;
+                            return ListTile(
+                              dense: true,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              tileColor:
+                                  selected ? const Color(0xFFEAF6F0) : null,
+                              leading: const Icon(
+                                Icons.chat_bubble_outline,
+                                size: 18,
+                                color: Color(0xFF2BAF74),
+                              ),
+                              title: Text(
+                                s.title.isEmpty ? '新对话' : s.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                              onTap: () => _openSessionFromDrawer(s.id),
+                            );
+                          },
+                        ),
+            ),
+            const Divider(height: 1, color: Color(0xFFEDEFEE)),
+            // 底部用户区
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 14,
+                    backgroundColor: Color(0xFFE8F1EC),
+                    child:
+                        Icon(Icons.person, size: 16, color: Color(0xFF2BAF74)),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _currentStyleName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 13, color: Color(0xFF222222)),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.tune,
+                        size: 18, color: Color(0xFF9AA0A6)),
+                    tooltip: 'AI 顾问风格',
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              AdvisorStylePage(sessionType: _sessionType),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
-          ),
-        ],
       ),
     );
   }
@@ -2992,6 +3689,9 @@ class _ActionCardState {
   /// 撤销凭证（后端据此校验「点哪张撤哪张」）
   String get undoToken => (payload['undo_token'] ?? '').toString();
 
+  /// 确认凭证（后端据此取出这张卡预先备好的动作调用，按原参数落库）
+  String get confirmToken => (data['confirm_token'] ?? '').toString();
+
   Map<String, dynamic> get data {
     final raw = payload['data'];
     return raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
@@ -3014,4 +3714,19 @@ class _ActionCardState {
     if (canUndo) return '记录后 10 分钟内可撤销';
     return '已超过可撤销时间，可在记录页修改';
   }
+}
+
+/// 操作确认卡的展示配置（标题 / 图标 / 跳转按钮文案 / 跳转目标）
+class _ActionConfirmMeta {
+  final String title;
+  final IconData icon;
+  final String jumpLabel;
+  final Map<String, dynamic> defaultJump;
+
+  const _ActionConfirmMeta(
+    this.title,
+    this.icon,
+    this.jumpLabel,
+    this.defaultJump,
+  );
 }

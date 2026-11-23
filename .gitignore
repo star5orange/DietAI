@@ -210,9 +210,10 @@ CLAUDE.local.md
 notes/
 
 # ==========================================
-# ESP32 Firmware (暂不上传)
+# ESP32 Firmware
 # ==========================================
-firmware/
+# 只排除喂食器固件；dietai-firmware / dietai-camera 正常入库
+firmware/feeder-firmware/
 
 # ==========================================
 # Logs & Runtime

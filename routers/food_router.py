@@ -43,6 +43,7 @@ _DEFAULT_PORTION_GRAMS = {
     "牛肉": 100, "鱼": 100, "虾": 100, "蔬菜": 200, "青菜": 200,
 }
 
+
 def _auto_fill_nutrition(db: Session, food_record: FoodRecord):
     """从 FoodDatabase 查找匹配食物, 自动创建 NutritionDetail 并更新日汇总
 
@@ -293,6 +294,15 @@ async def generate_sse_stream(
         is_proxy = food_data.target_user_id is not None
         analyze_only = bool(food_data.analyze_only)
 
+        # V6（1.6）：成员归属四件套（member_id 已在端点入口校验过）
+        member_kwargs = {}
+        if food_data.member_id is not None:
+            member_kwargs = dict(
+                member_id=food_data.member_id,
+                attributed_by="manual",
+                attribution_confidence=1.0,
+            )
+
         # 仅分析模式不落库，food_record 保持 None（后续代码据此区分）
         food_record = None
 
@@ -313,13 +323,14 @@ async def generate_sse_stream(
                 "cost": float(food_data.cost) if food_data.cost else None,
                 "source_tag": food_data.source_tag,
                 "target_user_id": food_data.target_user_id,
+                "member_id": food_data.member_id,
                 "created_at": "",
             }
         else:
             # 创建食物记录
             food_record = FoodRecord(
                 user_id=owner_user_id,
-                recorded_by_user_id=user_id if is_proxy else None,
+                recorded_by_user_id=user_id if (is_proxy or food_data.member_id is not None) else None,
                 record_date=food_data.record_date,
                 record_time=food_data.record_time or datetime.now(),
                 meal_type=food_data.meal_type,
@@ -330,6 +341,7 @@ async def generate_sse_stream(
                 analysis_status=1,  # 待分析
                 cost=food_data.cost,
                 source_tag=food_data.source_tag,
+                **member_kwargs,
             )
 
             db.add(food_record)
@@ -570,6 +582,20 @@ async def create_food_record(
             detail="家人健康数据不可代记录（仅可查看）；如需提醒家人，请使用「提醒家人」功能"
         )
 
+    # V6（1.6）：给成员记录 → 先校验成员属于本家庭且启用
+    if food_data.member_id is not None:
+        from shared.services.family_member_service import get_member_in_family
+
+        _db_v = SessionLocal()
+        try:
+            _member, _reason = get_member_in_family(_db_v, user_id, food_data.member_id)
+            if _member is None:
+                detail = ("目标成员已停用，不可作为归属对象"
+                          if _reason == "inactive" else "成员不存在或不属于本家庭")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+        finally:
+            _db_v.close()
+
     return StreamingResponse(
         generate_sse_stream(
             food_data=food_data,
@@ -640,6 +666,16 @@ async def confirm_create_food_record(
                 detail="家人健康数据不可代记录（仅可查看）；如需提醒家人，请使用「提醒家人」功能"
             )
 
+        # V6（1.6）：给成员记录 → 校验成员属于本家庭且启用
+        if confirm_data.member_id is not None:
+            from shared.services.family_member_service import get_member_in_family
+
+            _member, _reason = get_member_in_family(db, current_user.id, confirm_data.member_id)
+            if _member is None:
+                detail = ("目标成员已停用，不可作为归属对象"
+                          if _reason == "inactive" else "成员不存在或不属于本家庭")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+
         # 优先用 AI 识别结果更新食物名称
         food_name = confirm_data.food_name or ""
         food_items = confirm_data.food_items or []
@@ -657,7 +693,7 @@ async def confirm_create_food_record(
         # 创建食物记录（分析已完成状态）
         food_record = FoodRecord(
             user_id=owner_user_id,
-            recorded_by_user_id=current_user.id if is_proxy else None,
+            recorded_by_user_id=current_user.id if (is_proxy or confirm_data.member_id is not None) else None,
             record_date=confirm_data.record_date,
             record_time=confirm_data.record_time or datetime.now(),
             meal_type=confirm_data.meal_type,
@@ -675,6 +711,11 @@ async def confirm_create_food_record(
             },
             cost=confirm_data.cost,
             source_tag=confirm_data.source_tag,
+            **({
+                "member_id": confirm_data.member_id,
+                "attributed_by": "manual",
+                "attribution_confidence": 1.0,
+            } if confirm_data.member_id is not None else {}),
         )
         db.add(food_record)
         db.commit()
@@ -801,13 +842,28 @@ async def create_food_record_traditional(
                 detail="家人健康数据不可代记录（仅可查看）；如需提醒家人，请使用「提醒家人」功能"
             )
 
+        # V6（1.6）：给成员记录 → 校验成员属于本家庭且启用
+        member_kwargs = {}
+        if food_data.member_id is not None:
+            from shared.services.family_member_service import get_member_in_family
+
+            _member, _reason = get_member_in_family(db, user_id, food_data.member_id)
+            if _member is None:
+                detail = ("目标成员已停用，不可作为归属对象"
+                          if _reason == "inactive" else "成员不存在或不属于本家庭")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+            member_kwargs = dict(
+                member_id=food_data.member_id,
+                attributed_by="manual",
+                attribution_confidence=1.0,
+            )
 
         # 直接记录：待分析状态（营养详情通过 /nutrition 接口单独添加后会变为3）
         analysis_status = 1
 
         food_record = FoodRecord(
             user_id=owner_user_id,
-            recorded_by_user_id=user_id if is_proxy else None,
+            recorded_by_user_id=user_id if (is_proxy or food_data.member_id is not None) else None,
             record_date=food_data.record_date,
             record_time=food_data.record_time or datetime.now(),
             meal_type=food_data.meal_type,
@@ -818,6 +874,7 @@ async def create_food_record_traditional(
             analysis_status=analysis_status,
             cost=food_data.cost,
             source_tag=food_data.source_tag,
+            **member_kwargs,
         )
 
         sys.stderr.write(f"[TRACE-v3] FoodRecord object created, calling db.add...\n")

@@ -212,7 +212,7 @@ class DiseasesNotifier extends StateNotifier<AsyncValue<List<Disease>>> {
 
   /// 更新疾病信息
   Future<bool> updateDisease(
-      int diseaseId, DiseaseCreateRequest request) async {
+      int diseaseId, DiseaseUpdateRequest request) async {
     try {
       final response = await _userService.updateDisease(diseaseId, request);
       if (response.isSuccess) {

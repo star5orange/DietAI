@@ -210,6 +210,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
         } catch (_) {}
       }
 
+
       // 加载收藏餐食（取前6个常用，去重）
       try {
         final mealsResult = await _savedMealService.getSavedMeals(pageSize: 20);
@@ -2248,7 +2249,8 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('更新失败: $e'), backgroundColor: AppColors.error));
+              content: Text('更新失败: $e'),
+              backgroundColor: AppColors.error));
         }
       }
     }

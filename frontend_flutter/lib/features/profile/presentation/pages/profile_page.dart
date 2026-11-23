@@ -4,14 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../../../core/themes/app_text_styles.dart';
-import '../../../../core/utils/landing_preference.dart';
 import '../../../../shared/domain/models/user_model.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../health/presentation/pages/health_goals_page.dart';
 import '../../../health/presentation/pages/weight_tracking_page.dart';
 import '../../../health/presentation/pages/reminder_settings_page.dart';
-import 'home_layout_page.dart';
-import '../../../home/presentation/pages/home_preference_page.dart';
 import '../providers/profile_provider.dart';
 import '../widgets/profile_edit_sheet.dart';
 import '../widgets/health_info_sheet.dart';
@@ -32,7 +29,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   int _streakDays = 0;
   int _totalRecords = 0;
   int _avgCalories = 0;
-  String _landing = LandingPreference.chat;
 
   @override
   void initState() {
@@ -40,80 +36,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(userProfileProvider.notifier).loadUserProfile();
       _loadUserStats();
-      _loadLandingPreference();
     });
-  }
-
-  Future<void> _loadLandingPreference() async {
-    final userId = ref.read(currentUserProvider)?.id;
-    if (userId == null) return;
-    final value = await LandingPreference.get(userId);
-    if (mounted) setState(() => _landing = value);
-  }
-
-  /// 「启动默认页」二选一弹窗（对话直达 / 数据看板）
-  Future<void> _showLandingPicker() async {
-    final userId = ref.read(currentUserProvider)?.id;
-    if (userId == null) return;
-    final selected = await showDialog<String>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('启动默认页'),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, LandingPreference.chat),
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(
-                LucideIcons.messageCircle,
-                color: _landing == LandingPreference.chat
-                    ? AppColors.primary
-                    : AppColors.textSecondary,
-              ),
-              title: const Text('对话直达'),
-              subtitle: const Text('启动后直接进入 AI 对话页（默认）'),
-              trailing: _landing == LandingPreference.chat
-                  ? const Icon(LucideIcons.check,
-                      color: AppColors.primary, size: 18)
-                  : null,
-            ),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, LandingPreference.dashboard),
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(
-                LucideIcons.layoutGrid,
-                color: _landing == LandingPreference.dashboard
-                    ? AppColors.primary
-                    : AppColors.textSecondary,
-              ),
-              title: const Text('数据看板'),
-              subtitle: const Text('启动后进入数据看板，自己手操功能'),
-              trailing: _landing == LandingPreference.dashboard
-                  ? const Icon(LucideIcons.check,
-                      color: AppColors.primary, size: 18)
-                  : null,
-            ),
-          ),
-        ],
-      ),
-    );
-    if (selected == null || selected == _landing) return;
-    await LandingPreference.set(userId, selected);
-    if (!mounted) return;
-    setState(() => _landing = selected);
-    // 同步全局落地状态：底部「首页」tab 立即跟随新偏好指向
-    ref.read(landingProvider.notifier).state = selected;
-    // 切换即生效：偏好已持久化（下次启动按此落地），并当场跳到目标页，
-    // 两个方向（对话直达 ↔ 数据看板）行为对称，无需重启
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('切换成功'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-    context.go(selected == LandingPreference.dashboard ? '/dashboard' : '/');
   }
 
   Future<void> _loadUserStats() async {
@@ -433,40 +356,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     builder: (context) => const ReminderSettingsPage()),
               );
             },
-          ),
-          _buildMenuItem(
-            icon: LucideIcons.layoutGrid,
-            title: '首页模块管理',
-            subtitle: '自定义首页显示哪些功能、调整顺序',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const HomeLayoutPage(),
-                ),
-              );
-            },
-          ),
-          _buildMenuItem(
-            icon: LucideIcons.slidersHorizontal,
-            title: '首页个性化',
-            subtitle: '完善目标与日常习惯，首页自动调整',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const HomePreferencePage(),
-                ),
-              );
-            },
-          ),
-          _buildMenuItem(
-            icon: LucideIcons.logIn,
-            title: '启动默认页',
-            subtitle: _landing == LandingPreference.dashboard
-                ? '数据看板（自己手操功能）'
-                : '对话直达（AI 对话页）',
-            onTap: _showLandingPicker,
           ),
           _buildMenuItem(
             icon: LucideIcons.bot,

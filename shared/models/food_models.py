@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Date, Numeric, ForeignKey, Index, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Date, Numeric, Float, ForeignKey, Index, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
@@ -34,6 +34,15 @@ class FoodRecord(Base):
     # Milestone 4: 代记录人ID（NULL=本人记录，有值=代记录人ID）
     recorded_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
+    # V6 多成员归属（PRD §5.2，全部可空；空 = 归属 user_id 本人，历史数据不回填）
+    member_id = Column(Integer, ForeignKey("family_members.id"), nullable=True,
+                       comment="归属成员ID，空=账号本人")
+    attributed_by = Column(String(16), nullable=True,
+                           comment="归属依据: device_bind/voice_name/screen/default/manual/reconcile（开放集合）")
+    attribution_confidence = Column(Float, nullable=True, comment="归属置信度 0-1")
+    device_id = Column(String(64), nullable=True, comment="来源设备（device_key）")
+    client_uuid = Column(String(36), nullable=True, comment="客户端幂等键，断网补传去重依据（A3）")
+
     # 关系
     user = relationship("User", back_populates="food_records", foreign_keys=[user_id])
     nutrition_detail = relationship("NutritionDetail", back_populates="food_record", uselist=False)
@@ -43,6 +52,8 @@ class FoodRecord(Base):
         Index('idx_food_records_user_date', 'user_id', 'record_date'),
         Index('idx_food_records_user_meal', 'user_id', 'meal_type'),
         Index('idx_food_records_source_tag', 'source_tag'),
+        Index('idx_food_records_member', 'member_id'),
+        Index('uq_food_records_client_uuid', 'client_uuid', unique=True),
     )
 
 
@@ -129,9 +140,10 @@ class FoodDatabase(Base):
     food_code = Column(String(20), unique=True, nullable=True)  # 食物编码
     food_name = Column(String(200), nullable=False)
     food_name_en = Column(String(200), nullable=True)
+    alias_name = Column(String(200), nullable=True)  # 别名/俗名（如 番茄↔西红柿）
     category = Column(String(100), nullable=True)  # 食物分类
     brand = Column(String(100), nullable=True)  # 品牌
-    
+
     # 营养信息(每100g)
     calories_per_100g = Column(Numeric(6, 2), default=0)
     protein_per_100g = Column(Numeric(6, 2), default=0)
@@ -139,6 +151,9 @@ class FoodDatabase(Base):
     carbohydrates_per_100g = Column(Numeric(6, 2), default=0)
     fiber_per_100g = Column(Numeric(6, 2), default=0)
     sodium_per_100g = Column(Numeric(8, 2), default=0)
+
+    # 中国食物成分表的微量营养素打包（维生素/矿物质/脂肪酸等，键名见导入脚本）
+    extra_nutrients = Column(JSON, nullable=True)
     
     # 元数据
     data_source = Column(String(100), nullable=True)  # 数据来源
